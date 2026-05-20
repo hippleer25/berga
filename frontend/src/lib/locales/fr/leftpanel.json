@@ -1,0 +1,19 @@
+{
+  "title": "Abonnements",
+  "newFolder": "Nouveau dossier",
+  "closeDrawer": "Fermer le panneau",
+  "noSubscriptions": "Aucun abonnement pour le moment.",
+  "defaultFolder": "Par défaut",
+  "options": "Options",
+  "folderOptions": "Options du dossier",
+  "feedOptions": "Options du flux",
+  "newSubfolder": "Nouveau sous-dossier",
+  "copyLink": "Copier le lien",
+  "delete": "Supprimer",
+  "dialogTitle": "Nouveau dossier",
+  "dialogSubInside": "Dans \"",
+  "folderNamePlaceholder": "Nom du dossier…",
+  "cancel": "Annuler",
+  "create": "Créer",
+  "loadError": "Échec du chargement des abonnements"
+}

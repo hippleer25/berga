@@ -1,0 +1,20 @@
+{
+	"title": "Seguir feed",
+	"discovering": "Descobrindo feeds…",
+	"searching": "Buscando feeds…",
+	"tryAgain": "Tentar novamente",
+	"followingTitle": "Seguindo!",
+	"done": "Feito",
+	"confirmHint": "Você será inscrito no seguinte feed RSS:",
+	"changeRssUrl": "Alterar URL do RSS",
+	"cancel": "Cancelar",
+	"follow": "Seguir",
+	"noFeedsFound": "Nenhum feed encontrado para este site.",
+	"discoverFailed": "Falha ao descobrir feeds.",
+	"searchHint": "Selecione um site para descobrir seus feeds",
+	"searchFailed": "Falha ao buscar feeds.",
+	"noSearchResults": "Nenhum site encontrado para esta busca.",
+	"searchInstead": "Buscar feeds na web",
+	"backToResults": "Voltar aos resultados",
+	"followFailed": "Falha ao seguir o feed."
+}

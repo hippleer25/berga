@@ -1,0 +1,20 @@
+{
+	"title": "Feed folgen",
+	"discovering": "Feeds werden gesucht…",
+	"searching": "Feeds werden gesucht…",
+	"tryAgain": "Erneut versuchen",
+	"followingTitle": "Gefolgt!",
+	"done": "Fertig",
+	"confirmHint": "Du wirst folgenden RSS-Feed abonnieren:",
+	"changeRssUrl": "RSS-URL ändern",
+	"cancel": "Abbrechen",
+	"follow": "Folgen",
+	"noFeedsFound": "Für diese Seite wurden keine Feeds gefunden.",
+	"discoverFailed": "Feeds konnten nicht gefunden werden.",
+	"searchHint": "Wähle eine Seite, um deren Feeds zu entdecken",
+	"searchFailed": "Feeds konnten nicht gesucht werden.",
+	"noSearchResults": "Keine Seiten für diese Suche gefunden.",
+	"searchInstead": "Stattdessen nach Feeds suchen",
+	"backToResults": "Zurück zu den Ergebnissen",
+	"followFailed": "Fehler beim Folgen des Feeds."
+}

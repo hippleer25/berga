@@ -1,0 +1,17 @@
+{
+  "articles": "Artículos",
+  "feeds": "Feeds",
+  "noArticleResults": "No hay resultados para",
+	"noFeedResults": "No se encontraron feeds para",
+	"tryDifferentQuery": "Intenta con un término de búsqueda diferente.",
+  "result": "resultado",
+  "results": "resultados",
+  "feed": "feed",
+  "feeds": "feeds",
+  "for": "para",
+  "foundFor": "encontrado para",
+  "bestMatch": "Mejor coincidencia",
+  "follow": "+ Seguir",
+  "searchFailed": "La búsqueda falló",
+  "discoveryFailed": "La búsqueda de feeds falló"
+}

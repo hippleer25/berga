@@ -1,0 +1,15 @@
+{
+  "title": "Entrar",
+  "subtitle": "Acesse sua conta Berga.",
+  "identifierLabel": "Usuário ou E-mail",
+  "identifierPlaceholder": "Digite seu usuário ou e-mail",
+  "passwordLabel": "Senha",
+  "passwordPlaceholder": "Digite sua senha",
+  "invalidCredentials": "Credenciais inválidas",
+  "connectionError": "Erro de conexão",
+  "back": "Voltar",
+  "loggingIn": "Entrando...",
+  "loginBtn": "Entrar",
+  "instanceLabel": "Instância",
+  "instancePlaceholder": "ex. bergamota.net.br"
+}

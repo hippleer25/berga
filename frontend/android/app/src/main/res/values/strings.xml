@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Berga</string>
+    <string name="title_activity_main">Berga</string>
+    <string name="package_name">net.bergamonta.app</string>
+    <string name="custom_url_scheme">net.bergamonta.app</string>
+</resources>

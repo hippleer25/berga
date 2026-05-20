@@ -1,0 +1,301 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+@font-face {
+font-family: 'Manrope';
+src: url('/fonts/Manrope/Manrope-VariableFont_wght.ttf') format('truetype');
+font-weight: 200 800;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Figtree';
+src: url('/fonts/Figtree/Figtree-VariableFont_wght.ttf') format('truetype');
+font-weight: 300 900;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Barlow';
+src: url('/fonts/Barlow/Barlow-Regular.ttf') format('truetype');
+font-weight: 400;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Barlow';
+src: url('/fonts/Barlow/Barlow-Medium.ttf') format('truetype');
+font-weight: 500;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Barlow';
+src: url('/fonts/Barlow/Barlow-SemiBold.ttf') format('truetype');
+font-weight: 600;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Barlow';
+src: url('/fonts/Barlow/Barlow-Bold.ttf') format('truetype');
+font-weight: 700;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Karla';
+src: url('/fonts/Karla/Karla-VariableFont_wght.ttf') format('truetype');
+font-weight: 200 800;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'PT Sans';
+src: url('/fonts/PT_Sans/PTSans-Regular.ttf') format('truetype');
+font-weight: 400;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'PT Sans';
+src: url('/fonts/PT_Sans/PTSans-Bold.ttf') format('truetype');
+font-weight: 700;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'PT Serif';
+src: url('/fonts/PT_Serif/PTSerif-Regular.ttf') format('truetype');
+font-weight: 400;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'PT Serif';
+src: url('/fonts/PT_Serif/PTSerif-Bold.ttf') format('truetype');
+font-weight: 700;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Inter';
+src: url('/fonts/Inter/Inter-VariableFont_opsz,wght.ttf') format('truetype');
+font-weight: 100 900;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Gloock';
+src: url('/fonts/Gloock/Gloock-Regular.ttf') format('truetype');
+font-weight: 400;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Playfair Display';
+src: url('/fonts/Playfair_Display/PlayfairDisplay-VariableFont_wght.ttf') format('truetype');
+font-weight: 400 900;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Vollkorn';
+src: url('/fonts/Vollkorn/Vollkorn-VariableFont_wght.ttf') format('truetype');
+font-weight: 400 900;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Newsreader';
+src: url('/fonts/Newsreader/Newsreader-VariableFont_opsz,wght.ttf') format('truetype');
+font-weight: 200 900;
+font-style: normal;
+font-display: swap;
+}
+
+:root {
+--font-page-title: 'Newsreader', serif;
+--font-post-title: 'PT Serif', serif;
+--font-article-body: 'Inter', sans-serif;
+--font-ui: 'Inter', sans-serif;
+font-family: var(--font-ui);
+}
+
+body {
+font-family: var(--font-ui);
+}
+
+::selection {
+  background-color: #dec83b;
+  color: oklch(20% 0 0);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@plugin "daisyui/theme" {
+  name: "berga-black";
+  default: false;
+  prefersdark: false;
+  color-scheme: "light";
+
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(0.931 0 89.876);
+  /* --color-base-200: oklch(81% 0 0);*/
+  --color-base-300: oklch(78% 0 0);
+  --color-base-content: oklch(12.391% 0 0);
+
+  --color-primary: oklch(65% 0 0);
+  --color-primary-content: oklch(0% 0 0);
+  --color-secondary: oklch(65% 0 0);
+  --color-secondary-content: oklch(0% 0 0);
+  --color-accent: oklch(82% 0.16 90);
+  --color-accent-content: oklch(15% 0.05 90);
+  --color-neutral: oklch(65% 0 0);
+  --color-neutral-content: oklch(0% 0 0);
+
+  --color-info: oklch(58% 0.199 265.638);
+  --color-info-content: oklch(10.96% 0.062 264.052);
+  --color-success: oklch(56% 0.119 151.328);
+  --color-success-content: oklch(9.605% 0.035 142.495);
+  --color-warning: oklch(21% 0.184 86.047);
+  --color-warning-content: oklch(80.641% 0.042 109.769);
+  --color-error: oklch(50% 0.213 27.518);
+  --color-error-content: oklch(12% 0.062 18.334);
+
+  --radius-selector: 2rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+@plugin "daisyui/theme" {
+  name: "berga";
+  default: true;
+  prefersdark: false;
+  color-scheme: "dark";
+
+  --color-base-100: oklch(0% 0 0);
+  --color-base-200: oklch(19% 0 0);
+  --color-base-300: oklch(22% 0 0);
+  --color-base-content: oklch(87.609% 0 0);
+
+  --color-primary: oklch(35% 0 0);
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(35% 0 0);
+  --color-secondary-content: oklch(100% 0 0);
+  --color-accent: oklch(68% 0.17 85);
+  --color-accent-content: oklch(15% 0.05 85);
+  --color-neutral: oklch(35% 0 0);
+  --color-neutral-content: oklch(100% 0 0);
+
+  --color-info: oklch(42% 0.199 265.638);
+  --color-info-content: oklch(89.04% 0.062 264.052);
+  --color-success: oklch(44% 0.119 151.328);
+  --color-success-content: oklch(90.395% 0.035 142.495);
+  --color-warning: oklch(79% 0.184 86.047);
+  --color-warning-content: oklch(19.359% 0.042 109.769);
+  --color-error: oklch(50% 0.213 27.518);
+  --color-error-content: oklch(88% 0.062 18.334);
+
+  --radius-selector: 2rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+.input:focus-visible,
+.textarea:focus-visible,
+.select:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-accent) !important;
+  outline-offset: 2px !important;
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px var(--color-accent) !important;
+}
+
+.input:focus:not(:focus-visible),
+.textarea:focus:not(:focus-visible),
+.select:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
+  outline: none !important;
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px var(--color-accent) !important;
+}
+
+textarea:focus-visible {
+  outline: 2px solid var(--color-accent) !important;
+  outline-offset: 2px !important;
+}
+
+textarea:focus:not(:focus-visible) {
+  outline: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.chat-root {
+  position: fixed;
+  inset: 0;
+}
+
+.page-root {
+  min-height: 100dvh;
+  background: var(--color-base-100);
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 8px));
+}
+
+@media (min-width: 768px) {
+  .page-root { padding-bottom: 0; }
+}
+
+.page-root--centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

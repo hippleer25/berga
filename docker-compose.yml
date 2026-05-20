@@ -1,0 +1,123 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: berga_db
+    restart: always
+    command: >
+      --innodb-buffer-pool-size=128M
+      --innodb-log-buffer-size=8M
+      --innodb-log-file-size=64M
+      --performance-schema=OFF
+      --max-connections=50
+      --table-open-cache=64
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    environment:
+      MYSQL_ROOT_PASSWORD: berga_password
+      MYSQL_DATABASE: berga_db
+      MYSQL_USER: ${DB_USER:-berga_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    ports:
+       - "3306:3306"  # Uncomment only for local debugging
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: berga_qdrant
+    restart: always
+    # ports:
+    #   - "6333:6333"  # Uncomment only for local debugging
+    #   - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__STORAGE__ON_DISK=true
+      - QDRANT__STORAGE__HNSW_INDEX__ON_DISK=true
+      - QDRANT__STORAGE__OPTIMISERS__DEFAULT_SEGMENT_NUMBER=2
+      - QDRANT__STORAGE__OPTIMISERS__MEMORY_MAP_THRESHOLD=10000
+      - QDRANT__STORAGE__OPTIMISERS__INDEXING_THRESHOLD=50000
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: berga_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 80M
+    volumes:
+      - redis_data:/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: berga_api
+    env_file:
+      - .env
+    ports:
+      - "5746:5746"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app_network
+    volumes:
+      - ./backend:/code
+    deploy:
+      resources:
+        limits:
+          memory: 3000M
+
+  frontend:
+    image: node:20-slim
+    container_name: berga_front
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "4657:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  qdrant_data:
+  redis_data:

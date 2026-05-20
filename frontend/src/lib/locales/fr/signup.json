@@ -1,0 +1,18 @@
+{
+  "title": "S'inscrire",
+  "subtitle": "Vous créez un compte Berga",
+  "accountLabel": "Compte",
+  "accountPlaceholder": "Entrez votre nom d'utilisateur",
+  "fullNameLabel": "Nom complet",
+  "fullNamePlaceholder": "Entrez votre nom complet",
+  "emailLabel": "E-mail",
+  "emailPlaceholder": "Entrez votre e-mail",
+  "passwordLabel": "Mot de passe",
+  "passwordPlaceholder": "Entrez votre mot de passe",
+  "errorSignup": "Erreur lors de l'inscription",
+  "back": "Retour",
+  "registering": "Inscription en cours...",
+  "done": "Terminé",
+  "instanceLabel": "Instance",
+  "instancePlaceholder": "ex. bergamota.net.br"
+}

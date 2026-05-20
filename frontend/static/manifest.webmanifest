@@ -1,0 +1,50 @@
+{
+  "name": "Berga",
+  "short_name": "Berga",
+  "description": "AI-powered RSS reader with recommendations, clustering, and chat",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#595959",
+  "icons": [
+    {
+      "src": "/icons/berga_32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/berga_64.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/berga_128.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/berga_256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/berga_512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/berga_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/berga_1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["news", "productivity"]
+}

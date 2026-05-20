@@ -1,0 +1,14 @@
+{
+  "back": "Volver",
+  "feeds": "Feeds",
+  "posts": "Publicaciones",
+  "createdAt": "Creado el",
+  "filterMode": "Modo del feed",
+  "forYou": "Para ti",
+  "recents": "Recientes",
+  "tryAgain": "Intentar de nuevo",
+  "noPosts": "No se encontraron publicaciones en esta carpeta.",
+  "upToDate": "Estás al día ✓",
+  "loadFeedError": "Error al cargar el feed",
+  "loadInfoError": "No se pudo cargar la información de la carpeta"
+}

@@ -1,0 +1,20 @@
+{
+	"title": "Suivre le flux",
+	"discovering": "Découverte des flux…",
+	"searching": "Recherche de flux…",
+	"tryAgain": "Réessayer",
+	"followingTitle": "Suivi !",
+	"done": "Terminé",
+	"confirmHint": "Vous serez abonné au flux RSS suivant :",
+	"changeRssUrl": "Modifier l'URL du RSS",
+	"cancel": "Annuler",
+	"follow": "Suivre",
+	"noFeedsFound": "Aucun flux trouvé pour ce site.",
+	"discoverFailed": "Échec de la découverte des flux.",
+	"searchHint": "Sélectionnez un site pour découvrir ses flux",
+	"searchFailed": "Échec de la recherche de flux.",
+	"noSearchResults": "Aucun site trouvé pour cette recherche.",
+	"searchInstead": "Rechercher des flux à la place",
+	"backToResults": "Retour aux résultats",
+	"followFailed": "Échec de l'abonnement au flux."
+}

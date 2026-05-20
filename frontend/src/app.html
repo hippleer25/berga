@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#595959" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Berga" />
+  <link rel="apple-touch-icon" href="/icons/berga_128.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/berga_32.png" />
+  <link rel="icon" type="image/png" sizes="64x64" href="/icons/berga_64.png" />
+
+    <!-- Theme initialization script (runs before rendering) -->
+    <script>
+      (function() {
+        try {
+          // Theme saved by user in settings
+          const savedTheme = localStorage.getItem('preferred-theme');
+
+          if (savedTheme) {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+          } else {
+            // Fallback: detects system preference
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.setAttribute('data-theme', prefersDark ? 'berga-black' : 'berga');
+          }
+        } catch (e) {
+          // On error (e.g.: localStorage blocked), uses default light theme
+          document.documentElement.setAttribute('data-theme', 'berga');
+        }
+      })();
+    </script>
+
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

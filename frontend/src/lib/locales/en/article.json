@@ -1,0 +1,21 @@
+{
+  "loadError": "Could not load the article.",
+  "backToFeed": "Back to feed",
+  "viewExtractedText": "View extracted text",
+  "viewOriginalPage": "View original page",
+  "like": "Like",
+  "dislike": "Dislike",
+  "save": "Save",
+  "openOriginal": "Open original",
+  "iframeBlockedTitle": "This site does not allow embedding",
+  "thisSite": "This site",
+  "iframeBlockedBody": "blocked the display in external readers. You can open the article directly on the original site.",
+  "openOriginalSite": "Open original site",
+  "backToExtractedText": "Back to extracted text",
+  "summarizeText": "Summarize text",
+  "findSimilars": "Find Similars",
+  "streamUnavailable": "Stream unavailable",
+  "resumeError": "Error generating summary.",
+  "hideSummary": "Hide summary",
+  "originalPage": "Original page"
+}

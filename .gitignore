@@ -1,0 +1,54 @@
+# ── Secrets & Environment ─────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.venv/
+venv/
+env/
+dist/
+build/
+
+# ── Node / Frontend ──────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# ── Android / Capacitor ─────────────────────────────────────────
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/local.properties
+frontend/android/capacitor-cordova-android-plugins/build/
+*.keystore
+
+# ── IDE ──────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── OS ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Logs ─────────────────────────────────────────────────────────
+*.log
+
+# ── Database ─────────────────────────────────────────────────────
+*.sqlite
+*.db
+
+# ── Docker ───────────────────────────────────────────────────────
+# Keep compose and Dockerfiles, ignore volumes
+mysql_data/
+qdrant_data/
+redis_data/
