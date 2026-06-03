@@ -1,1 +1,0 @@
-const e="À la une",t="Rechercher",s="Il n'y a pas encore assez d'événements à afficher.",n="Erreur lors du chargement des événements",r={title:e,search:t,emptyTitle:s,loadError:n};export{r as default,s as emptyTitle,n as loadError,t as search,e as title};

@@ -1,1 +1,0 @@
-export { default as component } from "../../../../src/routes/c/[folder_id]/+page.svelte";

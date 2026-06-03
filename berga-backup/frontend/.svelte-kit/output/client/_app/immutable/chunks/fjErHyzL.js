@@ -1,1 +1,0 @@
-const t="Highlights",e="Search",o="There are not enough events to display yet.",s="Failed to load events",a={title:t,search:e,emptyTitle:o,loadError:s};export{a as default,o as emptyTitle,s as loadError,e as search,t as title};

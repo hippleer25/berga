@@ -1,1 +1,0 @@
-const n="Abonnés",o="Accueil",t="Événements",a="Mota",s="Navigation principale",e={followers:n,home:o,events:t,mota:a,mainNav:s};export{e as default,t as events,n as followers,o as home,s as mainNav,a as mota};
