@@ -17,5 +17,7 @@
   "streamUnavailable": "Stream nicht verfügbar",
   "resumeError": "Fehler beim Erstellen der Zusammenfassung.",
   "hideSummary": "Zusammenfassung ausblenden",
-  "originalPage": "Originalseite"
+  "originalPage": "Originalseite",
+  "tagArticle": "Artikel taggen",
+  "allTagsAssigned": "Alle Tags bereits zugewiesen"
 }

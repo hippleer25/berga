@@ -97,35 +97,39 @@ afterNavigate(async ({ to }) => {
 
     // ── Touch handlers ────────────────────────────────────────────────────────
 
-    let startX  = 0, startY = 0;
-    let axis: 'h' | 'v' | null = null;
-    let lastX   = 0;
-    let lastT   = 0;
-    let velPxMs = 0;
+let startX = 0, startY = 0;
+let axis: 'h' | 'v' | null = null;
+let lastX = 0;
+let lastT = 0;
+let velPxMs = 0;
+let filterBarTouch = false;
 
-    function onTouchStart(e: TouchEvent) {
-        if (locked) return;
-        startX     = e.touches[0].clientX;
-        startY     = e.touches[0].clientY;
-        lastX      = startX;
-        lastT      = e.timeStamp;
-        velPxMs    = 0;
-        axis       = null;
-        isDragging = false;
-        dragPx     = 0;
-    }
+function onTouchStart(e: TouchEvent) {
+	if (locked) return;
+	const t = e.target as HTMLElement;
+	filterBarTouch = !!t.closest('.filter-bar');
+	startX = e.touches[0].clientX;
+	startY = e.touches[0].clientY;
+	lastX = startX;
+	lastT = e.timeStamp;
+	velPxMs = 0;
+	axis = null;
+	isDragging = false;
+	dragPx = 0;
+}
 
-    function onTouchMove(e: TouchEvent) {
-        if (locked) return;
-        const dx = e.touches[0].clientX - startX;
-        const dy = e.touches[0].clientY - startY;
+function onTouchMove(e: TouchEvent) {
+	if (locked) return;
+	if (filterBarTouch) return;
+	const dx = e.touches[0].clientX - startX;
+	const dy = e.touches[0].clientY - startY;
 
-        if (!axis) {
-            if (Math.abs(dx) > 6 || Math.abs(dy) > 6)
-                axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
-            return;
-        }
-        if (axis !== 'h') return;
+	if (!axis) {
+		if (Math.abs(dx) > 6 || Math.abs(dy) > 6)
+			axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+		return;
+	}
+	if (axis !== 'h') return;
 
         e.preventDefault();
         isDragging = true;
@@ -152,8 +156,9 @@ afterNavigate(async ({ to }) => {
         trackEl.style.transform  = tabTx(activeIdx - raw / w);
     }
 
-    async function onTouchEnd() {
-        if (!isDragging) {
+	async function onTouchEnd() {
+		filterBarTouch = false;
+		if (!isDragging) {
             snapTo(activeIdx, true);
             dragPx = 0;
             return;
@@ -241,29 +246,33 @@ afterNavigate(async ({ to }) => {
 >
 <div class="track" bind:this={trackEl}>
   <div class="panel" class:panel-active={activeIdx === 0}>
-    {#if tabReady[0] && tabComponents[0]}
-      <svelte:component this={tabComponents[0]} />
+{#if tabReady[0] && tabComponents[0]}
+			{@const Tab0 = tabComponents[0]}
+			<Tab0 />
     {:else}
       <div class="tab-loader"></div>
     {/if}
   </div>
   <div class="panel" class:panel-active={activeIdx === 1} onscroll={handleHomeScroll}>
-    {#if tabReady[1] && tabComponents[1]}
-      <svelte:component this={tabComponents[1]} />
-    {:else}
-      <div class="tab-loader"></div>
-    {/if}
-  </div>
-  <div class="panel" class:panel-active={activeIdx === 2}>
-    {#if tabReady[2] && tabComponents[2]}
-      <svelte:component this={tabComponents[2]} />
-    {:else}
-      <div class="tab-loader"></div>
-    {/if}
-  </div>
-  <div class="panel" class:panel-active={activeIdx === 3}>
-    {#if tabReady[3] && tabComponents[3]}
-      <svelte:component this={tabComponents[3]} />
+{#if tabReady[1] && tabComponents[1]}
+			{@const Tab1 = tabComponents[1]}
+			<Tab1 />
+		{:else}
+			<div class="tab-loader"></div>
+		{/if}
+	</div>
+	<div class="panel" class:panel-active={activeIdx === 2}>
+		{#if tabReady[2] && tabComponents[2]}
+			{@const Tab2 = tabComponents[2]}
+			<Tab2 />
+		{:else}
+			<div class="tab-loader"></div>
+		{/if}
+	</div>
+	<div class="panel" class:panel-active={activeIdx === 3}>
+		{#if tabReady[3] && tabComponents[3]}
+			{@const Tab3 = tabComponents[3]}
+			<Tab3 />
     {:else}
       <div class="tab-loader"></div>
     {/if}

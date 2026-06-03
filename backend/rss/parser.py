@@ -17,10 +17,12 @@ from auth.token import ALGORITHM, SECRET_KEY
 from database.init_db import get_db
 from database.qdrant_utils import add_item_to_qdrant
 from intelligence.embeddings import (
+    build_embedding_text,
     embedding_text,
     get_embedding_model,
     get_qdrant_client,
     COLLECTION_NAME,
+    get_current_fingerprint,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,7 +122,8 @@ def parse_and_save_feed(feed_url: str, raw_content: str = None):
 
             get_embedding_model()
             get_qdrant_client()
-
+            model_fp = get_current_fingerprint()
+    
             for entry in parsed.get("entries", []):
                 link = entry.get("link", "")
                 if not link:
@@ -144,7 +147,7 @@ def parse_and_save_feed(feed_url: str, raw_content: str = None):
                         pub_timestamp = pub_date.timestamp()
                         break
 
-                vector = embedding_text(title)
+                vector = embedding_text(build_embedding_text(title, description))
                 logger.debug("[parser] %sd vector — %s", f"{len(vector)}d", title[:80])
 
                 payload = {
@@ -158,6 +161,7 @@ def parse_and_save_feed(feed_url: str, raw_content: str = None):
                     "feed_title": title_feed,
                     "feed_icon": icon_feed,
                     "url_hash": old_hash,
+                    "_model_fp": model_fp,
                 }
 
                 add_item_to_qdrant(item_id, vector, payload)

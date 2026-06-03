@@ -1,0 +1,1 @@
+const e="Highlights",n="Suchen",t="Es gibt noch nicht genügend Ereignisse zum Anzeigen.",s="Fehler beim Laden der Ereignisse",i={title:e,search:n,emptyTitle:t,loadError:s};export{i as default,t as emptyTitle,s as loadError,n as search,e as title};

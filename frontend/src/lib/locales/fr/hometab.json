@@ -15,11 +15,18 @@
   "clearFolderFilter": "Effacer le filtre du dossier",
   "feed": "Flux",
   "clearFeedFilter": "Effacer le filtre du flux",
+  "tag": "Tag",
+  "clearTagFilter": "Effacer le filtre du tag",
+  "noTagsYet": "Aucun tag pour le moment",
+  "createTag": "Créer un tag",
+  "tagSelected": "Étiqueter",
   "tryAgain": "Réessayer",
   "noPostsFound": "Aucune publication trouvée.",
   "allCaughtUp": "Vous êtes à jour ✓",
   "noFoldersYet": "Aucun dossier pour le moment",
   "noFeedsYet": "Aucun flux pour le moment",
+  "saved": "Enregistrés",
+  "noSavedYet": "Aucun article enregistré pour le moment.",
   "loadError": "Échec du chargement du flux",
   "articles": "articles"
 }

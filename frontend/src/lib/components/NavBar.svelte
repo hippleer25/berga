@@ -117,9 +117,9 @@
     }
 
     /* Estado Ativo: Forte e Accent */
-    .nav-item.active {
-        color: var(--color-accent-content);
-    }
+.nav-item.active {
+  color: var(--color-accent);
+}
     .nav-item.active .nav-label {
         font-weight: 700;
     }
@@ -175,10 +175,10 @@
     }
 
     /* Active State: Strong Contrast with Border and Accent */
-    .sidebar-item.active {
-        color: var(--color-accent-content);
-        background: color-mix(in oklch, var(--color-accent-content) 8%, transparent);
-        border-left-color: var(--color-accent-content); /* The highlight sidebar */
+.sidebar-item.active {
+  color: var(--color-accent);
+  background: color-mix(in oklch, var(--color-accent) 8%, transparent);
+  border-left-color: var(--color-accent);
     }
 
     .s-label {

@@ -15,5 +15,6 @@
   "folderNamePlaceholder": "Nombre de la carpeta…",
   "cancel": "Cancelar",
   "create": "Crear",
-  "loadError": "Error al cargar las suscripciones"
+  "loadError": "Error al cargar las suscripciones",
+  "toggleFolder": "Abrir/cerrar carpeta"
 }

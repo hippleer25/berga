@@ -1,0 +1,17 @@
+{
+  "loadInfoError": "Could not load feed information",
+  "subscribers": "Subscribers",
+  "updatedAt": "Updated on",
+  "unfollowFeed": "Unfollow feed",
+  "followFeed": "Follow feed",
+  "following": "Following",
+  "follow": "Follow",
+  "forYou": "For you",
+  "recents": "Recents",
+  "tryAgain": "Try again",
+  "loadFeedError": "Failed to load feed",
+  "noPosts": "No posts found for this feed.",
+  "upToDate": "You're all up to date ✓",
+  "back": "Back",
+  "filterMode": "Feed mode"
+}

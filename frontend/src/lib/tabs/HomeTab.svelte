@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-  import { goto, beforeNavigate } from '$app/navigation';
+  import { page } from '$app/stores';
+import { goto, beforeNavigate } from '$app/navigation';
   import { slide } from 'svelte/transition';
   import { get } from 'svelte/store';
   import PostCard from '$lib/components/PostCard.svelte';
@@ -14,28 +15,41 @@ import {
 import { subscriptionChanged } from '$lib/stores/subscription';
 import { onViewed, flushPending, destroyViewTracker } from '$lib/stores/viewTracker';
 import {
-        Rss, FolderOpen, ChevronDown,
-        X, Check, Settings, Share2, Sparkles,
-    } from '@lucide/svelte';
+		Rss, FolderOpen, ChevronDown,
+		X, Check, Settings, Share2, Sparkles, Bookmark, Tag,
+	} from '@lucide/svelte';
 import { t } from 'svelte-i18n';
 import { apiFetch } from '$lib/api';
+import {
+	feedCacheKey,
+	loadFeedCache,
+	saveFeedCache,
+	clearFeedCache,
+	loadSubsCache,
+	saveSubsCache,
+	clearSubsCache,
+} from '$lib/stores/feedCache';
 
-type Mode = 'recommendations' | 'recents';
+type Mode = 'recommendations' | 'recents' | 'saved';
 
     // Mode & filter
     let mode               = $state<Mode>('recommendations');
     let selectedFolderId   = $state<string | null>(null);
     let selectedFolderName = $state<string | null>(null);
-    let selectedFeedSha    = $state<string | null>(null);
-    let selectedFeedName   = $state<string | null>(null);
+let selectedFeedSha = $state<string | null>(null);
+let selectedFeedName = $state<string | null>(null);
+let selectedTagId = $state<number | null>(null);
+let selectedTagName = $state<string | null>(null);
+let tagList = $state<Array<{ id: number; name: string; color?: string }>>([]);
 
     // Feed
-    let feed        = $state<any[]>([]);
-    let loading     = $state<boolean>(true);
-    let loadingMore = $state<boolean>(false);
+let feed = $state<any[]>([]);
+let loading = $state<boolean>(true);
+let refreshing = $state<boolean>(false);
+let loadingMore = $state<boolean>(false);
     let hasMore     = $state<boolean>(true);
     let error       = $state<string>('');
-    let page        = $state<number>(0);
+let pageNum = $state<number>(0);
     let subsData    = $state<any[]>([]);
 
     // Share feedback
@@ -45,13 +59,25 @@ type Mode = 'recommendations' | 'recents';
     let sentinelEl: HTMLDivElement | null = $state(null);
     let observer:   IntersectionObserver | null = null;
 
-    // Dropdowns
-    let showFolderPicker = $state<boolean>(false);
-    let showFeedPicker   = $state<boolean>(false);
-    let folderDropStyle  = $state<string>('');
-    let feedDropStyle    = $state<string>('');
-    let folderBtnEl      = $state<HTMLButtonElement | null>(null);
-    let feedBtnEl        = $state<HTMLButtonElement | null>(null);
+// Filter bar touch tracking
+let filterBarAxis: 'h' | 'v' | null = null;
+let filterBarStartX = 0;
+let filterBarStartY = 0;
+
+// Dropdowns
+let showFolderPicker = $state<boolean>(false);
+let showFeedPicker = $state<boolean>(false);
+let showTagPicker = $state<boolean>(false);
+let folderDropStyle = $state<string>('');
+let feedDropStyle = $state<string>('');
+let tagDropStyle = $state<string>('');
+let folderBtnEl = $state<HTMLButtonElement | null>(null);
+let feedBtnEl = $state<HTMLButtonElement | null>(null);
+let tagBtnEl = $state<HTMLButtonElement | null>(null);
+
+// Bulk tag
+let bulkTagPickerOpen = $state<boolean>(false);
+let bulkTagLoading = $state<boolean>(false);
 
     // Derived lists
     let folders = $derived.by(() => {
@@ -116,14 +142,17 @@ type Mode = 'recommendations' | 'recents';
 	);
 
 	loadSubscriptions();
-	loadFeed(true);
+		loadFeed(true);
+		applyTagFromUrl();
 
-	const unsub = subscriptionChanged.subscribe((val) => {
-		if (val > 0) {
-			loadSubscriptions();
-			loadFeed(true);
-		}
-	});
+		const unsub = subscriptionChanged.subscribe((val) => {
+			if (val > 0) {
+				clearFeedCache();
+				clearSubsCache();
+				loadSubscriptions();
+				loadFeed(true);
+			}
+		});
 
 	beforeNavigate(() => {
 		flushPending();
@@ -145,112 +174,194 @@ $effect(() => {
 });
 
 	async function loadSubscriptions() {
-        try {
-            const res = await apiFetch('/api/list-subscriptions', { credentials: 'include' });
-            if (!res.ok) throw new Error('failed');
-            const raw = await res.json();
-            subsData  = Array.isArray(raw) ? raw : (raw.feeds ?? []);
-        } catch (_e) { /* silently ignore */ }
+		const cached = loadSubsCache<any>();
+		if (cached) {
+			const raw = cached;
+			subsData = Array.isArray(raw) ? raw : (raw.feeds ?? []);
+		}
+
+		try {
+			const res = await apiFetch('/api/list-subscriptions', { credentials: 'include' });
+			if (!res.ok) throw new Error('failed');
+			const raw = await res.json();
+			subsData = Array.isArray(raw) ? raw : (raw.feeds ?? []);
+			saveSubsCache(raw);
+		} catch (_e) { /* silently ignore */ }
+
+		try {
+			const res = await apiFetch('/api/tags', { credentials: 'include' });
+			if (res.ok) {
+				const data = await res.json();
+				tagList = data.tags ?? [];
+			}
+		} catch { /* non-critical */ }
+	}
+
+	function buildUrl(pageNum: number, limit: number = 20): string {
+		const p = new URLSearchParams({ limit: String(limit) });
+		if (selectedFolderId) p.set('folder_id', selectedFolderId);
+		if (selectedFeedSha) p.set('feed_sha256', selectedFeedSha);
+		if (selectedTagId) p.set('tag_id', String(selectedTagId));
+		if (mode === 'recommendations') {
+			p.set('page', String(pageNum));
+			return `/api/feed/recommendations?${p}`;
+		}
+		if (mode === 'saved') {
+			p.set('page', String(pageNum));
+			return `/api/feed/saved?${p}`;
+		}
+		p.set('max_days', '10');
+		return `/api/feed/recents?${p}`;
+	}
+
+	async function loadFeed(reset: boolean = false) {
+		if (reset) {
+			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
+			const cached = loadFeedCache<any[]>(cacheKey);
+			if (cached && cached.length > 0) {
+				feed = cached;
+				loading = false;
+				refreshing = true;
+				error = '';
+				pageNum = 0;
+				hasMore = true;
+				try {
+					const res = await apiFetch(buildUrl(0), { credentials: 'include' });
+					if (res.status === 401) { window.location.replace('/'); return; }
+					if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
+					const data: any[] = await res.json();
+					feed = data;
+					hasMore = data.length > 0;
+					saveFeedCache(cacheKey, data);
+				} catch (e: any) {
+					// Network failed but we already have cached data — keep it silently
+				}
+				refreshing = false;
+				return;
+			}
+			loading = true;
+			feed = [];
+			pageNum = 0;
+			hasMore = true;
+			error = '';
+		}
+		try {
+			const res = await apiFetch(buildUrl(0), { credentials: 'include' });
+			if (res.status === 401) { window.location.replace('/'); return; }
+			if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
+			const data: any[] = await res.json();
+			feed = data;
+			hasMore = data.length > 0;
+			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
+			saveFeedCache(cacheKey, data);
+		} catch (e: any) {
+			error = (e as Error).message || get(t)('hometab.loadError');
+		}
+		loading = false;
+	}
+
+	async function loadMore() {
+	if (loadingMore || !hasMore || loading || refreshing) return;
+    loadingMore = true;
+
+    try {
+      let newItems: any[];
+
+      if (mode === 'recommendations' || mode === 'saved') {
+        const nextPage = pageNum + 1;
+        const res = await apiFetch(buildUrl(nextPage), { credentials: 'include' });
+        if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
+        const data: any[] = await res.json();
+
+        if (data.length === 0) { hasMore = false; loadingMore = false; return; }
+
+        const seen = new Set(feed.map((x: any) => x.item_id));
+        newItems = data.filter((x: any) => !seen.has(x.item_id));
+
+        if (newItems.length === 0) { hasMore = false; loadingMore = false; return; }
+
+        pageNum = nextPage;
+        hasMore = true;
+      } else {
+        const requestedLimit = feed.length + 20;
+        const res = await apiFetch(buildUrl(0, requestedLimit), { credentials: 'include' });
+        if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
+        const data: any[] = await res.json();
+        const seen = new Set(feed.map((x: any) => x.item_id));
+        newItems = data.filter((x: any) => !seen.has(x.item_id));
+        if (newItems.length === 0) { hasMore = false; loadingMore = false; return; }
+      }
+
+		feed = [...feed, ...newItems];
+
+		if (mode === 'recommendations' || mode === 'saved') {
+			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
+			saveFeedCache(cacheKey, feed);
+		}
+    } catch (e: any) {
+      console.error('loadMore failed:', e);
     }
 
-    function buildUrl(pageNum: number, limit: number = 20): string {
-        const p = new URLSearchParams({ limit: String(limit) });
-        if (selectedFolderId) p.set('folder_id', selectedFolderId);
-        if (selectedFeedSha)  p.set('feed_sha256', selectedFeedSha);
-        if (mode === 'recommendations') {
-            p.set('page', String(pageNum));
-            return `/api/feed/recommendations?${p}`;
-        }
-        p.set('max_days', '10');
-        return `/api/feed/recents?${p}`;
-    }
+  loadingMore = false;
+  }
 
-    async function loadFeed(reset: boolean = false) {
-        if (reset) {
-            loading = true;
-            feed    = [];
-            page    = 0;
-            hasMore = true;
-            error   = '';
-        }
-        try {
-            const res = await apiFetch(buildUrl(0), { credentials: 'include' });
-            if (res.status === 401) { window.location.replace('/'); return; }
-            if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
-            const data: any[] = await res.json();
-            feed    = data;
-            hasMore = data.length > 0;
-        } catch (e: any) {
-            error = (e as Error).message || get(t)('hometab.loadError');
-        }
-        loading = false;
-    }
-
-    async function loadMore() {
-        if (loadingMore || !hasMore || loading) return;
-        loadingMore = true;
-
-        try {
-            let newItems: any[];
-
-            if (mode === 'recommendations') {
-                const nextPage = page + 1;
-                const res = await apiFetch(buildUrl(nextPage), { credentials: 'include' });
-                if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
-                const data: any[] = await res.json();
-
-                if (data.length === 0) { hasMore = false; loadingMore = false; return; }
-
-                const seen = new Set(feed.map((x: any) => x.item_id));
-                newItems   = data.filter((x: any) => !seen.has(x.item_id));
-
-                if (newItems.length === 0) { hasMore = false; loadingMore = false; return; }
-
-                page    = nextPage;
-                hasMore = true;
-            } else {
-                const requestedLimit = feed.length + 20;
-                const res = await apiFetch(buildUrl(0, requestedLimit), { credentials: 'include' });
-                if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
-                const data: any[] = await res.json();
-                const seen = new Set(feed.map((x: any) => x.item_id));
-                newItems   = data.filter((x: any) => !seen.has(x.item_id));
-                if (newItems.length === 0) { hasMore = false; loadingMore = false; return; }
-            }
-
-            feed = [...feed, ...newItems];
-        } catch (e: any) {
-            console.error('loadMore failed:', e);
-        }
-
-        loadingMore = false;
-    }
-
-    function setMode(next: Mode) {
+  function setMode(next: Mode) {
         if (mode === next) return;
         mode = next;
         loadFeed(true);
     }
 
-    function selectFolder(id: number | null, name: string | null) {
-        selectedFolderId   = id !== null ? String(id) : null;
-        selectedFolderName = name;
-        selectedFeedSha    = null;
-        selectedFeedName   = null;
-        showFolderPicker   = false;
-        loadFeed(true);
-    }
+	function selectFolder(id: number | null, name: string | null) {
+		selectedFolderId = id !== null ? String(id) : null;
+		selectedFolderName = name;
+		selectedFeedSha = null;
+		selectedFeedName = null;
+		selectedTagId = null;
+		selectedTagName = null;
+		showFolderPicker = false;
+		loadFeed(true);
+	}
 
-    function selectFeed(sha: string | null, name: string | null) {
-        selectedFeedSha    = sha;
-        selectedFeedName   = name;
-        selectedFolderId   = null;
-        selectedFolderName = null;
-        showFeedPicker     = false;
-        loadFeed(true);
-    }
+	function selectFeed(sha: string | null, name: string | null) {
+		selectedFeedSha = sha;
+		selectedFeedName = name;
+		selectedFolderId = null;
+		selectedFolderName = null;
+		selectedTagId = null;
+		selectedTagName = null;
+		showFeedPicker = false;
+		loadFeed(true);
+	}
 
-    function getDropdownStyle(btnEl: HTMLButtonElement): string {
+	function selectTag(id: number | null, name: string | null) {
+		selectedTagId = id;
+		selectedTagName = name;
+		selectedFolderId = null;
+		selectedFolderName = null;
+		selectedFeedSha = null;
+		selectedFeedName = null;
+		showTagPicker = false;
+		loadFeed(true);
+	}
+
+	function handleTagClick(tag: { tag_id: number; name: string; color?: string; source: string }) {
+		selectTag(tag.tag_id, tag.name);
+	}
+
+	function applyTagFromUrl() {
+		const params = $page.url.searchParams;
+		const tid = params.get('tag_id');
+		if (tid) {
+			const id = Number(tid);
+			const found = tagList.find(t => t.id === id);
+			if (found) {
+				selectedTagId = found.id;
+				selectedTagName = found.name;
+			}
+		}
+	}
+
+	function getDropdownStyle(btnEl: HTMLButtonElement): string {
         const r          = btnEl.getBoundingClientRect();
         const DROPDOWN_W = 196;
         const PADDING    = 8;
@@ -262,19 +373,31 @@ $effect(() => {
         return `top:${top}px; left:${left}px;`;
     }
 
-    function toggleFolderPicker() {
+function toggleFolderPicker() {
         showFolderPicker = !showFolderPicker;
-        showFeedPicker   = false;
+        showFeedPicker = false;
+        showTagPicker = false;
+        bulkTagPickerOpen = false;
         if (showFolderPicker && folderBtnEl) folderDropStyle = getDropdownStyle(folderBtnEl);
-    }
+}
 
-    function toggleFeedPicker() {
-        showFeedPicker   = !showFeedPicker;
+function toggleFeedPicker() {
+        showFeedPicker = !showFeedPicker;
         showFolderPicker = false;
+        showTagPicker = false;
+        bulkTagPickerOpen = false;
         if (showFeedPicker && feedBtnEl) feedDropStyle = getDropdownStyle(feedBtnEl);
-    }
+}
 
-    function handleToggleSelect(item: any) {
+function toggleTagPicker() {
+        showTagPicker = !showTagPicker;
+        showFolderPicker = false;
+        showFeedPicker = false;
+        bulkTagPickerOpen = false;
+        if (showTagPicker && tagBtnEl) tagDropStyle = getDropdownStyle(tagBtnEl);
+}
+
+	function handleToggleSelect(item: any) {
         selectedPosts.update(current => {
             const idx = current.findIndex((p: any) => p.item_id === item.item_id);
             if (idx >= 0) {
@@ -288,10 +411,52 @@ $effect(() => {
         });
     }
 
-    function clearSelection() {
+function clearSelection() {
         selectedPosts.set([]);
         selectionMode.set(false);
-    }
+        bulkTagPickerOpen = false;
+}
+
+function toggleBulkTagPicker() {
+        bulkTagPickerOpen = !bulkTagPickerOpen;
+        showFolderPicker = false;
+        showFeedPicker = false;
+        showTagPicker = false;
+}
+
+async function bulkAssignTag(tagId: number) {
+        const posts = get(selectedPosts);
+        if (posts.length === 0 || bulkTagLoading) return;
+        bulkTagLoading = true;
+        try {
+                const res = await apiFetch('/api/tags/assign-bulk', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                                tag_id: tagId,
+                                item_ids: posts.map((p: any) => p.item_id),
+                        }),
+                });
+if (res.ok) {
+				clearFeedCache();
+				const tag = tagList.find(t => t.id === tagId);
+                        if (tag) {
+                                feed = feed.map((item: any) => {
+                                        if (posts.some((p: any) => p.item_id === item.item_id)) {
+                                                const existing = item.tags || [];
+                                                if (!existing.some((t: any) => t.tag_id === tagId)) {
+                                                        return { ...item, tags: [...existing, { tag_id: tag.id, name: tag.name, color: tag.color, source: 'manual' }] };
+                                                }
+                                        }
+                                        return item;
+                                });
+                        }
+                        bulkTagPickerOpen = false;
+                }
+        } catch { /* */ }
+        finally { bulkTagLoading = false; }
+}
 
     async function sendToMota() {
         const posts = get(selectedPosts);
@@ -377,7 +542,7 @@ $effect(() => {
 
         <!-- Selection bar -->
         {#if $selectionMode}
-            <div class="selection-bar" transition:slide={{ duration: 220 }}>
+            <div class="selection-bar" transition:slide={{ duration: 220 }} onclick={() => { if (bulkTagPickerOpen) bulkTagPickerOpen = false; }}>
                 <button class="sel-cancel-btn" onclick={clearSelection} aria-label="{$t('hometab.cancelSelection')}">
                     <X size={17} />
                 </button>
@@ -395,44 +560,93 @@ $effect(() => {
                         <Sparkles size={14} />
                         <span>{$t('hometab.sendToMota')}</span>
                     </button>
-                    <button
-                        class="sel-action-btn sel-share"
-                        class:sel-copied={shareCopied}
-                        onclick={shareSelected}
-                        disabled={$selectedPosts.length === 0}
-                        title="{$selectedPosts.length > 1 ? $t('hometab.shareLinks') : $t('hometab.shareLink')}"
-                    >
-                        {#if shareCopied}
-                            <Check size={14} />
-                            <span>{$t('hometab.copied')}</span>
-                        {:else}
-                            <Share2 size={14} />
-                        {/if}
-                    </button>
-                </div>
-            </div>
+<button
+        class="sel-action-btn sel-share"
+        class:sel-copied={shareCopied}
+        onclick={shareSelected}
+        disabled={$selectedPosts.length === 0}
+        title="{$selectedPosts.length > 1 ? $t('hometab.shareLinks') : $t('hometab.shareLink')}"
+        >
+        {#if shareCopied}
+        <Check size={14} />
+        <span>{$t('hometab.copied')}</span>
+        {:else}
+        <Share2 size={14} />
         {/if}
+        </button>
+        <div class="picker-wrap picker-wrap--sel">
+        <button
+        class="sel-action-btn"
+        onclick={toggleBulkTagPicker}
+        disabled={$selectedPosts.length === 0}
+        title={$t('hometab.tagSelected')}
+        >
+        <Tag size={14} />
+        <span>{$t('hometab.tagSelected')}</span>
+        </button>
+        {#if bulkTagPickerOpen}
+        <div class="bulk-tag-dropdown" onclick={(e) => e.stopPropagation()}>
+        {#if tagList.length === 0}
+        <p class="picker-empty">{$t('hometab.noTagsYet')}</p>
+        <button class="picker-item picker-item--create" onclick={() => { bulkTagPickerOpen = false; goto('/settings/tags'); }}>
+        <Tag size={13} strokeWidth={2} />
+        <span class="picker-item-text">{$t('hometab.createTag')}</span>
+        </button>
+        {:else}
+        {#each tagList as tg (tg.id)}
+        <button
+        class="picker-item"
+        onclick={() => bulkAssignTag(tg.id)}
+        disabled={bulkTagLoading}
+        >
+        <span class="picker-tag-dot" style="background: {tg.color || '#3b82f6'}"></span>
+        <span class="picker-item-text">{tg.name}</span>
+        </button>
+        {/each}
+        <button class="picker-item picker-item--create" onclick={() => { bulkTagPickerOpen = false; goto('/settings/tags'); }}>
+        <Tag size={13} strokeWidth={2} />
+        <span class="picker-item-text">{$t('hometab.createTag')}</span>
+        </button>
+        {/if}
+		</div>
+		{/if}
+	</div>
+	</div>
+	</div>
+{/if}
 
-        <!-- Filter bar -->
-        <div class="filter-bar">
-            <div class="mode-pill" role="group" aria-label="{$t('hometab.filterMode')}">
-                <button
-                    class="mode-btn"
-                    class:active={mode === 'recommendations'}
-                    onclick={() => setMode('recommendations')}
-                    aria-pressed={mode === 'recommendations'}
-                >
-                    <span>{$t('hometab.forYou')}</span>
-                </button>
-                <button
-                    class="mode-btn"
-                    class:active={mode === 'recents'}
-                    onclick={() => setMode('recents')}
-                    aria-pressed={mode === 'recents'}
-                >
-                    <span>{$t('hometab.recent')}</span>
-                </button>
-            </div>
+<!-- Filter bar -->
+        <div class="filter-bar" ontouchstart={(e) => { filterBarAxis = null; filterBarStartX = e.touches[0].clientX; filterBarStartY = e.touches[0].clientY; }} ontouchmove={(e) => { if (filterBarAxis === 'v') return; const el = e.currentTarget as HTMLElement; const dx = e.touches[0].clientX - filterBarStartX; const dy = e.touches[0].clientY - filterBarStartY; if (!filterBarAxis) { if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; filterBarAxis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'; if (filterBarAxis === 'v') return; } const canScrollLeft = el.scrollLeft > 0; const canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1; const swipingRight = dx > 0; const swipingLeft = dx < 0; 		if ((swipingRight && canScrollLeft) || (swipingLeft && canScrollRight)) {
+				e.stopPropagation();
+				e.preventDefault();
+			} }} ontouchend={() => { filterBarAxis = null; }}>
+    <div class="mode-pill" role="group" aria-label="{$t('hometab.filterMode')}">
+      <button
+        class="mode-btn"
+        class:active={mode === 'recommendations'}
+        onclick={() => setMode('recommendations')}
+        aria-pressed={mode === 'recommendations'}
+      >
+        <span>{$t('hometab.forYou')}</span>
+      </button>
+      <button
+        class="mode-btn"
+        class:active={mode === 'recents'}
+        onclick={() => setMode('recents')}
+        aria-pressed={mode === 'recents'}
+      >
+        <span>{$t('hometab.recent')}</span>
+      </button>
+      <button
+        class="mode-btn"
+        class:active={mode === 'saved'}
+        onclick={() => setMode('saved')}
+        aria-pressed={mode === 'saved'}
+      >
+        <Bookmark size={13} />
+        <span>{$t('hometab.saved')}</span>
+      </button>
+    </div>
 
             <div class="picker-wrap">
                 <button
@@ -481,13 +695,39 @@ $effect(() => {
                             onkeydown={(e) => { if (e.key === 'Enter') selectFeed(null, null); }}
                         ><X size={10} /></span>
                     {:else}
-                        <span class="chevron-wrap" class:rotated={showFeedPicker}><ChevronDown size={11} /></span>
-                    {/if}
-                </button>
+<span class="chevron-wrap" class:rotated={showFeedPicker}><ChevronDown size={11} /></span>
+            {/if}
+            </button>
             </div>
-        </div>
 
-        <!-- Feed -->
+            <div class="picker-wrap">
+            <button
+            bind:this={tagBtnEl}
+            class="filter-chip"
+            class:chip-active={!!selectedTagId}
+            onclick={toggleTagPicker}
+            aria-expanded={showTagPicker}
+            aria-haspopup="listbox"
+            >
+            <Tag size={13} strokeWidth={2} />
+            <span class="chip-label">{selectedTagName ?? $t('hometab.tag')}</span>
+            {#if selectedTagId}
+            <span
+            class="chip-clear"
+            role="button"
+            tabindex="0"
+            aria-label="{$t('hometab.clearTagFilter')}"
+            onclick={(e) => { e.stopPropagation(); selectTag(null, null); }}
+            onkeydown={(e) => { if (e.key === 'Enter') selectTag(null, null); }}
+            ><X size={10} /></span>
+            {:else}
+            <span class="chevron-wrap" class:rotated={showTagPicker}><ChevronDown size={11} /></span>
+            {/if}
+            </button>
+            </div>
+            </div>
+
+<!-- Feed -->
         <div class="feed-wrap">
             {#if loading}
                 {#each SKELETON_INITIAL as n (n)}
@@ -498,18 +738,21 @@ $effect(() => {
                     <p>{error}</p>
                     <button class="retry-btn" onclick={() => loadFeed(true)}>{$t('hometab.tryAgain')}</button>
                 </div>
-            {:else if feed.length === 0}
-                <p class="state-empty">{$t('hometab.noPostsFound')}</p>
+{:else if feed.length === 0}
+      <p class="state-empty">{mode === 'saved' ? $t('hometab.noSavedYet') : $t('hometab.noPostsFound')}</p>
             {:else}
                 {#each feed as item (item.item_id)}
                     <div use:trackView={item.item_id}>
-                        <PostCard
-                            {item}
-                            server=""
-                            selectionMode={$selectionMode}
-                            selected={$selectedPosts.some((p: any) => p.item_id === item.item_id)}
-                            onToggleSelect={handleToggleSelect}
-                        />
+<PostCard
+    {item}
+    server=""
+    tags={item.tags || []}
+    userTags={tagList}
+    selectionMode={$selectionMode}
+    selected={$selectedPosts.some((p: any) => p.item_id === item.item_id)}
+    onToggleSelect={handleToggleSelect}
+    onTagClick={handleTagClick}
+    />
                     </div>
                 {/each}
 
@@ -530,13 +773,13 @@ $effect(() => {
     </div> <!-- Fim do main-content -->
 
 <!-- Dropdowns e Backdrops (portaled to body to escape overflow:clip) -->
-{#if showFolderPicker || showFeedPicker}
+{#if showFolderPicker || showFeedPicker || showTagPicker}
   <Portal>
-    <div
-      class="picker-backdrop"
-      onclick={() => { showFolderPicker = false; showFeedPicker = false; }}
-      aria-hidden="true"
-    ></div>
+	<div
+		class="picker-backdrop"
+		onclick={() => { showFolderPicker = false; showFeedPicker = false; showTagPicker = false; bulkTagPickerOpen = false; }}
+		aria-hidden="true"
+	></div>
 
     {#if showFolderPicker}
       <div class="picker-dropdown picker-portal" style={folderDropStyle} role="listbox" aria-label="{$t('hometab.folder')}">
@@ -595,6 +838,41 @@ $effect(() => {
         {/if}
       </div>
 	{/if}
+
+{#if showTagPicker}
+        <div
+        class="picker-dropdown picker-portal"
+        style={tagDropStyle}
+        role="listbox"
+        aria-label="{$t('hometab.tag')}"
+        >
+        {#if tagList.length === 0}
+        <p class="picker-empty">{$t('hometab.noTagsYet')}</p>
+        <button class="picker-item picker-item--create" onclick={() => { showTagPicker = false; goto('/settings/tags'); }}>
+        <Tag size={13} strokeWidth={2} />
+        <span class="picker-item-text">{$t('hometab.createTag')}</span>
+        </button>
+        {:else}
+        {#each tagList as tg (tg.id)}
+        <button
+        class="picker-item"
+        class:picker-selected={selectedTagId === tg.id}
+        role="option"
+        aria-selected={selectedTagId === tg.id}
+        onclick={() => selectTag(tg.id, tg.name)}
+        >
+        <span class="picker-tag-dot" style="background: {tg.color || '#3b82f6'}"></span>
+        <span class="picker-item-text">{tg.name}</span>
+        {#if selectedTagId === tg.id}<Check size={12} class="picker-check" />{/if}
+        </button>
+        {/each}
+        <button class="picker-item picker-item--create" onclick={() => { showTagPicker = false; goto('/settings/tags'); }}>
+        <Tag size={13} strokeWidth={2} />
+        <span class="picker-item-text">{$t('hometab.createTag')}</span>
+        </button>
+        {/if}
+        </div>
+        {/if}
 	</Portal>
 	{/if}
 </div>
@@ -741,16 +1019,17 @@ font-family: var(--font-page-title);
     }
 
     /* ── Filter bar ──────────────────────────────────────────── */
-    .filter-bar {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding-top: 8px;
-        padding-bottom: 12px;
-        background: var(--color-base-100);
-        overflow-x: auto;
-        scrollbar-width: none;
-    }
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  padding-bottom: 12px;
+  background: var(--color-base-100);
+  overflow-x: auto;
+  scrollbar-width: none;
+	touch-action: pan-y pan-x;
+}
     .filter-bar::-webkit-scrollbar { display: none; }
 
     .mode-pill {
@@ -835,7 +1114,9 @@ font-family: var(--font-page-title);
         box-shadow: 0 8px 24px color-mix(in oklch, black 20%, transparent);
         padding: 4px;
         min-width: 190px;
+        max-width: 260px;
         max-height: 280px;
+        overflow-x: hidden;
         overflow-y: auto;
         scrollbar-width: thin;
         animation: picker-pop 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -867,11 +1148,34 @@ font-family: var(--font-page-title);
         background: color-mix(in oklch, var(--color-accent) 10%, transparent);
         color: var(--color-accent);
     }
-    .picker-item-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .picker-favicon   { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; flex-shrink: 0; }
-    :global(.picker-check)         { flex-shrink: 0; color: var(--color-accent); }
-    :global(.picker-icon-fallback) { color: var(--color-accent); opacity: 0.6; }
-    .picker-backdrop { position: fixed; inset: 0; z-index: 9998; pointer-events: auto; }
+.picker-item-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-favicon { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; flex-shrink: 0; }
+.picker-tag-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.picker-item--create { color: var(--color-accent); font-weight: 600; border-top: 1px solid var(--color-base-300); margin-top: 4px; border-radius: 0 0 6px 6px; }
+.picker-item--create:hover { background: color-mix(in oklch, var(--color-accent) 10%, transparent); }
+:global(.picker-check) { flex-shrink: 0; color: var(--color-accent); }
+:global(.picker-icon-fallback) { color: var(--color-accent); opacity: 0.6; }
+.picker-backdrop { position: fixed; inset: 0; z-index: 9998; pointer-events: auto; }
+
+.picker-wrap--sel { position: relative; }
+.bulk-tag-dropdown {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        z-index: 9999;
+        background: var(--color-base-100);
+        border: 1px solid var(--color-base-300);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px color-mix(in oklch, black 20%, transparent);
+        padding: 4px;
+        min-width: 190px;
+        max-width: 260px;
+        max-height: 280px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        animation: picker-pop 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
 
     /* ── Feed ────────────────────────────────────────────────── */
     .feed-wrap {

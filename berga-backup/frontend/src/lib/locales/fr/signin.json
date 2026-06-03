@@ -1,0 +1,14 @@
+{
+  "title": "Se connecter",
+  "subtitle": "Accédez à votre compte Berga.",
+  "identifierLabel": "Nom d'utilisateur ou e-mail",
+  "identifierPlaceholder": "Entrez votre nom d'utilisateur ou e-mail",
+  "passwordLabel": "Mot de passe",
+  "passwordPlaceholder": "Entrez votre mot de passe",
+  "invalidCredentials": "Identifiants invalides",
+  "connectionError": "Erreur de connexion",
+  "back": "Retour",
+  "loggingIn": "Connexion en cours...",
+  "loginBtn": "Se connecter"
+}
+

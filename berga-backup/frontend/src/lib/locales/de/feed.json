@@ -1,0 +1,17 @@
+{
+  "loadInfoError": "Feed-Informationen konnten nicht geladen werden",
+  "subscribers": "Abonnenten",
+  "updatedAt": "Aktualisiert am",
+  "unfollowFeed": "Feed nicht mehr folgen",
+  "followFeed": "Feed folgen",
+  "following": "Gefolgt",
+  "follow": "Folgen",
+  "forYou": "Für dich",
+  "recents": "Neueste",
+  "tryAgain": "Erneut versuchen",
+  "loadFeedError": "Fehler beim Laden des Feeds",
+  "noPosts": "Keine Beiträge für diesen Feed gefunden.",
+  "upToDate": "Du bist auf dem neuesten Stand ✓",
+  "back": "Zurück",
+  "filterMode": "Feed-Modus"
+}

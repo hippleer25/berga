@@ -1,0 +1,1 @@
+import{R as o}from"../chunks/BUApaBEI.js";function r(e,t){throw new o(e,t.toString())}const n=()=>{r(302,"/settings/appearance")},i=Object.freeze(Object.defineProperty({__proto__:null,load:n},Symbol.toStringTag,{value:"Module"}));export{i as universal};

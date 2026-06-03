@@ -15,11 +15,18 @@
   "clearFolderFilter": "Borrar filtro de carpeta",
   "feed": "Feed",
   "clearFeedFilter": "Borrar filtro de feed",
+  "tag": "Etiqueta",
+  "clearTagFilter": "Borrar filtro de etiqueta",
+  "noTagsYet": "Aún no hay etiquetas",
+  "createTag": "Crear etiqueta",
+  "tagSelected": "Etiquetar",
   "tryAgain": "Intentar de nuevo",
   "noPostsFound": "No se encontraron publicaciones.",
   "allCaughtUp": "Estás al día ✓",
   "noFoldersYet": "Aún no hay carpetas",
   "noFeedsYet": "Aún no hay feeds",
+  "saved": "Guardados",
+  "noSavedYet": "No hay artículos guardados aún.",
   "loadError": "Error al cargar el feed",
   "articles": "artículos"
 }

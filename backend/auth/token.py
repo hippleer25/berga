@@ -24,7 +24,7 @@ def create_token(username: str):
     )
 
 
-async def get_current_user(request: Request):
+def get_current_user(request: Request):
     token = request.cookies.get("token")
 
     if not token:

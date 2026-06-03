@@ -163,7 +163,7 @@ def get_recents(
         if point.id in exclude_ids:
             continue
         item = point.payload.copy()
-        item["item_id"]         = point.id
+        item["item_id"] = str(point.id)
         item["relevance_score"] = 0.0
         recentes.append(item)
         if len(recentes) >= limit:

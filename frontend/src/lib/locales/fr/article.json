@@ -17,5 +17,7 @@
   "streamUnavailable": "Flux indisponible",
   "resumeError": "Erreur lors de la génération du résumé.",
   "hideSummary": "Masquer le résumé",
-  "originalPage": "Page originale"
+  "originalPage": "Page originale",
+  "tagArticle": "Tagger l'article",
+  "allTagsAssigned": "Tous les tags déjà attribués"
 }

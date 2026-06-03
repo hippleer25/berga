@@ -1,0 +1,17 @@
+{
+  "loadInfoError": "No se pudo cargar la información del feed",
+  "subscribers": "Suscriptores",
+  "updatedAt": "Actualizado el",
+  "unfollowFeed": "Dejar de seguir el feed",
+  "followFeed": "Seguir el feed",
+  "following": "Siguiendo",
+  "follow": "Seguir",
+  "forYou": "Para ti",
+  "recents": "Recientes",
+  "tryAgain": "Intentar de nuevo",
+  "loadFeedError": "Error al cargar el feed",
+  "noPosts": "No se encontraron publicaciones para este feed.",
+  "upToDate": "Estás al día ✓",
+  "back": "Volver",
+  "filterMode": "Modo del feed"
+}

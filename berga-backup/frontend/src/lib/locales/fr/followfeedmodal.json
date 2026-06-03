@@ -1,0 +1,14 @@
+{
+  "title": "Suivre le flux",
+  "discovering": "Découverte des flux…",
+  "tryAgain": "Réessayer",
+  "followingTitle": "Suivi !",
+  "done": "Terminé",
+  "confirmHint": "Vous serez abonné au flux RSS suivant :",
+  "changeRssUrl": "Modifier l'URL du RSS",
+  "cancel": "Annuler",
+  "follow": "Suivre",
+  "noFeedsFound": "Aucun flux trouvé pour ce site.",
+  "discoverFailed": "Échec de la découverte des flux.",
+  "followFailed": "Échec de l'abonnement au flux."
+}

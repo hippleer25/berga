@@ -15,5 +15,6 @@
   "folderNamePlaceholder": "Folder name…",
   "cancel": "Cancel",
   "create": "Create",
-  "loadError": "Failed to load subscriptions"
+  "loadError": "Failed to load subscriptions",
+  "toggleFolder": "Toggle folder"
 }

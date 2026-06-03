@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
-    import { beforeNavigate } from '$app/navigation';
+    import { beforeNavigate, goto } from '$app/navigation';
     import PostCard from '$lib/components/PostCard.svelte';
     import { Rss, Users, ExternalLink, Check, Plus, ArrowLeft } from '@lucide/svelte';
     import { t, locale } from 'svelte-i18n';
@@ -36,9 +36,12 @@
   parsed: number;
   user_feed_subscription: string;
 };
-    let feedInfo = $state<FeedInfoRaw | null>(null);
-    let infoLoading = $state(true);
-    let infoError = $state('');
+let feedInfo = $state<FeedInfoRaw | null>(null);
+  let infoLoading = $state(true);
+  let infoError = $state('');
+
+  // ── User tags ────────────────────────────────────────
+  let tagList = $state<Array<{ id: number; name: string; color?: string }>>([]);
 
     // ── Follow state ──────────────────────────────────────
     let followed = $state(false);
@@ -96,8 +99,9 @@ onMount(() => {
             { rootMargin: '0px 0px 600px 0px' }
         );
 
-        loadFeedInfo();
-        loadFeed(true);
+loadFeedInfo();
+    loadFeed(true);
+    loadUserTags();
 
 	beforeNavigate(() => {
 		flushPending();
@@ -186,8 +190,19 @@ const res = await apiFetch(endpoint, {
         } catch (e) {
             console.error('toggleFollow failed:', e);
         }
-        followLoading = false;
-    }
+  followLoading = false;
+  }
+
+  // ── Tags API ─────────────────────────────────────────
+  async function loadUserTags() {
+    try {
+      const res = await apiFetch('/api/tags', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        tagList = data.tags ?? [];
+      }
+    } catch { /* non-critical */ }
+  }
 
     // ── Feed items API ────────────────────────────────────
     function buildUrl(pageNum: number, limit: number = 20): string {
@@ -417,7 +432,7 @@ const res = await apiFetch(buildUrl(0), { credentials: 'include' });
         {/if}
 
         <!-- Mode selector -->
-        <div class="filter-bar">
+        <div class="filter-bar" ontouchstart={(e) => e.stopPropagation()} ontouchmove={(e) => e.stopPropagation()} ontouchend={(e) => e.stopPropagation()}>
             <div class="mode-pill" role="group" aria-label="{$t('feed.filterMode', { default: 'Feed mode' })}">
                 <button
                     class="mode-btn"
@@ -454,7 +469,7 @@ const res = await apiFetch(buildUrl(0), { credentials: 'include' });
             {:else}
                 {#each feed as item (item.item_id)}
                     <div use:trackView={item.item_id}>
-                        <PostCard {item} server="" />
+                        <PostCard {item} server="" tags={item.tags || []} userTags={tagList} onTagClick={(tag) => goto(`/home?tag_id=${tag.tag_id}`)} />
                     </div>
                 {/each}
 
@@ -743,16 +758,17 @@ font-family: var(--font-page-title);
     }
 
     /* ── Filter Bar ──────────────────────────────────────────── */
-    .filter-bar {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding-top: 8px;
-        padding-bottom: 12px;
-        background: var(--color-base-100);
-        overflow-x: auto;
-        scrollbar-width: none;
-    }
+.filter-bar {
+display: flex;
+align-items: center;
+gap: 8px;
+padding-top: 8px;
+padding-bottom: 12px;
+background: var(--color-base-100);
+overflow-x: auto;
+scrollbar-width: none;
+touch-action: pan-y;
+}
 
     .filter-bar::-webkit-scrollbar {
         display: none;

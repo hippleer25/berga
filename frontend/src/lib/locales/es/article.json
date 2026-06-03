@@ -17,5 +17,7 @@
   "streamUnavailable": "Transmisión no disponible",
   "resumeError": "Error al generar el resumen.",
   "hideSummary": "Ocultar resumen",
-  "originalPage": "Página original"
+  "originalPage": "Página original",
+  "tagArticle": "Etiquetar artículo",
+  "allTagsAssigned": "Todas las etiquetas ya asignadas"
 }

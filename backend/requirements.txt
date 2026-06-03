@@ -1,47 +1,50 @@
 # Force PyTorch CPU-only — no CUDA, no ~2 GB of unnecessary NVIDIA drivers
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch
+torch==2.12.0
 
 # API
-fastapi>=0.115.0
-uvicorn[standard]>=0.34.0
-python-multipart>=0.0.18
+fastapi==0.136.1
+uvicorn[standard]==0.47.0
+python-multipart==0.0.29
 
 # Auth
 bcrypt==4.0.1
-python-jose[cryptography]>=3.3.0
+python-jose[cryptography]==3.5.0
 
 # Database
-mysql-connector-python>=9.1.0
+mysql-connector-python==9.7.0
 qdrant-client==1.17.0
 
 # Embeddings
-sentence-transformers>=3.3.0
+sentence-transformers==5.5.1
 safetensors==0.4.5
 
 # RSS / parsing
-feedparser>=6.0.0
-listparser>=0.20
-newspaper4k>=0.9.5
-readability-lxml>=0.8.0
-lxml_html_clean>=0.4.0
-bs4>=0.0.2
+feedparser==6.0.12
+listparser==0.20
+newspaper4k==0.9.5
+readability-lxml==0.8.4.1
+lxml_html_clean==0.4.4
+bs4==0.0.2
 
 # HTTP
-requests>=2.32.0
-aiohttp[speedups]>=3.11.0
-charset-normalizer>=3.4.0
+requests==2.34.2
+aiohttp[speedups]==3.13.5
+charset-normalizer==3.4.7
 
 # Async tasks
-arq>=0.26.0
-redis>=5.2.0
+arq==0.28.0
+redis==5.3.1
 
 # ML / search
-scikit-learn>=1.6.0
-ddgs>=2.0.0
+scikit-learn==1.8.0
+ddgs==9.14.4
 
 # AI
-litellm==1.82
+litellm==1.82.0
 
 # i18n
-pyyaml>=6.0.0
+pyyaml==6.0.3
+
+# Process manager
+supervisor==4.2.5

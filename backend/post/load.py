@@ -4,6 +4,7 @@ import requests
 from readability import Document
 from urllib.parse import urljoin, urlparse
 
+from database.init_db import get_db
 from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
 from intelligence.similar import get_similar_articles
 from i18n.locale_map import accept_language_header
@@ -82,7 +83,25 @@ def _clean_html(html: str) -> str:
     return etree.tostring(tree, encoding="unicode", method="html")
 
 
-def get(user, item_id):
+def _get_interaction_status(user_id: int, item_id: str) -> dict:
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT action FROM interactions WHERE user_id = %s AND item_id = %s",
+                (user_id, item_id),
+            )
+            actions = {row["action"] for row in cursor.fetchall()}
+        finally:
+            cursor.close()
+    return {
+        "liked": "like" in actions,
+        "disliked": "dislike" in actions,
+        "saved": "saved" in actions,
+    }
+
+
+def get(user_id: int, item_id: str):
     client = get_qdrant_client()
     result = client.retrieve(
         collection_name=COLLECTION_NAME,
@@ -99,6 +118,7 @@ def get(user, item_id):
     feed_icon = payload.get("feed_icon", "")
     pub_date = payload.get("pub_date", "")
     url = payload.get("link", "")
+    feed_sha256 = payload.get("feed_sha256", "")
 
     similar_articles = []
     try:
@@ -139,10 +159,25 @@ def get(user, item_id):
             "author": author,
             "feed_icon": feed_icon,
             "pub_date": pub_date,
+            "feed_sha256": feed_sha256,
             "content_html": content_html,
             "similar_articles": similar_articles,
+            **_get_interaction_status(user_id, item_id),
         }
 
     except Exception as e:
         logger.error("[reader] error fetching %s: %s", url, e)
-        return None
+
+        fallback = {
+            "url": url,
+            "title": payload.get("title", ""),
+            "feed_title": feed_title,
+            "author": author,
+            "feed_icon": feed_icon,
+            "pub_date": pub_date,
+            "feed_sha256": feed_sha256,
+            "content_html": "",
+            "similar_articles": similar_articles,
+            **_get_interaction_status(user_id, item_id),
+        }
+        return fallback

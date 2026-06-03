@@ -9,7 +9,10 @@ Supports: OpenAI, Anthropic, Mistral, NVIDIA NIM, OpenRouter, etc.
 import os
 os.environ.setdefault('LITELLM_LOG', 'WARNING')
 
+import asyncio
 import logging
+import random
+import time
 import warnings
 from typing import Generator, Literal, Optional
 
@@ -45,16 +48,21 @@ def _get_model_config(usage: LLMUsage) -> dict:
     api_key = os.getenv(f"{prefix}_LLM_API_KEY")
     api_base = os.getenv(f"{prefix}_LLM_API_BASE")
 
+    if not api_key:
+        raise ValueError(
+            f"[AI_LIB] {prefix}_LLM_API_KEY não encontrada. "
+            f"Defina a variável de ambiente {prefix}_LLM_API_KEY com uma chave de API válida."
+        )
+
     config = {"model": model}
-    if api_key:
-        config["api_key"] = api_key
+    config["api_key"] = api_key
     if api_base:
         config["api_base"] = api_base
 
     logger.info(
         f"[AI_LIB] Configuração {usage}: model={model}, "
         f"api_base={api_base or 'default'}, "
-        f"api_key={'***' if api_key else 'not set'}"
+        f"api_key=***"
     )
 
     return config
@@ -71,6 +79,7 @@ def generate_text(
     max_tokens: int = 1024,
     temperature: float = 0.3,
     usage: LLMUsage = "cluster",
+    max_retries: int = 2,
 ) -> str | None:
     config = _get_model_config(usage)
 
@@ -82,22 +91,38 @@ def generate_text(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    try:
-        response = completion(
-            model=config["model"],
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            api_key=config.get("api_key"),
-            api_base=config.get("api_base"),
-            timeout=DEFAULT_TIMEOUT,
-        )
-        content = response.choices[0].message.content
-        return content.strip() if content else None
+    for attempt in range(max_retries + 1):
+        try:
+            response = completion(
+                model=config["model"],
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                api_key=config.get("api_key"),
+                api_base=config.get("api_base"),
+                timeout=DEFAULT_TIMEOUT,
+            )
+            content = response.choices[0].message.content
+            return content.strip() if content else None
 
-    except Exception as e:
-        logger.error(f"[AI_LIB] Error calling LLM ({config['model']}): {e}")
-        return None
+        except litellm.RateLimitError as e:
+            if attempt < max_retries:
+                delay = min(2 ** (attempt + 1), 60) * (0.75 + random.random() * 0.5)
+                logger.warning(
+                    f"[AI_LIB] Rate-limited (429) on {config['model']} "
+                    f"(attempt {attempt + 1}/{max_retries + 1}), "
+                    f"retrying in {delay:.1f}s"
+                )
+                time.sleep(delay)
+            else:
+                logger.error(
+                    f"[AI_LIB] Rate-limited after {max_retries + 1} attempts "
+                    f"on {config['model']}"
+                )
+                return None
+        except Exception as e:
+            logger.error(f"[AI_LIB] Error calling LLM ({config['model']}): {e}")
+            return None
 
 
 # ------------------------------------------------------------------
@@ -134,7 +159,7 @@ def mota_text_stream(
 
     except Exception as e:
         logger.error(f"[AI_LIB] Erro ao chamar LLM Stream ({config.get('model')}): {e}")
-        yield ""
+        raise
 
 
 # ------------------------------------------------------------------
@@ -235,7 +260,7 @@ def stream_llm_response(
 
     except Exception as e:
         logger.error(f"[AI_LIB] Error streaming LLM ({config.get('model')}): {e}")
-        yield ""
+        raise
 
 
 # ------------------------------------------------------------------
@@ -249,6 +274,7 @@ async def agenerate_text(
     max_tokens: int = 1024,
     temperature: float = 0.3,
     usage: LLMUsage = "cluster",
+    max_retries: int = 2,
 ) -> str | None:
     config = _get_model_config(usage)
 
@@ -260,22 +286,38 @@ async def agenerate_text(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    try:
-        response = await acompletion(
-            model=config["model"],
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            api_key=config.get("api_key"),
-            api_base=config.get("api_base"),
-            timeout=DEFAULT_TIMEOUT,
-        )
-        content = response.choices[0].message.content
-        return content.strip() if content else None
+    for attempt in range(max_retries + 1):
+        try:
+            response = await acompletion(
+                model=config["model"],
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                api_key=config.get("api_key"),
+                api_base=config.get("api_base"),
+                timeout=DEFAULT_TIMEOUT,
+            )
+            content = response.choices[0].message.content
+            return content.strip() if content else None
 
-    except Exception as e:
-        logger.error(f"[AI_LIB] Error calling LLM async ({config['model']}): {e}")
-        return None
+        except litellm.RateLimitError as e:
+            if attempt < max_retries:
+                delay = min(2 ** (attempt + 1), 60) * (0.75 + random.random() * 0.5)
+                logger.warning(
+                    f"[AI_LIB] Rate-limited (429) on {config['model']} "
+                    f"(attempt {attempt + 1}/{max_retries + 1}), "
+                    f"retrying in {delay:.1f}s"
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(
+                    f"[AI_LIB] Rate-limited after {max_retries + 1} attempts "
+                    f"on {config['model']}"
+                )
+                return None
+        except Exception as e:
+            logger.error(f"[AI_LIB] Error calling LLM async ({config['model']}): {e}")
+            return None
 
 
 # ------------------------------------------------------------------

@@ -5,6 +5,7 @@
 	import Database from '@lucide/svelte/icons/database';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import User from '@lucide/svelte/icons/user';
+	import Tag from '@lucide/svelte/icons/tag';
 	import { ripple } from '$lib/actions/ripple';
 	import { t } from 'svelte-i18n';
 
@@ -14,6 +15,7 @@
 		{ key: 'appearance', href: '/settings/appearance', icon: Palette },
 		{ key: 'subscriptions', href: '/settings/data', icon: Database },
 		{ key: 'affinity', href: '/settings/affinity', icon: Sparkles },
+		{ key: 'tags', href: '/settings/tags', icon: Tag },
 		{ key: 'account', href: '/settings/account', icon: User },
 	];
 
@@ -35,7 +37,7 @@
 			<span class="icon-wrap">
 				<tab.icon size={22} strokeWidth={isActive(tab.href) ? 2.2 : 1.8} />
 			</span>
-			<span class="tab-label">{$t(`settings.${tab.key === 'subscriptions' ? 'subscriptions' : tab.key}`)}</span>
+			<span class="tab-label">{$t(tab.key === 'tags' ? 'tags.title' : `settings.${tab.key === 'subscriptions' ? 'subscriptions' : tab.key}`)}</span>
 		</a>
 	{/each}
 </nav>
@@ -62,10 +64,10 @@
 					class:active={isActive(tab.href)}
 					aria-current={isActive(tab.href) ? 'page' : undefined}
 					use:ripple
-					title={$t(`settings.${tab.key === 'subscriptions' ? 'subscriptions' : tab.key}`)}
-				>
-					<tab.icon size={20} strokeWidth={isActive(tab.href) ? 2.2 : 1.6} />
-					<span class="s-label">{$t(`settings.${tab.key === 'subscriptions' ? 'subscriptions' : tab.key}`)}</span>
+		title={tab.key === 'tags' ? $t('tags.title') : $t(`settings.${tab.key === 'subscriptions' ? 'subscriptions' : tab.key}`)}
+	>
+		<tab.icon size={20} strokeWidth={isActive(tab.href) ? 2.2 : 1.6} />
+		<span class="s-label">{tab.key === 'tags' ? $t('tags.title') : $t(`settings.${tab.key === 'subscriptions' ? 'subscriptions' : tab.key}`)}</span>
 				</a>
 			{/each}
 		</nav>
@@ -153,7 +155,7 @@
 	}
 	.icon-wrap { display: flex; align-items: center; justify-content: center; width: 40px; height: 28px; }
 	.tab-label { font-size: 11px; font-weight: 500; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 72px; text-align: center; }
-	.mobile-tab.active { color: var(--color-accent-content); }
+	.mobile-tab.active { color: var(--color-accent); }
 	.mobile-tab.active .tab-label { font-weight: 700; }
 
 	/* ── Desktop Sidebar ───────────────────────────────── */
@@ -200,11 +202,11 @@
 		color: var(--color-base-content);
 		background: var(--color-base-200);
 	}
-	.sidebar-item.active {
-		color: var(--color-accent-content);
-		background: color-mix(in oklch, var(--color-accent-content) 8%, transparent);
-		border-left-color: var(--color-accent-content);
-	}
+.sidebar-item.active {
+  color: var(--color-accent);
+  background: color-mix(in oklch, var(--color-accent) 8%, transparent);
+  border-left-color: var(--color-accent);
+}
 	.s-label { font-size: 14px; font-weight: 500; letter-spacing: 0.01em; }
 	.sidebar-item.active .s-label { font-weight: 700; }
 

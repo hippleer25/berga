@@ -1,0 +1,1 @@
+export { default as component } from "../../../../src/routes/f/[feed_sha256]/+page.svelte";

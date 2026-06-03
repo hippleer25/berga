@@ -185,6 +185,13 @@ def _migrate_user_vectors(cursor) -> None:
     _add_column_if_missing(cursor, "user_vectors", "affinity_neg_vector", "LONGTEXT DEFAULT NULL")
 
 
+def _migrate_smart_tags(cursor) -> None:
+    _add_column_if_missing(cursor, "smart_tags", "centroid_vector", "LONGBLOB DEFAULT NULL")
+    _add_column_if_missing(cursor, "smart_tags", "centroid_manual_count", "INT DEFAULT 0")
+    _add_column_if_missing(cursor, "smart_tags", "ai_negate_threshold", "FLOAT DEFAULT NULL")
+    _add_column_if_missing(cursor, "smart_tags", "ai_reinforcement_enabled", "TINYINT(1) DEFAULT 1")
+
+
 _TABLE_OPTIONS = f"DEFAULT CHARSET={_CHARSET} COLLATE={_COLLATE}"
 
 
@@ -314,7 +321,61 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
                 INDEX idx_boost_user_term (user_id, term(100))
             ) {_TABLE_OPTIONS}
+        """)
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS smart_tags (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    color VARCHAR(7) DEFAULT NULL,
+                    feed_scope JSON DEFAULT NULL,
+                    folder_scope JSON DEFAULT NULL,
+                    regex_pattern TEXT DEFAULT NULL,
+                    regex_flags VARCHAR(16) DEFAULT NULL,
+                    ai_include_terms JSON DEFAULT NULL,
+                    ai_exclude_terms JSON DEFAULT NULL,
+                    ai_threshold FLOAT DEFAULT 0.65,
+                    enabled_layers VARCHAR(255) DEFAULT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    UNIQUE KEY uq_user_tag_name (user_id, name),
+                    INDEX idx_smart_tags_user (user_id)
+                ) {_TABLE_OPTIONS}
+                """)
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS article_tags (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                item_id VARCHAR(64) NOT NULL,
+                tag_id BIGINT NOT NULL,
+                source ENUM('manual', 'feed', 'folder', 'regex', 'ai') NOT NULL DEFAULT 'manual',
+                confidence FLOAT DEFAULT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES smart_tags(id) ON DELETE CASCADE,
+                UNIQUE KEY uq_user_item_tag_source (user_id, item_id, tag_id, source),
+                INDEX idx_articletags_user_item (user_id, item_id),
+                INDEX idx_articletags_tag (tag_id),
+                INDEX idx_articletags_source (source)
+            ) {_TABLE_OPTIONS}
             """)
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS weekly_events (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                cluster_hash VARCHAR(64) NOT NULL,
+                summary TEXT NOT NULL,
+                article_count INT NOT NULL,
+                unique_feeds INT NOT NULL,
+                articles_json MEDIUMTEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_cluster_hash (cluster_hash),
+                INDEX idx_events_updated (updated_at)
+        ) {_TABLE_OPTIONS}
+        """)
+            _migrate_smart_tags(cursor)
             conn.commit()
             logger.info("Database initialised successfully")
         except Exception as e:

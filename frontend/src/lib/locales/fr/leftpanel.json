@@ -15,5 +15,6 @@
   "folderNamePlaceholder": "Nom du dossier…",
   "cancel": "Annuler",
   "create": "Créer",
-  "loadError": "Échec du chargement des abonnements"
+  "loadError": "Échec du chargement des abonnements",
+  "toggleFolder": "Ouvrir/fermer le dossier"
 }

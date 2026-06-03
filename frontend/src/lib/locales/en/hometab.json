@@ -15,11 +15,18 @@
   "clearFolderFilter": "Clear folder filter",
   "feed": "Feed",
   "clearFeedFilter": "Clear feed filter",
+  "tag": "Tag",
+  "clearTagFilter": "Clear tag filter",
+  "noTagsYet": "No tags yet",
+  "createTag": "Create tag",
+  "tagSelected": "Tag",
   "tryAgain": "Try again",
   "noPostsFound": "No posts found.",
   "allCaughtUp": "You're all caught up ✓",
   "noFoldersYet": "No folders yet",
   "noFeedsYet": "No feeds yet",
+  "saved": "Saved",
+  "noSavedYet": "No saved articles yet.",
   "loadError": "Failed to load feed",
   "articles": "articles"
 }

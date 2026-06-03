@@ -1,0 +1,14 @@
+{
+  "back": "Retour",
+  "feeds": "Flux",
+  "posts": "Publications",
+  "createdAt": "Créé le",
+  "filterMode": "Mode du flux",
+  "forYou": "Pour vous",
+  "recents": "Récents",
+  "tryAgain": "Réessayer",
+  "noPosts": "Aucune publication trouvée dans ce dossier.",
+  "upToDate": "Vous êtes à jour ✓",
+  "loadFeedError": "Échec du chargement du flux",
+  "loadInfoError": "Impossible de charger les informations du dossier"
+}

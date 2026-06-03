@@ -14,6 +14,7 @@ the loader falls back to the plain ONNX fp32 backend, logging a warning.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import threading
@@ -25,6 +26,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.http.models import (
     Distance,
+    PointStruct,
     ScalarQuantization,
     ScalarQuantizationConfig,
     ScalarType,
@@ -43,7 +45,10 @@ if not MODEL_NAME:
     )
 
 COLLECTION_NAME: str = os.environ.get("QDRANT_COLLECTION_NAME", "feed_items")
+TAG_PHRASES_COLLECTION: str = os.environ.get("QDRANT_TAG_PHRASES_COLLECTION", "tag_phrases")
 VECTOR_SIZE: int = int(os.environ.get("VECTOR_SIZE", 256))
+
+EMBEDDING_DESCRIPTION_CHARS: int = int(os.environ.get("EMBEDDING_DESCRIPTION_CHARS", "0"))
 
 _DISTANCE_STR = os.environ.get("DISTANCE_METRIC", "Cosine").upper()
 try:
@@ -63,6 +68,76 @@ _ONNX_CANDIDATES = (
     "onnx/model_fp16.onnx",
     "onnx/model.onnx",
 )
+
+# ── Embedding text builder ────────────────────────────────────────────────────
+
+def build_embedding_text(title: str, description: str = "") -> str:
+    if not EMBEDDING_DESCRIPTION_CHARS or not description:
+        return title
+    if EMBEDDING_DESCRIPTION_CHARS > 0:
+        return f"{title}\n{description[:EMBEDDING_DESCRIPTION_CHARS]}"
+    return f"{title}\n{description}"
+
+
+# ── Model fingerprint ──────────────────────────────────────────────────────────
+
+_SENTINEL_ID = "__berga_model_sentinel__"
+_PROBE_TEXT = "__berga_probe__"
+_model_changed: bool = False
+_current_fingerprint: str = ""
+
+
+def compute_model_fingerprint(model) -> str:
+    probe = model.encode(_PROBE_TEXT, normalize_embeddings=True, convert_to_numpy=True)
+    probe_bytes = np.array(probe, dtype=np.float32).tobytes()
+    raw = f"{MODEL_NAME}|{VECTOR_SIZE}|{hashlib.sha256(probe_bytes).hexdigest()}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def is_model_changed() -> bool:
+    return _model_changed
+
+
+def get_current_fingerprint() -> str:
+    return _current_fingerprint
+
+
+def _check_model_fingerprint(client: QdrantClient, fingerprint: str) -> None:
+    global _model_changed
+    try:
+        points = client.retrieve(
+            collection_name=COLLECTION_NAME,
+            ids=[_SENTINEL_ID],
+            with_payload=True,
+            with_vectors=False,
+        )
+        if points and points[0].payload:
+            stored = points[0].payload.get("_model_fp")
+            if stored and stored != fingerprint:
+                _model_changed = True
+                logger.critical(
+                    "MODEL FINGERPRINT MISMATCH — stored=%s current=%s. "
+                    "Re-embedding is required. Recommendations and similarity "
+                    "search will produce wrong results until all vectors are "
+                    "re-embedded with the new model.",
+                    stored, fingerprint,
+                )
+                return
+            elif stored == fingerprint:
+                logger.info("Model fingerprint validated: %s", fingerprint)
+                return
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=[PointStruct(
+                id=_SENTINEL_ID,
+                vector=[0.0] * VECTOR_SIZE,
+                payload={"_model_fp": fingerprint, "model_name": MODEL_NAME, "type": "sentinel"},
+            )],
+        )
+        logger.info("Model fingerprint sentinel created: %s", fingerprint)
+    except Exception:
+        logger.warning("Could not check/set model fingerprint sentinel — continuing")
+
 
 # ── Thread-safe singletons ─────────────────────────────────────────────────────
 
@@ -102,8 +177,8 @@ def _load_model() -> SentenceTransformer:
                 MODEL_NAME,
                 backend="onnx",
                 model_kwargs={"file_name": onnx_file},
-                truncate_dim=VECTOR_SIZE,
-            )
+            truncate_dim=VECTOR_SIZE,
+        )
             # ── Sanity check: does truncate_dim actually work? ─────────────
             probe = model.encode("probe", convert_to_numpy=True)
             actual_dim = int(np.array(probe).shape[-1])
@@ -115,7 +190,6 @@ def _load_model() -> SentenceTransformer:
                     VECTOR_SIZE,
                     actual_dim,
                 )
-                # Wrap the model so callers don't need to know about this.
                 return _TruncatingModel(model, VECTOR_SIZE)
 
             logger.info(
@@ -125,13 +199,13 @@ def _load_model() -> SentenceTransformer:
             )
             return model
 
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc: # noqa: BLE001
             logger.warning(
-                "Could not load ONNX file '%s': %s — trying next candidate.",
-                onnx_file,
-                exc,
-            )
-            last_exc = exc
+            "Could not load ONNX file '%s': %s — trying next candidate.",
+            onnx_file,
+            exc,
+        )
+        last_exc = exc
 
     raise RuntimeError(
         f"No ONNX variant could be loaded for model '{MODEL_NAME}'. "
@@ -183,11 +257,12 @@ class _TruncatingModel:
 
 def get_embedding_model() -> SentenceTransformer | _TruncatingModel:
     """Return the shared embedding model instance (thread-safe, lazy)."""
-    global _model
+    global _model, _current_fingerprint
     if _model is None:
         with _model_lock:
             if _model is None:
                 _model = _load_model()
+                _current_fingerprint = compute_model_fingerprint(_model)
     return _model
 
 
@@ -208,6 +283,23 @@ def get_qdrant_client() -> QdrantClient:
                 _ensure_collection(client)
                 _qdrant_client = client
                 logger.info("Qdrant client ready")
+                get_embedding_model()
+                if _current_fingerprint:
+                    _check_model_fingerprint(client, _current_fingerprint)
+                try:
+                    info = client.get_collection(COLLECTION_NAME)
+                    logger.info(
+                        "Qdrant collection '%s': %d points, %d vectors",
+                        COLLECTION_NAME, info.points_count, info.vectors_count,
+                    )
+                    if info.points_count > 300_000:
+                        logger.warning(
+                            "Qdrant has %d points — monitor memory usage carefully "
+                            "(current limit: 384 MB)",
+                            info.points_count,
+                        )
+                except Exception:
+                    pass
     return _qdrant_client
 
 
@@ -227,18 +319,38 @@ def _ensure_collection(client: QdrantClient) -> None:
                     distance=DISTANCE_METRIC,
                     on_disk=True,
                 ),
-        quantization_config=ScalarQuantization(
-            scalar=ScalarQuantizationConfig(
-                type=ScalarType.INT8,
-                always_ram=False,
-            )
-        ),
+                quantization_config=ScalarQuantization(
+                    scalar=ScalarQuantizationConfig(
+                        type=ScalarType.INT8,
+                        always_ram=False,
+                    )
+                ),
             )
             logger.info("Collection '%s' created (size=%d)", COLLECTION_NAME, VECTOR_SIZE)
         else:
             logger.debug("Collection '%s' already exists", COLLECTION_NAME)
 
         _ensure_payload_indices(client)
+
+        if TAG_PHRASES_COLLECTION not in existing:
+            logger.info("Creating Qdrant collection '%s'", TAG_PHRASES_COLLECTION)
+            client.create_collection(
+                collection_name=TAG_PHRASES_COLLECTION,
+                vectors_config=VectorParams(
+                    size=VECTOR_SIZE,
+                    distance=DISTANCE_METRIC,
+                    on_disk=True,
+                ),
+                quantization_config=ScalarQuantization(
+                    scalar=ScalarQuantizationConfig(
+                        type=ScalarType.INT8,
+                        always_ram=False,
+                    )
+                ),
+            )
+            logger.info("Collection '%s' created (size=%d)", TAG_PHRASES_COLLECTION, VECTOR_SIZE)
+        else:
+            logger.debug("Collection '%s' already exists", TAG_PHRASES_COLLECTION)
 
     except Exception:
         logger.exception("Failed to ensure Qdrant collection/indices")
@@ -248,10 +360,11 @@ def _ensure_collection(client: QdrantClient) -> None:
 def _ensure_payload_indices(client: QdrantClient) -> None:
     """Create payload indices for efficient filtering. Idempotent."""
     indices = [
-        ("pub_date",      "datetime"),
-        ("feed_sha256",   "keyword"),
-        ("url_hash",      "keyword"),
+        ("pub_date", "datetime"),
+        ("feed_sha256", "keyword"),
+        ("url_hash", "keyword"),
         ("pub_timestamp", "float"),
+        ("_model_fp", "keyword"),
     ]
     for field_name, field_schema in indices:
         try:

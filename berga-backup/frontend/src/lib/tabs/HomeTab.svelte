@@ -1,0 +1,904 @@
+<script lang="ts">
+import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { slide } from 'svelte/transition';
+  import { get } from 'svelte/store';
+  import PostCard from '$lib/components/PostCard.svelte';
+  import Portal from '$lib/components/Portal.svelte';
+import {
+  selectionMode,
+  selectedPosts,
+  pendingMotaPosts,
+  activeTabIdx,
+} from '$lib/stores/swipe';
+import { subscriptionChanged } from '$lib/stores/subscription';
+import {
+        Rss, FolderOpen, ChevronDown,
+        X, Check, Settings, Share2, Sparkles,
+    } from '@lucide/svelte';
+    import { t } from 'svelte-i18n';
+
+    type Mode = 'recommendations' | 'recents';
+
+    // Mode & filter
+    let mode               = $state<Mode>('recommendations');
+    let selectedFolderId   = $state<string | null>(null);
+    let selectedFolderName = $state<string | null>(null);
+    let selectedFeedSha    = $state<string | null>(null);
+    let selectedFeedName   = $state<string | null>(null);
+
+    // Feed
+    let feed        = $state<any[]>([]);
+    let loading     = $state<boolean>(true);
+    let loadingMore = $state<boolean>(false);
+    let hasMore     = $state<boolean>(true);
+    let error       = $state<string>('');
+    let page        = $state<number>(0);
+    let subsData    = $state<any[]>([]);
+
+    // Share feedback
+    let shareCopied = $state(false);
+
+    // Sentinel element for IntersectionObserver
+    let sentinelEl: HTMLDivElement | null = $state(null);
+    let observer:   IntersectionObserver | null = null;
+
+    // Dropdowns
+    let showFolderPicker = $state<boolean>(false);
+    let showFeedPicker   = $state<boolean>(false);
+    let folderDropStyle  = $state<string>('');
+    let feedDropStyle    = $state<string>('');
+    let folderBtnEl      = $state<HTMLButtonElement | null>(null);
+    let feedBtnEl        = $state<HTMLButtonElement | null>(null);
+
+    // Derived lists
+    let folders = $derived.by(() => {
+        const seen   = new Set<number>();
+        const result: Array<{ id: number; name: string }> = [];
+        for (const f of subsData) {
+            if (f.folder?.id && !seen.has(f.folder.id)) {
+                seen.add(f.folder.id);
+                result.push({ id: f.folder.id, name: f.folder.name });
+            }
+        }
+        return result.sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    let feedsList = $derived.by(() =>
+        subsData
+            .filter((f: any) => !f._empty_folder && f.feed_sha256)
+            .map((f: any) => {
+                let title = f.title && f.title !== 'No title' ? f.title : '';
+                if (!title) {
+                    try { title = new URL(f.url).hostname; } catch (_e) { title = f.url || ''; }
+                }
+                return { sha: f.feed_sha256 as string, title, icon: f.icon as string | undefined };
+            })
+            .sort((a: any, b: any) => a.title.localeCompare(b.title))
+    );
+
+    const SKELETON_INITIAL = Array.from({ length: 6 }, (_, i) => i);
+    const SKELETON_MORE    = Array.from({ length: 3 }, (_, i) => i);
+
+onMount(() => {
+	observer = new IntersectionObserver(
+            (entries) => { if (entries[0].isIntersecting) loadMore(); },
+            { rootMargin: '0px 0px 600px 0px' }
+        );
+
+        loadSubscriptions();
+        loadFeed(true);
+
+        return () => { observer?.disconnect(); };
+    });
+
+$effect(() => {
+  if (observer && sentinelEl) {
+    observer.disconnect();
+    observer.observe(sentinelEl);
+  }
+});
+
+$effect(() => {
+  get(subscriptionChanged);
+  if (!loading) {
+    loadSubscriptions();
+    loadFeed(true);
+  }
+});
+
+async function loadSubscriptions() {
+        try {
+            const res = await fetch('/api/list-subscriptions', { credentials: 'include' });
+            if (!res.ok) throw new Error('failed');
+            const raw = await res.json();
+            subsData  = Array.isArray(raw) ? raw : (raw.feeds ?? []);
+        } catch (_e) { /* silently ignore */ }
+    }
+
+    function buildUrl(pageNum: number, limit: number = 20): string {
+        const p = new URLSearchParams({ limit: String(limit) });
+        if (selectedFolderId) p.set('folder_id', selectedFolderId);
+        if (selectedFeedSha)  p.set('feed_sha256', selectedFeedSha);
+        if (mode === 'recommendations') {
+            p.set('page', String(pageNum));
+            return `/api/feed/recommendations?${p}`;
+        }
+        p.set('max_days', '10');
+        return `/api/feed/recents?${p}`;
+    }
+
+    async function loadFeed(reset: boolean = false) {
+        if (reset) {
+            loading = true;
+            feed    = [];
+            page    = 0;
+            hasMore = true;
+            error   = '';
+        }
+        try {
+            const res = await fetch(buildUrl(0), { credentials: 'include' });
+            if (res.status === 401) { window.location.replace('/'); return; }
+            if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
+            const data: any[] = await res.json();
+            feed    = data;
+            hasMore = data.length > 0;
+        } catch (e: any) {
+            error = (e as Error).message || get(t)('hometab.loadError');
+        }
+        loading = false;
+    }
+
+    async function loadMore() {
+        if (loadingMore || !hasMore || loading) return;
+        loadingMore = true;
+
+        try {
+            let newItems: any[];
+
+            if (mode === 'recommendations') {
+                const nextPage = page + 1;
+                const res = await fetch(buildUrl(nextPage), { credentials: 'include' });
+                if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
+                const data: any[] = await res.json();
+
+                if (data.length === 0) { hasMore = false; loadingMore = false; return; }
+
+                const seen = new Set(feed.map((x: any) => x.item_id));
+                newItems   = data.filter((x: any) => !seen.has(x.item_id));
+
+                if (newItems.length === 0) { hasMore = false; loadingMore = false; return; }
+
+                page    = nextPage;
+                hasMore = true;
+            } else {
+                const requestedLimit = feed.length + 20;
+                const res = await fetch(buildUrl(0, requestedLimit), { credentials: 'include' });
+                if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
+                const data: any[] = await res.json();
+                const seen = new Set(feed.map((x: any) => x.item_id));
+                newItems   = data.filter((x: any) => !seen.has(x.item_id));
+                if (newItems.length === 0) { hasMore = false; loadingMore = false; return; }
+            }
+
+            feed = [...feed, ...newItems];
+        } catch (e: any) {
+            console.error('loadMore failed:', e);
+        }
+
+        loadingMore = false;
+    }
+
+    function setMode(next: Mode) {
+        if (mode === next) return;
+        mode = next;
+        loadFeed(true);
+    }
+
+    function selectFolder(id: number | null, name: string | null) {
+        selectedFolderId   = id !== null ? String(id) : null;
+        selectedFolderName = name;
+        selectedFeedSha    = null;
+        selectedFeedName   = null;
+        showFolderPicker   = false;
+        loadFeed(true);
+    }
+
+    function selectFeed(sha: string | null, name: string | null) {
+        selectedFeedSha    = sha;
+        selectedFeedName   = name;
+        selectedFolderId   = null;
+        selectedFolderName = null;
+        showFeedPicker     = false;
+        loadFeed(true);
+    }
+
+    function getDropdownStyle(btnEl: HTMLButtonElement): string {
+        const r          = btnEl.getBoundingClientRect();
+        const DROPDOWN_W = 196;
+        const PADDING    = 8;
+        const top        = r.bottom + 6;
+        if (r.right + PADDING > window.innerWidth) {
+            return `top:${top}px; right:${Math.max(window.innerWidth - r.right, PADDING)}px;`;
+        }
+        const left = Math.max(Math.min(r.left, window.innerWidth - DROPDOWN_W - PADDING), PADDING);
+        return `top:${top}px; left:${left}px;`;
+    }
+
+    function toggleFolderPicker() {
+        showFolderPicker = !showFolderPicker;
+        showFeedPicker   = false;
+        if (showFolderPicker && folderBtnEl) folderDropStyle = getDropdownStyle(folderBtnEl);
+    }
+
+    function toggleFeedPicker() {
+        showFeedPicker   = !showFeedPicker;
+        showFolderPicker = false;
+        if (showFeedPicker && feedBtnEl) feedDropStyle = getDropdownStyle(feedBtnEl);
+    }
+
+    function handleToggleSelect(item: any) {
+        selectedPosts.update(current => {
+            const idx = current.findIndex((p: any) => p.item_id === item.item_id);
+            if (idx >= 0) {
+                const next = [...current.slice(0, idx), ...current.slice(idx + 1)];
+                if (next.length === 0) selectionMode.set(false);
+                return next;
+            } else {
+                if (!get(selectionMode)) selectionMode.set(true);
+                return [...current, item];
+            }
+        });
+    }
+
+    function clearSelection() {
+        selectedPosts.set([]);
+        selectionMode.set(false);
+    }
+
+    async function sendToMota() {
+        const posts = get(selectedPosts);
+        if (posts.length === 0) return;
+        pendingMotaPosts.set([...posts]);
+        clearSelection();
+        activeTabIdx.set(3);
+        await goto('/mota');
+    }
+
+    async function shareSelected() {
+        const posts = get(selectedPosts);
+        if (posts.length === 0) return;
+
+        try {
+            if (posts.length === 1) {
+                const p = posts[0];
+                if (navigator.share) {
+                    await navigator.share({ title: p.title, url: p.link });
+                } else {
+                    await navigator.clipboard.writeText(p.link);
+                    showCopiedFeedback();
+                }
+            } else {
+                const text = posts.map((p: any) => `${p.title}\n${p.link}`).join('\n\n');
+                if (navigator.share) {
+                    await navigator.share({ title: `${posts.length} ${get(t)('hometab.articles')}`, text });
+                } else {
+                    await navigator.clipboard.writeText(text);
+                    showCopiedFeedback();
+                }
+            }
+        } catch (_e) {
+            try {
+                const text = posts.map((p: any) => p.link).join('\n');
+                await navigator.clipboard.writeText(text);
+                showCopiedFeedback();
+            } catch (_) { /* ignore */ }
+        }
+    }
+
+    function showCopiedFeedback() {
+        shareCopied = true;
+        setTimeout(() => { shareCopied = false; }, 2000);
+    }
+</script>
+
+{#snippet skeletonCard()}
+    <div class="skeleton-card" aria-hidden="true">
+        <div class="sk-row sk-publisher">
+            <div class="sk-circle"></div>
+            <div class="sk-bar" style="width:72px"></div>
+            <div class="sk-dot"></div>
+            <div class="sk-bar" style="width:52px; opacity:.5"></div>
+            <div class="sk-bar sk-ml-auto" style="width:36px; opacity:.4"></div>
+        </div>
+        <div class="sk-bar sk-title" style="width:92%"></div>
+        <div class="sk-bar sk-title" style="width:62%; margin-bottom:8px"></div>
+        <div class="sk-bar sk-desc" style="width:100%"></div>
+        <div class="sk-bar sk-desc" style="width:78%; margin-bottom:10px"></div>
+        <div class="sk-row sk-actions">
+            <div class="sk-circle sk-sm"></div>
+            <div class="sk-circle sk-sm"></div>
+        </div>
+    </div>
+{/snippet}
+
+<div class="page-root">
+    <!-- Contêiner Centralizador -->
+    <div class="main-content">
+        
+        <!-- Top Header (Settings only) -->
+        <header class="top-header">
+            <button class="settings-btn" onclick={() => goto('/settings/appearance')} aria-label="{$t('hometab.settings')}">
+                <Settings size={20} />
+            </button>
+        </header>
+
+        <!-- Welcome Section -->
+        <div class="welcome-section">
+            <h1 class="welcome-title">{$t('hometab.welcome')}</h1>
+        </div>
+
+        <!-- Selection bar -->
+        {#if $selectionMode}
+            <div class="selection-bar" transition:slide={{ duration: 220 }}>
+                <button class="sel-cancel-btn" onclick={clearSelection} aria-label="{$t('hometab.cancelSelection')}">
+                    <X size={17} />
+                </button>
+                <span class="sel-count">
+                    {$selectedPosts.length}
+                    {$selectedPosts.length === 1 ? $t('hometab.selected') : $t('hometab.selectedPlural')}
+                </span>
+                <div class="sel-bar-actions">
+                    <button
+                        class="sel-action-btn sel-mota"
+                        onclick={sendToMota}
+                        disabled={$selectedPosts.length === 0}
+                        title="{$t('hometab.sendToMota')}"
+                    >
+                        <Sparkles size={14} />
+                        <span>{$t('hometab.sendToMota')}</span>
+                    </button>
+                    <button
+                        class="sel-action-btn sel-share"
+                        class:sel-copied={shareCopied}
+                        onclick={shareSelected}
+                        disabled={$selectedPosts.length === 0}
+                        title="{$selectedPosts.length > 1 ? $t('hometab.shareLinks') : $t('hometab.shareLink')}"
+                    >
+                        {#if shareCopied}
+                            <Check size={14} />
+                            <span>{$t('hometab.copied')}</span>
+                        {:else}
+                            <Share2 size={14} />
+                        {/if}
+                    </button>
+                </div>
+            </div>
+        {/if}
+
+        <!-- Filter bar -->
+        <div class="filter-bar">
+            <div class="mode-pill" role="group" aria-label="{$t('hometab.filterMode')}">
+                <button
+                    class="mode-btn"
+                    class:active={mode === 'recommendations'}
+                    onclick={() => setMode('recommendations')}
+                    aria-pressed={mode === 'recommendations'}
+                >
+                    <span>{$t('hometab.forYou')}</span>
+                </button>
+                <button
+                    class="mode-btn"
+                    class:active={mode === 'recents'}
+                    onclick={() => setMode('recents')}
+                    aria-pressed={mode === 'recents'}
+                >
+                    <span>{$t('hometab.recent')}</span>
+                </button>
+            </div>
+
+            <div class="picker-wrap">
+                <button
+                    bind:this={folderBtnEl}
+                    class="filter-chip"
+                    class:chip-active={!!selectedFolderId}
+                    onclick={toggleFolderPicker}
+                    aria-expanded={showFolderPicker}
+                    aria-haspopup="listbox"
+                >
+                    <FolderOpen size={13} strokeWidth={2} />
+                    <span class="chip-label">{selectedFolderName ?? $t('hometab.folder')}</span>
+                    {#if selectedFolderId}
+                        <span
+                            class="chip-clear"
+                            role="button"
+                            tabindex="0"
+                            aria-label="{$t('hometab.clearFolderFilter')}"
+                            onclick={(e) => { e.stopPropagation(); selectFolder(null, null); }}
+                            onkeydown={(e) => { if (e.key === 'Enter') selectFolder(null, null); }}
+                        ><X size={10} /></span>
+                    {:else}
+                        <span class="chevron-wrap" class:rotated={showFolderPicker}><ChevronDown size={11} /></span>
+                    {/if}
+                </button>
+            </div>
+
+            <div class="picker-wrap">
+                <button
+                    bind:this={feedBtnEl}
+                    class="filter-chip"
+                    class:chip-active={!!selectedFeedSha}
+                    onclick={toggleFeedPicker}
+                    aria-expanded={showFeedPicker}
+                    aria-haspopup="listbox"
+                >
+                    <Rss size={13} strokeWidth={2} />
+                    <span class="chip-label">{selectedFeedName ?? $t('hometab.feed')}</span>
+                    {#if selectedFeedSha}
+                        <span
+                            class="chip-clear"
+                            role="button"
+                            tabindex="0"
+                            aria-label="{$t('hometab.clearFeedFilter')}"
+                            onclick={(e) => { e.stopPropagation(); selectFeed(null, null); }}
+                            onkeydown={(e) => { if (e.key === 'Enter') selectFeed(null, null); }}
+                        ><X size={10} /></span>
+                    {:else}
+                        <span class="chevron-wrap" class:rotated={showFeedPicker}><ChevronDown size={11} /></span>
+                    {/if}
+                </button>
+            </div>
+        </div>
+
+        <!-- Feed -->
+        <div class="feed-wrap">
+            {#if loading}
+                {#each SKELETON_INITIAL as n (n)}
+                    {@render skeletonCard()}
+                {/each}
+            {:else if error}
+                <div class="state-error">
+                    <p>{error}</p>
+                    <button class="retry-btn" onclick={() => loadFeed(true)}>{$t('hometab.tryAgain')}</button>
+                </div>
+            {:else if feed.length === 0}
+                <p class="state-empty">{$t('hometab.noPostsFound')}</p>
+            {:else}
+                {#each feed as item (item.item_id)}
+                    <PostCard
+                        {item}
+                        server=""
+                        selectionMode={$selectionMode}
+                        selected={$selectedPosts.some((p: any) => p.item_id === item.item_id)}
+                        onToggleSelect={handleToggleSelect}
+                    />
+                {/each}
+
+                {#if loadingMore}
+                    {#each SKELETON_MORE as n (n)}
+                        {@render skeletonCard()}
+                    {/each}
+                {/if}
+
+                {#if !hasMore}
+                    <p class="end-label">{$t('hometab.allCaughtUp')}</p>
+                {/if}
+            {/if}
+
+            <div bind:this={sentinelEl} class="sentinel" aria-hidden="true"></div>
+        </div>
+
+    </div> <!-- Fim do main-content -->
+
+<!-- Dropdowns e Backdrops (portaled to body to escape overflow:clip) -->
+{#if showFolderPicker || showFeedPicker}
+  <Portal>
+    <div
+      class="picker-backdrop"
+      onclick={() => { showFolderPicker = false; showFeedPicker = false; }}
+      aria-hidden="true"
+    ></div>
+
+    {#if showFolderPicker}
+      <div class="picker-dropdown picker-portal" style={folderDropStyle} role="listbox" aria-label="{$t('hometab.folder')}">
+        {#if folders.length === 0}
+          <p class="picker-empty">{$t('hometab.noFoldersYet')}</p>
+        {:else}
+          {#each folders as folder (folder.id)}
+            <button
+              class="picker-item"
+              class:picker-selected={selectedFolderId === String(folder.id)}
+              role="option"
+              aria-selected={selectedFolderId === String(folder.id)}
+              onclick={() => selectFolder(folder.id, folder.name)}
+            >
+              <FolderOpen size={13} strokeWidth={2} />
+              <span class="picker-item-text">{folder.name}</span>
+              {#if selectedFolderId === String(folder.id)}<Check size={12} class="picker-check" />{/if}
+            </button>
+          {/each}
+        {/if}
+      </div>
+    {/if}
+
+    {#if showFeedPicker}
+      <div
+        class="picker-dropdown picker-dropdown--tall picker-portal"
+        style={feedDropStyle}
+        role="listbox"
+        aria-label="{$t('hometab.feed')}"
+      >
+        {#if feedsList.length === 0}
+          <p class="picker-empty">{$t('hometab.noFeedsYet')}</p>
+        {:else}
+          {#each feedsList as f (f.sha)}
+            <button
+              class="picker-item"
+              class:picker-selected={selectedFeedSha === f.sha}
+              role="option"
+              aria-selected={selectedFeedSha === f.sha}
+              onclick={() => selectFeed(f.sha, f.title)}
+            >
+              {#if f.icon}
+                <img
+                  src={f.icon}
+                  alt=""
+                  class="picker-favicon"
+                  onerror={(e: Event) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              {:else}
+                <Rss size={12} strokeWidth={2} class="picker-icon-fallback" />
+              {/if}
+              <span class="picker-item-text">{f.title}</span>
+              {#if selectedFeedSha === f.sha}<Check size={12} class="picker-check" />{/if}
+            </button>
+          {/each}
+        {/if}
+      </div>
+	{/if}
+	</Portal>
+	{/if}
+</div>
+
+<style>
+/* ── O Contêiner Centralizador ───────────────── */
+    .main-content {
+        max-width: 42rem;
+        margin-left: auto;
+        margin-right: auto;
+        padding: 0 16px; /* Padding seguro no mobile para o header e filtros */
+    }
+
+    @media (min-width: 768px) {
+        .main-content {
+            padding: 0;
+            margin-left: max(240px, calc(50vw - 21rem));
+            margin-right: auto;
+        }
+    }
+
+    /* ── Top Header ──────────────────────────────────────────── */
+    .top-header {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        padding-top: 12px;
+        padding-bottom: 4px;
+    }
+    .settings-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        border-radius: 40px;
+        padding: 8px;
+        cursor: pointer;
+        color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+        transition: all 0.2s ease;
+    }
+    .settings-btn:hover {
+        background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+        color: var(--color-base-content);
+        transform: rotate(8deg);
+    }
+
+    /* ── Welcome Section ─────────────────────────────────────── */
+    .welcome-section {
+        padding-top: 4px;
+        padding-bottom: 16px;
+    }
+.welcome-title {
+font-family: var(--font-page-title);
+        font-size: 2.25rem;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        color: var(--color-base-content);
+        margin: 0;
+        line-height: 1.1;
+    }
+
+    /* ── Selection bar ───────────────────────────────────────── */
+    .selection-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        background: var(--color-base-100);
+        border: 1px solid var(--color-accent);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px color-mix(in oklch, black 10%, transparent);
+        margin-bottom: 12px;
+        z-index: 60;
+    }
+
+    .sel-cancel-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: background 140ms, color 140ms;
+    }
+    .sel-cancel-btn:hover {
+        background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+        color: var(--color-base-content);
+    }
+
+    .sel-count {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--color-base-content);
+        white-space: nowrap;
+    }
+
+    .sel-bar-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+    }
+
+    .sel-action-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 12px;
+        border-radius: 20px;
+        border: none;
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 140ms, color 140ms, transform 100ms;
+        white-space: nowrap;
+    }
+    .sel-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .sel-action-btn:not(:disabled):active { transform: scale(0.96); }
+
+    .sel-mota {
+        background: var(--color-accent);
+        color: var(--color-base-100);
+    }
+    .sel-mota:not(:disabled):hover {
+        box-shadow: 0 4px 14px color-mix(in oklch, var(--color-accent) 45%, transparent);
+    }
+
+    .sel-share {
+        background: var(--color-base-200);
+        color: var(--color-base-content);
+    }
+    .sel-share:not(:disabled):hover {
+        background: var(--color-base-300);
+    }
+    .sel-share.sel-copied {
+        background: color-mix(in oklch, var(--color-success) 15%, transparent);
+        color: var(--color-success);
+    }
+
+    /* ── Filter bar ──────────────────────────────────────────── */
+    .filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-top: 8px;
+        padding-bottom: 12px;
+        background: var(--color-base-100);
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .filter-bar::-webkit-scrollbar { display: none; }
+
+    .mode-pill {
+        display: flex;
+        background: var(--color-base-200);
+        border-radius: 13px; /* Borda alterada */
+        padding: 3px;
+        gap: 2px;
+        flex-shrink: 0;
+    }
+    .mode-btn {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 6px 14px;
+        border-radius: 10px; /* Borda alterada */
+        border: none;
+        background: transparent;
+        font-size: 13px;
+        font-weight: 500;
+        color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+        cursor: pointer;
+        transition: background 150ms ease, color 150ms ease, font-weight 0ms;
+        white-space: nowrap;
+    }
+    .mode-btn.active {
+        background: var(--color-base-100);
+        color: var(--color-base-content);
+        font-weight: 700;
+        box-shadow: 0 1px 3px color-mix(in oklch, black 10%, transparent);
+    }
+
+    .picker-wrap { position: relative; flex-shrink: 0; }
+    .filter-chip {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 6px 12px;
+        border-radius: 10px; /* Borda alterada */
+        border: 1px solid var(--color-base-300);
+        background: transparent;
+        font-size: 13px;
+        font-weight: 500;
+        color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+        cursor: pointer;
+        transition: background 130ms, color 130ms, border-color 130ms;
+        white-space: nowrap;
+        max-width: 140px;
+    }
+    .filter-chip:hover {
+        background: var(--color-base-200);
+        color: var(--color-base-content);
+    }
+    .filter-chip.chip-active {
+        background: color-mix(in oklch, var(--color-accent) 12%, transparent);
+        border-color: color-mix(in oklch, var(--color-accent) 60%, transparent);
+        color: var(--color-accent);
+        font-weight: 600;
+    }
+    .chip-label { overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
+    .chip-clear {
+        display: flex; align-items: center; justify-content: center;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        background: color-mix(in oklch, var(--color-accent) 20%, transparent);
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .chevron-wrap {
+        display: flex; align-items: center;
+        transition: transform 180ms ease;
+        flex-shrink: 0;
+    }
+    .chevron-wrap.rotated { transform: rotate(180deg); }
+
+    /* ── Pickers ─────────────────────────────────────────────── */
+    .picker-dropdown {
+        z-index: 9999;
+        background: var(--color-base-100);
+        border: 1px solid var(--color-base-300);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px color-mix(in oklch, black 20%, transparent);
+        padding: 4px;
+        min-width: 190px;
+        max-height: 280px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        animation: picker-pop 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+  .picker-portal { position: fixed; z-index: 9999; pointer-events: auto; }
+    .picker-dropdown--tall { max-height: 320px; }
+
+    @keyframes picker-pop {
+        from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+        to   { opacity: 1; transform: translateY(0)    scale(1); }
+    }
+
+    .picker-empty {
+        padding: 12px;
+        font-size: 12px;
+        color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+        text-align: center;
+    }
+    .picker-item {
+        display: flex; align-items: center; gap: 8px;
+        width: 100%; padding: 8px 10px;
+        border: none; background: transparent;
+        cursor: pointer; font-size: 13px; font-weight: 500;
+        color: var(--color-base-content); border-radius: 6px;
+        transition: background 110ms; text-align: left;
+    }
+    .picker-item:hover { background: var(--color-base-200); }
+    .picker-item.picker-selected {
+        background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+        color: var(--color-accent);
+    }
+    .picker-item-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .picker-favicon   { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; flex-shrink: 0; }
+    :global(.picker-check)         { flex-shrink: 0; color: var(--color-accent); }
+    :global(.picker-icon-fallback) { color: var(--color-accent); opacity: 0.6; }
+    .picker-backdrop { position: fixed; inset: 0; z-index: 9998; pointer-events: auto; }
+
+    /* ── Feed ────────────────────────────────────────────────── */
+    .feed-wrap {
+        border-top: 1px solid var(--color-base-300);
+    }
+
+
+    .sentinel { height: 1px; }
+
+    /* ── Skeleton ────────────────────────────────────────────── */
+    .skeleton-card { padding: 12px 20px 10px; border-bottom: 1px solid var(--color-base-300); }
+    .sk-row        { display: flex; align-items: center; gap: 6px; }
+    .sk-ml-auto    { margin-left: auto; }
+    .sk-publisher  { margin-bottom: 10px; }
+    .sk-actions    { gap: 6px; }
+    .sk-bar, .sk-circle, .sk-dot {
+        border-radius: 4px;
+        background: linear-gradient(
+            90deg,
+            color-mix(in oklch, var(--color-base-300) 60%, transparent) 0%,
+            color-mix(in oklch, var(--color-base-300) 90%, transparent) 40%,
+            color-mix(in oklch, var(--color-base-300) 60%, transparent) 80%
+        );
+        background-size: 200% 100%;
+        animation: shimmer 1.6s ease-in-out infinite;
+    }
+    .sk-circle       { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
+    .sk-circle.sk-sm { width: 24px; height: 24px; border-radius: 6px; }
+    .sk-dot          { width: 3px;  height: 3px;  border-radius: 50%; flex-shrink: 0; }
+    .sk-bar          { height: 10px; flex-shrink: 0; }
+    .sk-title        { height: 14px; margin-bottom: 5px; border-radius: 5px; }
+    .sk-desc         { height: 11px; margin-bottom: 4px; }
+    .skeleton-card:nth-child(1) .sk-bar, .skeleton-card:nth-child(1) .sk-circle { animation-delay: 0s;    }
+    .skeleton-card:nth-child(2) .sk-bar, .skeleton-card:nth-child(2) .sk-circle { animation-delay: .15s; }
+    .skeleton-card:nth-child(3) .sk-bar, .skeleton-card:nth-child(3) .sk-circle { animation-delay: .3s;  }
+    .skeleton-card:nth-child(4) .sk-bar, .skeleton-card:nth-child(4) .sk-circle { animation-delay: .45s; }
+    .skeleton-card:nth-child(5) .sk-bar, .skeleton-card:nth-child(5) .sk-circle { animation-delay: .6s;  }
+    .skeleton-card:nth-child(6) .sk-bar, .skeleton-card:nth-child(6) .sk-circle { animation-delay: .75s; }
+    @keyframes shimmer {
+        0%   { background-position:  200% center; }
+        100% { background-position: -200% center; }
+    }
+
+    /* ── States ──────────────────────────────────────────────── */
+    .state-empty {
+        text-align: center; padding: 48px 16px;
+        color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+        font-size: 15px;
+    }
+    .state-error {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 12px; padding: 48px 16px;
+        color: color-mix(in oklch, var(--color-error, #e74c3c) 80%, transparent);
+        font-size: 14px; text-align: center;
+    }
+    .retry-btn {
+        padding: 7px 18px; border-radius: 6px;
+        border: 1px solid color-mix(in oklch, var(--color-error, #e74c3c) 40%, transparent);
+        background: transparent; color: var(--color-error, #e74c3c);
+        font-size: 13px; font-weight: 600; cursor: pointer; transition: background 130ms;
+    }
+    .retry-btn:hover { background: color-mix(in oklch, var(--color-error, #e74c3c) 10%, transparent); }
+    .end-label {
+        text-align: center; padding: 28px 16px 40px;
+        font-size: 12px; font-weight: 500;
+        color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+        letter-spacing: 0.03em;
+    }
+</style>

@@ -1,0 +1,21 @@
+{
+  "loadError": "Não foi possível carregar o artigo.",
+  "backToFeed": "Voltar ao feed",
+  "viewExtractedText": "Ver texto extraído",
+  "viewOriginalPage": "Ver página original",
+  "like": "Curtir",
+  "dislike": "Não curtir",
+  "save": "Salvar",
+  "openOriginal": "Abrir original",
+  "iframeBlockedTitle": "Este site não permite incorporação",
+  "thisSite": "Este site",
+  "iframeBlockedBody": "bloqueou a exibição em leitores externos. Você pode abrir o artigo diretamente no site original.",
+  "openOriginalSite": "Abrir no site original",
+  "backToExtractedText": "Voltar ao texto extraído",
+  "summarizeText": "Resumir texto",
+  "findSimilars": "Artigos Similares",
+  "streamUnavailable": "Stream indisponível",
+  "resumeError": "Erro ao gerar resumo.",
+  "hideSummary": "Ocultar resumo",
+  "originalPage": "Página original"
+}

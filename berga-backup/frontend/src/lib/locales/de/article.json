@@ -1,0 +1,21 @@
+{
+  "loadError": "Der Artikel konnte nicht geladen werden.",
+  "backToFeed": "Zurück zum Feed",
+  "viewExtractedText": "Extrahierten Text anzeigen",
+  "viewOriginalPage": "Originalseite anzeigen",
+  "like": "Gefällt mir",
+  "dislike": "Gefällt mir nicht",
+  "save": "Speichern",
+  "openOriginal": "Original öffnen",
+  "iframeBlockedTitle": "Diese Seite erlaubt keine Einbettung",
+  "thisSite": "Diese Seite",
+  "iframeBlockedBody": "hat die Anzeige in externen Lesern blockiert. Sie können den Artikel direkt auf der Originalseite öffnen.",
+  "openOriginalSite": "Originalseite öffnen",
+  "backToExtractedText": "Zurück zum extrahierten Text",
+  "summarizeText": "Text zusammenfassen",
+  "findSimilars": "Ähnliche finden",
+  "streamUnavailable": "Stream nicht verfügbar",
+  "resumeError": "Fehler beim Erstellen der Zusammenfassung.",
+  "hideSummary": "Zusammenfassung ausblenden",
+  "originalPage": "Originalseite"
+}

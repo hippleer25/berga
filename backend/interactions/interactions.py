@@ -1,5 +1,6 @@
 from database.init_db import get_db
 from interactions.profile_updater import interact as _interact
+from intelligence.recommendations import invalidate_cache, invalidate_interaction_cache
 
 
 def like_article(user_id: int, item_id: str):
@@ -53,25 +54,33 @@ def bulk_view_articles(user_id: int, item_ids: list):
     with get_db() as conn:
         cursor = conn.cursor()
         try:
-            values = []
-            for item_id in item_ids:
-                values.extend([user_id, item_id, 'view'])
-            placeholders = ','.join(['(%s, %s, %s, NOW())'] * len(item_ids))
-            query = f"""
-                INSERT INTO interactions (user_id, item_id, action, created_at)
-                VALUES {placeholders}
-                ON DUPLICATE KEY UPDATE created_at = NOW()
-            """
-            cursor.execute(query, values)
-
             ids_placeholder = ','.join(['%s'] * len(item_ids))
-            cursor.execute(f"""
-                UPDATE article_stats
-                SET views_count = views_count + 1
-                WHERE item_id IN ({ids_placeholder})
-            """, item_ids)
+            cursor.execute(
+                f"SELECT item_id FROM interactions WHERE user_id = %s AND action = 'view' AND item_id IN ({ids_placeholder})",
+                [user_id] + list(item_ids),
+            )
+            already_viewed = {row[0] for row in cursor.fetchall()}
+            new_ids = [iid for iid in item_ids if iid not in already_viewed]
+
+            if new_ids:
+                values = []
+                for item_id in new_ids:
+                    values.extend([user_id, item_id, 'view'])
+                placeholders = ','.join(['(%s, %s, %s, NOW())'] * len(new_ids))
+                cursor.execute(
+                    f"INSERT INTO interactions (user_id, item_id, action, created_at) VALUES {placeholders}",
+                    values,
+                )
+
+                new_placeholder = ','.join(['%s'] * len(new_ids))
+                cursor.execute(
+                    f"UPDATE article_stats SET views_count = views_count + 1 WHERE item_id IN ({new_placeholder})",
+                    list(new_ids),
+                )
 
             conn.commit()
+            invalidate_cache(user_id)
+            invalidate_interaction_cache(user_id)
             return {"status": "success", "message": f"{len(item_ids)} views registered"}
         except Exception as e:
             conn.rollback()

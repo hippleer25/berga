@@ -367,7 +367,7 @@
   .action-btn:active { transform: scale(0.97); }
   .action-btn.accent { border-color: var(--color-accent); color: var(--color-accent); }
   .action-btn.accent:hover { background: color-mix(in oklch, var(--color-accent) 10%, transparent); }
-  .action-btn:disabled { opacity: 0.6; cursor: not-wait; }
+  .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
   .spinner {
     width: 16px; height: 16px;

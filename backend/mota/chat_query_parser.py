@@ -68,7 +68,7 @@ _TIME_PATTERNS = [
     (re.compile(r'(?:últim[oa]s?|last|past)\s+(\d+)\s+(?:semana|semanas|weeks?)', re.I), 7),
     (re.compile(r'(?:últim[oa]s?|last|past)\s+(\d+)\s+(?:mês|meses|month|months?)', re.I), 30),
     (re.compile(r'(?:últim[oa]s?|last|past)\s+(\d+)\s+(?:ano|anos|year|years?)', re.I), 365),
-    (re.compile(r'(?:hoje|today|agora|now)\b', re.I), 0),
+    (re.compile(r'(?:hoje|today|agora|now)\b', re.I), 1),
     (re.compile(r'(?:ontem|yesterday)\b', re.I), 1),
     (re.compile(r'(?:esta|this)\s+(?:semana|week)', re.I), 7),
     (re.compile(r'(?:este|this)\s+(?:mês|month)', re.I), 30),

@@ -125,7 +125,7 @@ const res = await apiFetch(
         </header>
 
         <!-- Tab bar -->
-        <div class="tab-bar">
+        <div class="tab-bar" ontouchstart={(e) => e.stopPropagation()} ontouchmove={(e) => e.stopPropagation()} ontouchend={(e) => e.stopPropagation()}>
             <div class="mode-pill" role="group" aria-label="Search tabs">
                 <button
                     class="mode-btn"
@@ -166,7 +166,7 @@ const res = await apiFetch(
                 <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
                     </p>
                     {#each articleResults as item}
-                        <PostCard {item} server="" />
+                        <PostCard {item} server="" tags={item.tags || []} onTagClick={(tag) => goto(`/home?tag_id=${tag.tag_id}`)} />
                     {/each}
                 {/if}
 
@@ -273,10 +273,11 @@ const res = await apiFetch(
     .search-wrap:focus-within .search-icon { color: var(--color-accent); }
 
     /* ── Tab bar (Pill Style) ──────────────────────────────── */
-    .tab-bar {
-        display: flex;
-        padding: 16px 0 12px;
-    }
+.tab-bar {
+  display: flex;
+  padding: 16px 0 12px;
+  touch-action: pan-y;
+}
 
     .mode-pill {
         display: flex;

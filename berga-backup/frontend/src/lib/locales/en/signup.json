@@ -1,0 +1,16 @@
+{
+  "title": "Sign up",
+  "subtitle": "You are creating a Berga account",
+  "accountLabel": "Account",
+  "accountPlaceholder": "Enter your username",
+  "fullNameLabel": "Full name",
+  "fullNamePlaceholder": "Enter your full name",
+  "emailLabel": "Email",
+  "emailPlaceholder": "Enter your email",
+  "passwordLabel": "Password",
+  "passwordPlaceholder": "Enter your password",
+  "errorSignup": "Error while signing up",
+  "back": "Back",
+  "registering": "Registering...",
+  "done": "Done"
+}

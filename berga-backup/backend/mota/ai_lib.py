@@ -1,0 +1,318 @@
+"""
+ai_lib.py
+─────────
+Camada de abstração para chamadas LLM via LiteLLM.
+
+Suporta: OpenAI, Anthropic, Mistral, NVIDIA NIM, OpenRouter, etc.
+"""
+
+import os
+os.environ.setdefault('LITELLM_LOG', 'WARNING')
+
+import logging
+from typing import Generator, Literal, Optional
+
+import litellm
+from litellm import completion, acompletion
+
+logger = logging.getLogger(__name__)
+
+# Remove parâmetros não suportados pelo provider automaticamente
+litellm.drop_params = True
+
+DEFAULT_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "120"))
+
+LLMUsage = Literal["cluster", "chatbot"]
+
+
+# ------------------------------------------------------------------
+# Configuração de modelos e credenciais
+# ------------------------------------------------------------------
+
+def _get_model_config(usage: LLMUsage) -> dict:
+    prefix = usage.upper()
+
+    model = os.getenv(f"{prefix}_LLM_MODEL")
+    if not model:
+        raise ValueError(
+            f"[AI_LIB] {prefix}_LLM_MODEL não encontrada. "
+            f"Exemplos: 'gpt-4', 'claude-3-sonnet-20240229', 'mistral/mistral-large-latest'"
+        )
+
+    api_key = os.getenv(f"{prefix}_LLM_API_KEY")
+    api_base = os.getenv(f"{prefix}_LLM_API_BASE")
+
+    config = {"model": model}
+    if api_key:
+        config["api_key"] = api_key
+    if api_base:
+        config["api_base"] = api_base
+
+    logger.info(
+        f"[AI_LIB] Configuração {usage}: model={model}, "
+        f"api_base={api_base or 'default'}, "
+        f"api_key={'***' if api_key else 'not set'}"
+    )
+
+    return config
+
+
+# ------------------------------------------------------------------
+# Geração de texto (não-streaming)
+# ------------------------------------------------------------------
+
+def generate_text(
+    prompt: str,
+    system_prompt: str | None = None,
+    model: str | None = None,
+    max_tokens: int = 1024,
+    temperature: float = 0.3,
+    usage: LLMUsage = "cluster",
+) -> str | None:
+    config = _get_model_config(usage)
+
+    if model:
+        config["model"] = model
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        response = completion(
+            model=config["model"],
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            api_key=config.get("api_key"),
+            api_base=config.get("api_base"),
+            timeout=DEFAULT_TIMEOUT,
+        )
+        content = response.choices[0].message.content
+        return content.strip() if content else None
+
+    except Exception as e:
+        logger.error(f"[AI_LIB] Erro ao chamar LLM ({config['model']}): {e}")
+        return None
+
+
+# ------------------------------------------------------------------
+# Streaming (legado — compatibilidade)
+# ------------------------------------------------------------------
+
+def mota_text_stream(
+    prompt: str,
+    model: str | None = None,
+    max_tokens: int = 4096,
+    temperature: float = 0.3,
+    usage: LLMUsage = "chatbot",
+) -> Generator[str, None, None]:
+    config = _get_model_config(usage)
+
+    if model:
+        config["model"] = model
+
+    try:
+        response = completion(
+            model=config["model"],
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stream=True,
+            api_key=config.get("api_key"),
+            api_base=config.get("api_base"),
+            timeout=DEFAULT_TIMEOUT,
+        )
+        for chunk in response:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
+
+    except Exception as e:
+        logger.error(f"[AI_LIB] Erro ao chamar LLM Stream ({config.get('model')}): {e}")
+        yield ""
+
+
+# ------------------------------------------------------------------
+# Tool calling (function calling)
+# ------------------------------------------------------------------
+
+def call_llm_with_tools(
+    prompt: str,
+    tools: list[dict],
+    system_prompt: str | None = None,
+    tool_choice: str | dict | None = None,
+    model: str | None = None,
+    max_tokens: int = 1024,
+    temperature: float = 0.3,
+    usage: LLMUsage = "chatbot",
+):
+    """
+    Chamada não-streaming com definições de ferramentas (function calling).
+
+    Args:
+        prompt:          Prompt / mensagem do usuário
+        tools:           Lista de definições de ferramentas no formato OpenAI
+        system_prompt:   Prompt do sistema (instruções para o modelo)
+        tool_choice:     Controla se/qual ferramenta o modelo deve chamar.
+                         Opções: "auto", "required", "none",
+                         ou {"type": "function", "function": {"name": "..."}}
+        model:           Modelo específico (sobrescreve config padrão)
+        max_tokens:      Máximo de tokens na resposta
+        temperature:     Temperatura
+        usage:           Tipo de uso ('cluster' ou 'chatbot')
+    """
+    config = _get_model_config(usage)
+
+    if model:
+        config["model"] = model
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    kwargs = {
+        "model": config["model"],
+        "messages": messages,
+        "tools": tools,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "api_key": config.get("api_key"),
+        "api_base": config.get("api_base"),
+        "timeout": DEFAULT_TIMEOUT,
+    }
+
+    # Só adiciona tool_choice se o chamador pediu explicitamente.
+    # litellm.drop_params=True remove o parâmetro caso o provider não suporte.
+    if tool_choice is not None:
+        kwargs["tool_choice"] = tool_choice
+
+    try:
+        response = completion(**kwargs)
+        return response
+
+    except Exception as e:
+        logger.error(f"[AI_LIB] Erro ao chamar LLM com tools ({config.get('model')}): {e}")
+        return None
+
+
+# ------------------------------------------------------------------
+# Streaming com histórico de mensagens
+# ------------------------------------------------------------------
+
+def stream_llm_response(
+    messages: list[dict],
+    model: str | None = None,
+    max_tokens: int = 2048,
+    temperature: float = 0.3,
+    usage: LLMUsage = "chatbot",
+) -> Generator[str, None, None]:
+    config = _get_model_config(usage)
+
+    if model:
+        config["model"] = model
+
+    try:
+        response = completion(
+            model=config["model"],
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stream=True,
+            api_key=config.get("api_key"),
+            api_base=config.get("api_base"),
+            timeout=DEFAULT_TIMEOUT,
+        )
+        for chunk in response:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
+
+    except Exception as e:
+        logger.error(f"[AI_LIB] Erro ao fazer streaming LLM ({config.get('model')}): {e}")
+        yield ""
+
+
+# ------------------------------------------------------------------
+# Async versions
+# ------------------------------------------------------------------
+
+async def agenerate_text(
+    prompt: str,
+    system_prompt: str | None = None,
+    model: str | None = None,
+    max_tokens: int = 1024,
+    temperature: float = 0.3,
+    usage: LLMUsage = "cluster",
+) -> str | None:
+    config = _get_model_config(usage)
+
+    if model:
+        config["model"] = model
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        response = await acompletion(
+            model=config["model"],
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            api_key=config.get("api_key"),
+            api_base=config.get("api_base"),
+            timeout=DEFAULT_TIMEOUT,
+        )
+        content = response.choices[0].message.content
+        return content.strip() if content else None
+
+    except Exception as e:
+        logger.error(f"[AI_LIB] Erro ao chamar LLM async ({config['model']}): {e}")
+        return None
+
+
+# ------------------------------------------------------------------
+# Utilitários
+# ------------------------------------------------------------------
+
+def list_supported_models() -> dict[str, list[str]]:
+    return {
+        "openai": [
+            "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini"
+        ],
+        "anthropic": [
+            "claude-3-5-sonnet-20241022", "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229", "claude-3-haiku-20240307",
+        ],
+        "mistral": [
+            "mistral/mistral-large-latest", "mistral/mistral-medium-latest",
+            "mistral/mistral-small-latest", "mistral/open-mistral-7b",
+        ],
+        "openrouter": [
+            "openrouter/anthropic/claude-3-opus",
+            "openrouter/meta-llama/llama-3.1-70b-instruct",
+            "openrouter/google/gemini-pro-1.5",
+        ],
+        "nvidia_nim": [
+            "nvidia_nim/meta/llama-3.1-8b-instruct",
+            "nvidia_nim/meta/llama-3.1-70b-instruct",
+            "nvidia_nim/mistralai/mixtral-8x7b-instruct-v0.1",
+        ],
+    }
+
+
+def get_provider_from_model(model: str) -> str:
+    model_lower = model.lower()
+    if "/" in model:
+        return model.split("/")[0]
+    if model_lower.startswith("gpt"):
+        return "openai"
+    elif model_lower.startswith("claude"):
+        return "anthropic"
+    elif "mistral" in model_lower or "mixtral" in model_lower:
+        return "mistral"
+    return "unknown"

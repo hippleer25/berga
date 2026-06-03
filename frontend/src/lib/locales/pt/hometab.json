@@ -15,11 +15,18 @@
   "clearFolderFilter": "Limpar filtro de pasta",
   "feed": "Feed",
   "clearFeedFilter": "Limpar filtro de feed",
+  "tag": "Tag",
+  "clearTagFilter": "Limpar filtro de tag",
+  "noTagsYet": "Nenhuma tag ainda",
+  "createTag": "Criar tag",
+  "tagSelected": "Etiquetar",
   "tryAgain": "Tentar novamente",
   "noPostsFound": "Nenhum post encontrado.",
   "allCaughtUp": "Você está em dia ✓",
   "noFoldersYet": "Nenhuma pasta ainda",
   "noFeedsYet": "Nenhum feed ainda",
+  "saved": "Salvos",
+  "noSavedYet": "Nenhum artigo salvo ainda.",
   "loadError": "Falha ao carregar feed",
   "articles": "artigos"
 }

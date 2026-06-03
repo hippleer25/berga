@@ -1,0 +1,920 @@
+<script lang="ts">
+    import { onMount, tick } from 'svelte';
+    import Send        from '@lucide/svelte/icons/send';
+    import RotateCcw   from '@lucide/svelte/icons/rotate-ccw';
+    import Sparkles    from '@lucide/svelte/icons/sparkles';
+    import ChevronDown from '@lucide/svelte/icons/chevron-down';
+    import MoreVertical from '@lucide/svelte/icons/more-vertical';
+    import BookOpen    from '@lucide/svelte/icons/book-open';
+    import Globe       from '@lucide/svelte/icons/globe';
+    import Database    from '@lucide/svelte/icons/database';
+    import Blend       from '@lucide/svelte/icons/blend';
+    import Newspaper   from '@lucide/svelte/icons/newspaper';
+    import { pendingMotaPosts } from '$lib/stores/swipe';
+
+    type Message = {
+        role: 'user' | 'assistant';
+        content: string;
+        id: number;
+        /** True when this message was generated from selected posts */
+        fromFeed?: boolean;
+        /** Titles shown in the user bubble when sending posts */
+        feedTitles?: string[];
+    };
+
+    type SourceMode = 'local' | 'online' | 'mixed';
+
+    // ─── State ────────────────────────────────────────────────────────────────
+    let messages    = $state<Message[]>([]);
+    let input       = $state('');
+    let loading     = $state(false);
+    let streaming   = $state(false);
+    let error       = $state('');
+    let idCounter   = 0;
+
+    // Settings
+    let deepReading  = $state(false);
+    let sourceMode   = $state<SourceMode>('local');
+    let menuOpen     = $state(false);
+
+    let textareaRef:     HTMLTextAreaElement;
+    let scrollContainer: HTMLElement;
+    let messagesEnd:     HTMLDivElement;
+    let menuRef:         HTMLDivElement;
+
+    let showScrollBtn = $state(false);
+
+    // ─── Initial greeting ─────────────────────────────────────────────────────
+    const INITIAL_MESSAGE: Message = {
+        role: 'assistant', id: -1,
+        content: `Olá! Sou o **Mota**, seu assistente de IA especializado em notícias e informações relevantes.\n\nO que você gostaria de saber hoje? Você também pode selecionar posts do seu feed e enviá-los diretamente para mim resumir.`,
+    };
+
+    onMount(() => {
+        messages = [INITIAL_MESSAGE];
+
+        function onClickOutside(e: MouseEvent) {
+            if (menuRef && !menuRef.contains(e.target as Node)) menuOpen = false;
+        }
+        document.addEventListener('mousedown', onClickOutside);
+        return () => document.removeEventListener('mousedown', onClickOutside);
+    });
+
+    // ─── Watch for posts sent from the feed ───────────────────────────────────
+    $effect(() => {
+        const posts = $pendingMotaPosts;
+        if (posts.length > 0) {
+            const snapshot = [...posts];
+            pendingMotaPosts.set([]); // clear immediately to avoid re-trigger
+            handleIncomingFeedPosts(snapshot);
+        }
+    });
+
+    async function handleIncomingFeedPosts(posts: any[]) {
+        if (loading) return;
+
+        // Build a readable user bubble showing what's being sent
+        const feedTitles = posts.map((p: any) => p.title);
+
+        // The actual message sent to the API
+        const apiMessage = `Por favor, leia e resuma os artigos que selecionei do meu feed de notícias.`;
+
+        // Add user message to chat UI
+        const userMsgId = idCounter++;
+        messages = [
+            ...messages,
+            {
+                role:       'user',
+                content:    apiMessage,
+                id:         userMsgId,
+                fromFeed:   true,
+                feedTitles,
+            },
+        ];
+
+        await scrollToBottom(true);
+
+        // Send to API with articles
+        await streamResponse(apiMessage, posts);
+    }
+
+    // ─── Scroll ───────────────────────────────────────────────────────────────
+    function handleScroll() {
+        if (!scrollContainer) return;
+        const { scrollTop, clientHeight, scrollHeight } = scrollContainer;
+        showScrollBtn = scrollHeight - scrollTop - clientHeight > 120;
+    }
+
+    async function scrollToBottom(smooth = true) {
+        await tick();
+        messagesEnd?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
+    }
+
+    function autoResize() {
+        if (!textareaRef) return;
+        textareaRef.style.height = 'auto';
+        textareaRef.style.height = Math.min(textareaRef.scrollHeight, 180) + 'px';
+    }
+
+    // ─── Source mode label ────────────────────────────────────────────────────
+    const SOURCE_LABELS: Record<SourceMode, string> = {
+        local:  'Apenas local',
+        online: 'Apenas online',
+        mixed:  'Misto',
+    };
+
+    // ─── Improved Markdown Renderer ───────────────────────────────────────────
+    // FIXED: More robust handling of incomplete markdown during streaming
+    function renderMarkdown(raw: string): string {
+        // Store code blocks to protect them
+        const codeBlocks: string[] = [];
+        let s = raw.replace(/```([\w]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+            const i = codeBlocks.length;
+            const esc = escapeHtml(code);
+            const cls = lang ? ` class="language-${lang}"` : '';
+            codeBlocks.push(`<pre><code${cls}>${esc}</code></pre>`);
+            return `\x02CB${i}\x03`;
+        });
+
+        // Store inline code to protect it
+        const inlineCodes: string[] = [];
+        s = s.replace(/`([^`\n]+)`/g, (_, code) => {
+            const i = inlineCodes.length;
+            inlineCodes.push(`<code>${escapeHtml(code)}</code>`);
+            return `\x02IC${i}\x03`;
+        });
+
+        // Escape HTML entities
+        s = escapeHtml(s);
+
+        // Process inline formatting with better fallback for incomplete syntax
+        function inline(t: string): string {
+            let result = t;
+            
+            // Bold + Italic (***text***)
+            result = result.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+            
+            // Bold (**text**)
+            result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            
+            // Italic (*text*)
+            result = result.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            
+            // Strikethrough (~~text~~)
+            result = result.replace(/~~(.+?)~~/g, '<del>$1</del>');
+            
+            // Links
+            result = result.replace(
+                /\[([^\]]+)\]\(([^)]+)\)/g,
+                '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+            );
+            
+            // Restore inline code
+            result = result.replace(/\x02IC(\d+)\x03/g, (_, i) => inlineCodes[+i] || '');
+            
+            // Restore code blocks
+            result = result.replace(/\x02CB(\d+)\x03/g, (_, i) => codeBlocks[+i] || '');
+            
+            return result;
+        }
+
+        // Table parser
+        function parseTable(block: string): string | null {
+            const lines = block.split('\n').filter(Boolean);
+            if (lines.length < 2) return null;
+            
+            const sepIdx = lines.findIndex(l => /\|/.test(l) && /---/.test(l));
+            if (sepIdx < 1) return null;
+            
+            const parseRow = (line: string) =>
+                line.split('|').map(c => c.trim())
+                    .filter((_, i, a) => !(i === 0 && a[0] === '') && !(i === a.length - 1 && a[a.length - 1] === ''));
+            
+            const aligns = parseRow(lines[sepIdx]).map(c =>
+                c.startsWith(':') && c.endsWith(':') ? 'center' : c.endsWith(':') ? 'right' : 'left'
+            );
+            
+            const headers = parseRow(lines[sepIdx - 1]);
+            const thead = `<thead><tr>${headers.map((h, i) =>
+                `<th style="text-align:${aligns[i] ?? 'left'}">${inline(h)}</th>`
+            ).join('')}</tr></thead>`;
+            
+            const tbody = lines.slice(sepIdx + 1).length
+                ? `<tbody>${lines.slice(sepIdx + 1).map(line => {
+                    const cells = parseRow(line);
+                    return `<tr>${cells.map((c, i) =>
+                        `<td style="text-align:${aligns[i] ?? 'left'}">${inline(c)}</td>`
+                    ).join('')}</tr>`;
+                }).join('')}</tbody>`
+                : '';
+            
+            return `<div class="md-table-wrap"><table>${thead}${tbody}</table></div>`;
+        }
+
+        // Process blocks - FIXED: Better handling for lists
+        const blocks = s.split(/\n\n+/);
+        const out: string[] = [];
+
+        for (let block of blocks) {
+            block = block.trim();
+            if (!block) continue;
+
+            // Code block placeholder
+            if (/^\x02CB\d+\x03$/.test(block)) {
+                const match = block.match(/\d+/);
+                if (match) out.push(codeBlocks[+match[0]] || '');
+                continue;
+            }
+
+            // Headers
+            const hm = block.match(/^(#{1,6})\s+(.+)$/m);
+            if (hm) {
+                out.push(`<h${hm[1].length}>${inline(hm[2])}</h${hm[1].length}>`);
+                continue;
+            }
+
+            // Horizontal rule
+            if (/^(-{3,}|\*{3,}|_{3,})$/.test(block)) {
+                out.push('<hr/>');
+                continue;
+            }
+
+            // Tables
+            if (block.includes('|') && /---/.test(block)) {
+                const table = parseTable(block);
+                if (table) {
+                    out.push(table);
+                    continue;
+                }
+            }
+
+            // Blockquote
+            if (/^&gt;/.test(block)) {
+                const content = block.split('\n')
+                    .map(l => l.replace(/^&gt;\s?/, ''))
+                    .join('\n');
+                out.push(`<blockquote>${inline(content)}</blockquote>`);
+                continue;
+            }
+
+            // Unordered list - FIXED: Process line by line
+            if (/^[-*+]\s/.test(block)) {
+                const items = block.split('\n')
+                    .filter(line => /^[-*+]\s/.test(line))
+                    .map(line => {
+                        const content = line.replace(/^[-*+]\s+/, '');
+                        return `<li>${inline(content)}</li>`;
+                    })
+                    .join('');
+                out.push(`<ul>${items}</ul>`);
+                continue;
+            }
+
+            // Ordered list - FIXED: Process line by line
+            if (/^\d+\.\s/.test(block)) {
+                const items = block.split('\n')
+                    .filter(line => /^\d+\.\s/.test(line))
+                    .map(line => {
+                        const content = line.replace(/^\d+\.\s+/, '');
+                        return `<li>${inline(content)}</li>`;
+                    })
+                    .join('');
+                out.push(`<ol>${items}</ol>`);
+                continue;
+            }
+
+            // Paragraph (default) - FIXED: Handle multi-line paragraphs better
+            const lines = block.split('\n').map(l => inline(l)).join('<br/>');
+            out.push(`<p>${lines}</p>`);
+        }
+
+        return out.join('\n');
+    }
+
+    // FIXED: More robust cursor placement
+    function renderMarkdownWithCursor(raw: string): string {
+        if (!raw) return '<span class="stream-cursor"></span>';
+        
+        try {
+            const html = renderMarkdown(raw);
+            
+            // Try to place cursor intelligently
+            const blockClose = /(<\/(?:p|li|h[1-6]|td|th|blockquote|code|pre|strong|em|del)>)\s*$/;
+            
+            if (blockClose.test(html)) {
+                return html.replace(blockClose, '<span class="stream-cursor"></span>$1');
+            }
+            
+            return html + '<span class="stream-cursor"></span>';
+        } catch (err) {
+            // Fallback: just show the text with cursor if rendering fails
+            console.error('Markdown rendering error:', err);
+            return `<p>${escapeHtml(raw)}<span class="stream-cursor"></span></p>`;
+        }
+    }
+
+    // HTML escaping helper
+    function escapeHtml(text: string): string {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    // ─── Core streaming logic ─────────────────────────────────────────────────
+    async function streamResponse(text: string, articles: any[] = []) {
+        error = '';
+        loading   = true;
+        streaming = false;
+
+        const assistantId = idCounter++;
+        messages = [...messages, { role: 'assistant', content: '', id: assistantId }];
+        await scrollToBottom(false);
+
+        try {
+            const body: Record<string, any> = {
+                message:      text,
+                source_mode:  sourceMode,
+                deep_reading: deepReading,
+            };
+
+            // Attach articles if provided (bypasses tool search in backend)
+            if (articles.length > 0) {
+                body.articles = articles.map((a: any) => ({
+                    item_id:     a.item_id    ?? '',
+                    title:       a.title      ?? '',
+                    description: a.description ?? '',
+                    link:        a.link       ?? '',
+                    feed_title:  a.feed_title ?? '',
+                    pub_date:    a.pub_date   ?? '',
+                    author:      a.author     ?? '',
+                }));
+            }
+
+            const res = await fetch('/api/chat', {
+                method:      'POST',
+                headers:     { 'Content-Type': 'application/json', 'Authorization': 'Bearer teste' },
+                body:        JSON.stringify(body),
+                credentials: 'include',
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.message || `Server error: ${res.status}`);
+            }
+            if (!res.body) throw new Error('No response body.');
+
+            streaming = true;
+            const reader  = res.body.getReader();
+            const decoder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                let piece = '';
+
+                if (chunk.includes('data: ')) {
+                    for (const line of chunk.split('\n')) {
+                        if (!line.startsWith('data: ')) continue;
+                        const payload = line.slice(6);
+                        if (payload === '[DONE]') break;
+                        piece += payload;
+                    }
+                } else {
+                    piece = chunk;
+                }
+
+                if (!piece) continue;
+
+                // FIXED: Update message content immutably
+                messages = messages.map(m =>
+                    m.id === assistantId ? { ...m, content: m.content + piece } : m
+                );
+
+                // Auto-scroll during streaming if user is near bottom
+                if (!showScrollBtn) {
+                    await tick();
+                    messagesEnd?.scrollIntoView({ behavior: 'instant' });
+                }
+            }
+        } catch (err: any) {
+            messages = messages.filter(m => m.id !== assistantId);
+            error = err.message;
+        } finally {
+            loading   = false;
+            streaming = false;
+        }
+    }
+
+    // ─── Send regular message ─────────────────────────────────────────────────
+    async function sendMessage() {
+        const text = input.trim();
+        if (!text || loading) return;
+
+        input = '';
+        if (textareaRef) textareaRef.style.height = 'auto';
+
+        messages = [...messages, { role: 'user', content: text, id: idCounter++ }];
+        await scrollToBottom(true);
+
+        await streamResponse(text);
+    }
+
+    function handleKeydown(e: KeyboardEvent) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    }
+
+    function clearChat() {
+        messages  = [INITIAL_MESSAGE];
+        error     = '';
+        idCounter = 0;
+    }
+</script>
+
+
+<div class="chat-root">
+
+    <!-- ── Header ──────────────────────────────────────────────────────────── -->
+    <header class="chat-header">
+        <div class="header-title">
+            <Sparkles size={14} />
+            Mota IA
+        </div>
+
+        <div class="header-badges">
+            {#if sourceMode === 'online'}
+                <span class="badge badge-online">Online</span>
+            {:else if sourceMode === 'mixed'}
+                <span class="badge badge-mixed">Misto</span>
+            {/if}
+            {#if deepReading}
+                <span class="badge badge-deep">Leitura profunda</span>
+            {/if}
+        </div>
+
+        <div class="header-right" bind:this={menuRef}>
+            <button
+                class="menu-btn {menuOpen ? 'active' : ''}"
+                onclick={() => menuOpen = !menuOpen}
+                title="Configurações"
+                aria-label="Configurações do chat"
+            >
+                <MoreVertical size={16} />
+            </button>
+
+            {#if menuOpen}
+                <div class="dropdown" role="menu">
+                    <p class="menu-section-label">Leitura</p>
+                    <div
+                        class="toggle-row"
+                        role="button"
+                        tabindex="0"
+                        onclick={() => deepReading = !deepReading}
+                        onkeydown={e => e.key === 'Enter' && (deepReading = !deepReading)}
+                    >
+                        <span class="toggle-label">
+                            <BookOpen size={14} />
+                            <span>
+                                Leitura profunda
+                                <span class="toggle-label-sub">Extrai texto completo dos artigos locais</span>
+                            </span>
+                        </span>
+                        <div class="pill {deepReading ? 'on' : 'off'}" aria-label="Toggle leitura profunda">
+                            <div class="pill-thumb"></div>
+                        </div>
+                    </div>
+
+                    <div class="menu-divider"></div>
+
+                    <p class="menu-section-label">Fontes</p>
+
+                    {#each ([
+                        { value: 'local',  label: 'Apenas local',          Icon: Database },
+                        { value: 'online', label: 'Apenas online',         Icon: Globe    },
+                        { value: 'mixed',  label: 'Misto (local + online)', Icon: Blend   },
+                    ] as const) as opt (opt.value)}
+                        <div
+                            class="source-option {sourceMode === opt.value ? 'selected' : ''}"
+                            role="radio"
+                            aria-checked={sourceMode === opt.value}
+                            tabindex="0"
+                            onclick={() => sourceMode = opt.value}
+                            onkeydown={e => e.key === 'Enter' && (sourceMode = opt.value)}
+                        >
+                            <div class="source-dot"><div class="source-dot-inner"></div></div>
+                            <opt.Icon size={13} class="source-icon" />
+                            {opt.label}
+                        </div>
+                    {/each}
+                </div>
+            {/if}
+        </div>
+    </header>
+
+    <!-- ── Scrollable messages ──────────────────────────────────────────────── -->
+    <div class="scroll-wrap">
+        <main
+            bind:this={scrollContainer}
+            onscroll={handleScroll}
+            class="flex-1 overflow-y-auto chat-scroll px-3 py-5 min-h-0 sm:px-5 md:px-6"
+            style="height: 100%;"
+        >
+            <div class="max-w-5xl mx-auto w-full pb-16">
+                <div class="space-y-4">
+                    {#each messages as msg (msg.id)}
+                        {#if msg.role === 'user'}
+                            <div class="msg-in flex justify-end">
+                                {#if msg.fromFeed && msg.feedTitles}
+                                    <!-- Feed posts bubble -->
+                                    <div class="feed-bubble">
+                                        <div class="feed-bubble-header">
+                                            <Newspaper size={13} />
+                                            <span>{msg.feedTitles.length} artigo{msg.feedTitles.length !== 1 ? 's' : ''} selecionado{msg.feedTitles.length !== 1 ? 's' : ''}</span>
+                                        </div>
+                                        <ul class="feed-bubble-list">
+                                            {#each msg.feedTitles as title}
+                                                <li>{title}</li>
+                                            {/each}
+                                        </ul>
+                                    </div>
+                                {:else}
+                                    <div class="user-bubble">{msg.content}</div>
+                                {/if}
+                            </div>
+                        {:else}
+                            {@const isLast     = msg === messages[messages.length - 1]}
+                            {@const isWaiting  = isLast && loading && !streaming && msg.content === ''}
+                            {@const isStreaming = isLast && loading && streaming}
+
+                            <div class="msg-in ai-block">
+                                <div class="ai-header">
+                                    <span class="ai-label">Mota</span>
+                                </div>
+
+                                {#if isWaiting}
+                                    <p class="getting-data">
+                                        {sourceMode === 'online' ? 'Pesquisando na internet…'
+                                        : sourceMode === 'mixed' ? 'Buscando em fontes locais e online…'
+                                        : 'Buscando nas fontes…'}
+                                    </p>
+                                {:else if isStreaming}
+                                    <div class="ai-prose">{@html renderMarkdownWithCursor(msg.content)}</div>
+                                {:else}
+                                    <div class="ai-prose">{@html renderMarkdown(msg.content)}</div>
+                                {/if}
+                            </div>
+                        {/if}
+                    {/each}
+                </div>
+
+                {#if error}
+                    <div class="flex justify-center mt-4">
+                        <p class="text-sm text-error bg-error/10 border border-error/20 rounded-xl px-4 py-2">
+                            {error}
+                        </p>
+                    </div>
+                {/if}
+
+                <div bind:this={messagesEnd}></div>
+            </div>
+        </main>
+
+        <div class="scroll-fade"></div>
+
+        <button
+            class="scroll-btn {showScrollBtn ? 'visible' : 'hidden'}"
+            onclick={() => scrollToBottom(true)}
+            title="Ir para o final"
+        >
+            <ChevronDown size={18} />
+        </button>
+    </div>
+
+    <!-- ── Footer ──────────────────────────────────────────────────────────── -->
+    <footer class="chat-footer">
+        <div class="max-w-5xl mx-auto w-full">
+            <div class="input-wrap">
+                <textarea
+                    bind:this={textareaRef}
+                    bind:value={input}
+                    oninput={autoResize}
+                    onkeydown={handleKeydown}
+                    placeholder="Pergunte qualquer coisa ao Mota…"
+                    rows={1}
+                    class="flex-1 text-sm text-base-content placeholder:text-base-content/30
+                           min-h-[26px] max-h-[180px] md:text-[0.95rem] md:min-h-[32px]"
+                ></textarea>
+
+                <button
+                    class="send-btn {input.trim() && !loading ? 'ready' : 'idle'}"
+                    onclick={sendMessage}
+                    disabled={loading || !input.trim()}
+                    title="Enviar (Enter)"
+                >
+                    <Send size={15} />
+                </button>
+            </div>
+
+            <div class="flex items-center justify-between mt-2 px-1">
+                <p class="text-[11px] text-base-content/20">
+                    Mota pode cometer erros — sempre verifique informações importantes.
+                </p>
+                <button
+                    class="flex items-center gap-1 text-[11px] text-base-content/25
+                           hover:text-base-content/50 transition-colors"
+                    onclick={clearChat}
+                    title="Nova conversa"
+                >
+                    <RotateCcw size={11} />
+                    <span>Limpar</span>
+                </button>
+            </div>
+        </div>
+    </footer>
+
+</div>
+
+
+<style>
+    /* ── Layout ──────────────────────────────────────────────── */
+    .chat-root {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+        display: flex;
+        flex-direction: column;
+        background: var(--color-base-100);
+    }
+    @media (min-width: 768px) {
+        .chat-root { left: 220px; bottom: 0; }
+    }
+
+    /* ── Header ──────────────────────────────────────────────── */
+    .chat-header {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        height: 48px;
+        border-bottom: 1px solid color-mix(in oklch, var(--color-base-300) 60%, transparent);
+        background: var(--color-base-100);
+        position: relative;
+        z-index: 20;
+    }
+    @media (min-width: 768px) {
+        .chat-header { padding: 0 32px; }
+    }
+
+    .header-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--color-base-content);
+        letter-spacing: 0.01em;
+    }
+
+    .header-badges { display: flex; align-items: center; gap: 5px; }
+    .badge {
+        font-size: 10px; font-weight: 600;
+        padding: 2px 7px; border-radius: 999px;
+        letter-spacing: 0.03em; text-transform: uppercase;
+    }
+    .badge-online { background: color-mix(in oklch, var(--color-info) 15%, transparent);    color: var(--color-info);    border: 1px solid color-mix(in oklch, var(--color-info) 30%, transparent); }
+    .badge-mixed  { background: color-mix(in oklch, var(--color-success) 12%, transparent); color: var(--color-success); border: 1px solid color-mix(in oklch, var(--color-success) 25%, transparent); }
+    .badge-deep   { background: color-mix(in oklch, var(--color-warning) 12%, transparent); color: var(--color-warning); border: 1px solid color-mix(in oklch, var(--color-warning) 25%, transparent); }
+
+    .header-right { display: flex; align-items: center; gap: 6px; position: relative; }
+
+    /* ── Menu button ─────────────────────────────────────────── */
+    .menu-btn {
+        width: 32px; height: 32px; border-radius: 8px;
+        border: none; background: transparent;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+        transition: background 150ms, color 150ms;
+    }
+    .menu-btn:hover { background: color-mix(in oklch, var(--color-base-300) 60%, transparent); color: var(--color-base-content); }
+    .menu-btn.active { background: color-mix(in oklch, var(--color-base-300) 80%, transparent); color: var(--color-base-content); }
+
+    /* ── Dropdown ────────────────────────────────────────────── */
+    .dropdown {
+        position: absolute; top: calc(100% + 8px); right: 0;
+        width: 240px;
+        background: var(--color-base-100);
+        border: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent);
+        border-radius: 14px;
+        box-shadow: 0 8px 32px color-mix(in oklch, var(--color-base-content) 12%, transparent);
+        padding: 8px; z-index: 100;
+        animation: dropIn 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    @keyframes dropIn {
+        from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+        to   { opacity: 1; transform: translateY(0)    scale(1); }
+    }
+
+    .menu-section-label {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+        padding: 6px 10px 4px;
+    }
+    .menu-divider { height: 1px; background: color-mix(in oklch, var(--color-base-300) 70%, transparent); margin: 6px 4px; }
+
+    .toggle-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 8px 10px; border-radius: 8px; cursor: pointer;
+        transition: background 140ms; gap: 10px;
+    }
+    .toggle-row:hover { background: color-mix(in oklch, var(--color-base-300) 50%, transparent); }
+    .toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--color-base-content); }
+    .toggle-label-sub { display: block; font-size: 10.5px; font-weight: 400; color: color-mix(in oklch, var(--color-base-content) 45%, transparent); margin-top: 1px; }
+
+    .pill { flex-shrink: 0; width: 36px; height: 20px; border-radius: 999px; position: relative; transition: background 200ms; cursor: pointer; }
+    .pill.off { background: color-mix(in oklch, var(--color-base-300) 90%, transparent); }
+    .pill.on  { background: var(--color-primary); }
+    .pill-thumb { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-base-100); box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1); }
+    .pill.on .pill-thumb { transform: translateX(16px); }
+
+    .source-option {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 10px; border-radius: 8px; cursor: pointer;
+        transition: background 140ms; font-size: 13px; font-weight: 500; color: var(--color-base-content);
+    }
+    .source-option:hover { background: color-mix(in oklch, var(--color-base-300) 50%, transparent); }
+    .source-option.selected { background: color-mix(in oklch, var(--color-primary) 12%, transparent); color: var(--color-primary); }
+    .source-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in oklch, var(--color-base-content) 25%, transparent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: border-color 150ms; }
+    .source-option.selected .source-dot { border-color: var(--color-primary); }
+    .source-dot-inner { width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary); opacity: 0; transform: scale(0); transition: opacity 150ms, transform 150ms; }
+    .source-option.selected .source-dot-inner { opacity: 1; transform: scale(1); }
+    .source-icon { color: color-mix(in oklch, var(--color-base-content) 40%, transparent); }
+    .source-option.selected .source-icon { color: var(--color-primary); }
+
+    /* ── Feed posts bubble ───────────────────────────────────── */
+    .feed-bubble {
+        max-width: min(78%, 560px);
+        background: var(--color-base-300);
+        border: 1.5px solid color-mix(in oklch, var(--color-primary) 20%, transparent);
+        border-radius: 18px 18px 4px 18px;
+        padding: 10px 14px 12px;
+        font-size: 0.875rem;
+        word-break: break-word;
+    }
+
+    .feed-bubble-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-primary);
+        margin-bottom: 8px;
+    }
+
+    .feed-bubble-list {
+        list-style: none;
+        padding: 0; margin: 0;
+        display: flex; flex-direction: column; gap: 4px;
+    }
+
+    .feed-bubble-list li {
+        font-size: 12.5px;
+        font-weight: 500;
+        color: color-mix(in oklch, var(--color-base-content) 75%, transparent);
+        line-height: 1.4;
+        padding-left: 10px;
+        position: relative;
+    }
+    .feed-bubble-list li::before {
+        content: '·';
+        position: absolute;
+        left: 0;
+        color: var(--color-primary);
+        font-weight: 700;
+    }
+
+    /* ── User bubble ─────────────────────────────────────────── */
+    .user-bubble {
+        display: inline-block;
+        max-width: min(72%, 520px);
+        background: var(--color-base-300);
+        color: #111;
+        border-radius: 18px 18px 4px 18px;
+        padding: 10px 15px;
+        font-size: 0.9rem;
+        line-height: 1.55;
+        word-break: break-word;
+        border: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, #000 5%);
+    }
+
+    /* ── Scroll ──────────────────────────────────────────────── */
+    .chat-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in oklch, var(--color-primary) 20%, transparent) transparent;
+    }
+    .chat-scroll::-webkit-scrollbar { width: 4px; }
+    .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+    .chat-scroll::-webkit-scrollbar-thumb { background: color-mix(in oklch, var(--color-primary) 20%, transparent); border-radius: 4px; }
+
+    .scroll-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .scroll-fade { position: absolute; bottom: 0; left: 0; right: 0; height: 72px; background: linear-gradient(to bottom, transparent, var(--color-base-100)); pointer-events: none; z-index: 1; }
+
+    /* ── Streaming cursor ────────────────────────────────────── */
+    :global(.stream-cursor) {
+        display: inline-block; width: 2px; height: 0.9em;
+        background: var(--color-primary); border-radius: 1px;
+        margin-left: 2px; vertical-align: text-bottom;
+        animation: cursorBlink 0.9s step-end infinite;
+    }
+    @keyframes cursorBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* ── Waiting ─────────────────────────────────────────────── */
+    .getting-data {
+        font-style: italic; font-size: 0.875rem;
+        color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+        animation: fadePulse 1.8s ease-in-out infinite;
+    }
+    @keyframes fadePulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+    /* ── Message animation ───────────────────────────────────── */
+    .msg-in { animation: msgSlide 0.2s cubic-bezier(0.22, 1, 0.36, 1) both; }
+    @keyframes msgSlide { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ── AI block ────────────────────────────────────────────── */
+    .ai-block { padding: 4px 0 8px; }
+    .ai-header { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+    .ai-label { font-size: 11.5px; font-weight: 700; color: var(--color-primary); letter-spacing: 0.04em; text-transform: uppercase; }
+
+    /* ── AI Prose ────────────────────────────────────────────── */
+    .ai-prose { font-size: 0.925rem; line-height: 1.78; color: var(--color-base-content); }
+    .ai-prose :global(p)            { margin: 0 0 0.75em; }
+    .ai-prose :global(p:last-child) { margin-bottom: 0; }
+    .ai-prose :global(h1) { font-size: 1.35em; font-weight: 700; margin: 1.1em 0 0.4em; }
+    .ai-prose :global(h2) { font-size: 1.15em; font-weight: 700; margin: 1em 0 0.35em; }
+    .ai-prose :global(h3) { font-size: 1em;    font-weight: 700; margin: 0.85em 0 0.3em; }
+    .ai-prose :global(h4) { font-size: 0.95em; font-weight: 600; margin: 0.8em 0 0.25em; }
+    .ai-prose :global(strong) { font-weight: 700; }
+    .ai-prose :global(em)     { font-style: italic; }
+    .ai-prose :global(del)    { text-decoration: line-through; opacity: 0.6; }
+    .ai-prose :global(ul) { list-style: disc;    padding-left: 1.5em; margin: 0.5em 0 0.75em; }
+    .ai-prose :global(ol) { list-style: decimal; padding-left: 1.5em; margin: 0.5em 0 0.75em; }
+    .ai-prose :global(li) { margin-bottom: 0.3em; }
+    .ai-prose :global(li:last-child) { margin-bottom: 0; }
+    .ai-prose :global(blockquote) { border-left: 3px solid var(--color-primary); padding: 0.25em 0 0.25em 1em; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); margin: 0.75em 0; font-style: italic; }
+    .ai-prose :global(hr) { border: none; border-top: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); margin: 1.1em 0; }
+    .ai-prose :global(a) { color: var(--color-primary); text-decoration: underline; text-underline-offset: 2px; }
+    .ai-prose :global(a:hover) { opacity: 0.75; }
+    .ai-prose :global(code) { background: color-mix(in oklch, var(--color-primary) 9%, transparent); border: 1px solid color-mix(in oklch, var(--color-primary) 20%, transparent); border-radius: 5px; padding: 1px 6px; font-size: 0.83em; font-family: 'JetBrains Mono', monospace; color: var(--color-primary); }
+    .ai-prose :global(pre) { background: var(--color-base-200); border: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); border-radius: 10px; padding: 1em 1.2em; overflow-x: auto; margin: 0.75em 0; font-size: 0.83em; line-height: 1.6; }
+    .ai-prose :global(pre code) { background: transparent; border: none; padding: 0; color: var(--color-base-content); font-size: 1em; }
+    .ai-prose :global(.md-table-wrap) { overflow-x: auto; margin: 0.75em 0; border-radius: 10px; border: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); }
+    .ai-prose :global(table) { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+    .ai-prose :global(thead) { background: color-mix(in oklch, var(--color-base-200) 80%, transparent); }
+    .ai-prose :global(th) { padding: 8px 12px; font-weight: 600; font-size: 0.85em; letter-spacing: 0.02em; text-transform: uppercase; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); border-bottom: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); }
+    .ai-prose :global(td) { padding: 7px 12px; border-bottom: 1px solid color-mix(in oklch, var(--color-base-300) 50%, transparent); vertical-align: top; }
+    .ai-prose :global(tr:last-child td) { border-bottom: none; }
+    .ai-prose :global(tbody tr:hover) { background: color-mix(in oklch, var(--color-base-200) 40%, transparent); }
+
+    /* ── Textarea ────────────────────────────────────────────── */
+    textarea { resize: none; line-height: 1.55; outline: none !important; box-shadow: none !important; border: none; background: transparent; -webkit-appearance: none; }
+    textarea:focus, textarea:focus-visible { outline: none !important; box-shadow: none !important; border: none !important; }
+
+    /* ── Input wrap ──────────────────────────────────────────── */
+    .input-wrap {
+        display: flex; align-items: flex-end; gap: 10px;
+        background: var(--color-base-200);
+        border: 1.5px solid color-mix(in oklch, var(--color-base-300) 90%, transparent);
+        border-radius: 16px; padding: 12px 12px 12px 18px;
+        transition: border-color 180ms, box-shadow 180ms;
+    }
+    .input-wrap:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 10%, transparent); }
+
+    /* ── Send button ─────────────────────────────────────────── */
+    .send-btn { flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; border: none; display: flex; align-items: center; justify-content: center; transition: background 160ms, box-shadow 160ms, transform 100ms; cursor: pointer; }
+    .send-btn.ready { background: var(--color-primary); color: var(--color-primary-content); }
+    .send-btn.ready:hover { box-shadow: 0 4px 12px color-mix(in oklch, var(--color-primary) 35%, transparent); transform: translateY(-1px); }
+    .send-btn.ready:active { transform: scale(0.95); }
+    .send-btn.idle { background: color-mix(in oklch, var(--color-base-300) 60%, transparent); color: color-mix(in oklch, var(--color-base-content) 25%, transparent); cursor: not-allowed; }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    .chat-footer { flex-shrink: 0; background: var(--color-base-100); padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px)); }
+    @media (min-width: 768px) {
+        .chat-footer { padding: 12px 32px 16px; }
+        .input-wrap  { padding: 14px 14px 14px 20px; border-radius: 18px; }
+    }
+
+    /* ── Scroll button ───────────────────────────────────────── */
+    .scroll-btn { position: absolute; bottom: 16px; right: 16px; z-index: 10; width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); background: var(--color-base-100); box-shadow: 0 2px 12px color-mix(in oklch, var(--color-base-content) 12%, transparent); display: flex; align-items: center; justify-content: center; cursor: pointer; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); transition: opacity 200ms, transform 200ms, box-shadow 160ms; }
+    .scroll-btn:hover { box-shadow: 0 4px 16px color-mix(in oklch, var(--color-base-content) 18%, transparent); transform: translateY(-1px); color: var(--color-base-content); }
+    .scroll-btn.hidden  { opacity: 0; pointer-events: none; transform: translateY(6px); }
+    .scroll-btn.visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+</style>

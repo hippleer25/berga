@@ -15,11 +15,18 @@
   "clearFolderFilter": "Ordnerfilter löschen",
   "feed": "Feed",
   "clearFeedFilter": "Feed-Filter löschen",
+  "tag": "Tag",
+  "clearTagFilter": "Tag-Filter löschen",
+  "noTagsYet": "Noch keine Tags",
+  "createTag": "Tag erstellen",
+  "tagSelected": "Taggen",
   "tryAgain": "Erneut versuchen",
   "noPostsFound": "Keine Beiträge gefunden.",
   "allCaughtUp": "Du bist auf dem neuesten Stand ✓",
   "noFoldersYet": "Noch keine Ordner",
   "noFeedsYet": "Noch keine Feeds",
+  "saved": "Gespeichert",
+  "noSavedYet": "Noch keine gespeicherten Artikel.",
   "loadError": "Fehler beim Laden des Feeds",
   "articles": "Artikel"
 }

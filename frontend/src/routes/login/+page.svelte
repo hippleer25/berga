@@ -23,16 +23,20 @@
 
   let passwordInput: HTMLInputElement;
 
-  let isEmail = $derived(identifier.includes("@"));
+	let isEmail = $derived(identifier.includes("@"));
 
- let showInstanceField = $derived(
-   typeof window !== 'undefined' &&
-   (!!(window as any).Capacitor?.isNativePlatform?.() || window.location.origin !== `https://${get(instance)}`)
- );
+	let showInstanceField = $derived(
+		typeof window !== 'undefined' &&
+		(!!(window as any).Capacitor?.isNativePlatform?.() || window.location.origin !== `https://${get(instance)}`)
+	);
 
-  $effect(() => {
-    instance.setInstance(instanceUrl);
-  });
+	let instanceTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		if (instanceTimer) clearTimeout(instanceTimer);
+		instanceTimer = setTimeout(() => {
+			instance.setInstance(instanceUrl);
+		}, 500);
+	});
 
   async function login() {
     loading = true;

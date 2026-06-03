@@ -112,6 +112,7 @@ _PAYLOAD_FIELDS: frozenset[str] = frozenset({
     "feed_title",
     "feed_icon",
     "url_hash",
+    "_model_fp",
     # Computed by the ranking pipeline
     "item_id",
     "relevance_score",

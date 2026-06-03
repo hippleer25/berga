@@ -4,7 +4,8 @@ import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, ".");
+  const env = loadEnv(mode, "..");
+  const allowedOrigins = env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGINS || "";
   const API_TARGET = env.API_URL || "http://backend:5746";
 
   return {
@@ -24,31 +25,58 @@ export default defineConfig(({ mode }) => {
           "icons/berga_1024.png",
         ],
         manifest: false,
-        workbox: {
-          navigateFallback: "index.html",
-          globPatterns: [
-            "**/*.{js,css,html,ico,svg,woff2,ttf}",
-            "icons/*.png",
-          ],
-          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
-          runtimeCaching: [
-            {
-              urlPattern: /^\/api\/.*/i,
-              handler: "NetworkFirst",
-              options: {
-                cacheName: "api-cache",
-                expiration: {
-                  maxEntries: 200,
-                  maxAgeSeconds: 60 * 60,
-                },
-                networkTimeoutSeconds: 10,
-                cacheableResponse: {
-                  statuses: [0, 200],
-                },
-              },
-            },
-          ],
-        },
+		workbox: {
+			navigateFallback: "index.html",
+			globPatterns: [
+				"**/*.{js,css,html,ico,svg,woff2,ttf}",
+				"icons/*.png",
+			],
+			maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+			runtimeCaching: [
+				{
+					urlPattern: ({ url }) => {
+						const isFeed = [
+							'/api/feed/recommendations',
+							'/api/feed/recents',
+							'/api/feed/saved',
+							'/api/feed/events',
+							'/api/list-subscriptions',
+						].some(path => url.pathname.startsWith(path));
+						return isFeed;
+					},
+					handler: "StaleWhileRevalidate",
+					options: {
+						cacheName: "feed-cache",
+						expiration: {
+							maxEntries: 100,
+							maxAgeSeconds: 60 * 60,
+						},
+						cacheableResponse: {
+							statuses: [200],
+						},
+					},
+				},
+				{
+					urlPattern: ({ url }) => {
+						const isApi = url.pathname.startsWith('/api/');
+						const isAuth = ['/api/login', '/api/logout', '/api/register', '/api/meu-perfil'].some(path => url.pathname.startsWith(path));
+						return isApi && !isAuth;
+					},
+					handler: "NetworkFirst",
+					options: {
+						cacheName: "api-cache",
+						expiration: {
+							maxEntries: 200,
+							maxAgeSeconds: 60 * 60,
+						},
+						networkTimeoutSeconds: 10,
+						cacheableResponse: {
+							statuses: [200],
+						},
+					},
+				},
+			],
+		},
       }),
     ],
     css: {
@@ -56,16 +84,19 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: true,
-      allowedHosts: ["berga.hippler.net.br"],
+      allowedHosts: allowedOrigins
+        ? allowedOrigins.split(",").map((h) => h.trim().replace(/^https?:\/\//, ""))
+        : [],
       fs: {
         allow: [".."],
       },
-      proxy: {
-        "/api": {
-          target: API_TARGET,
-          changeOrigin: true,
-        },
-      },
+		proxy: {
+			"/api": {
+				target: API_TARGET,
+				changeOrigin: true,
+				rewrite: (path) => path,
+			},
+		},
     },
   };
 });

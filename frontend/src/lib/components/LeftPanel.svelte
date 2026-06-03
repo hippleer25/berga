@@ -342,13 +342,14 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
                     {@const isOver = dragOverKey === groupKey}
                     {@const indent = group.depth * 14}
 
-                    <div
-                        class="folder-block"
-                        class:drag-over={isOver}
-                        ondragover={(e) => onDragOver(e, groupKey)}
-                        ondragleave={onDragLeave}
-                        ondrop={(e) => onDrop(e, group)}
-                    >
+<div
+			class="folder-block"
+			class:drag-over={isOver}
+			role="region"
+			ondragover={(e) => onDragOver(e, groupKey)}
+			ondragleave={onDragLeave}
+			ondrop={(e) => onDrop(e, group)}
+		>
                         <!-- Folder row -->
                         <div
                             class="folder-row"
@@ -364,14 +365,14 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
                             }}
                             onkeydown={(e) => e.key === 'Enter' && toggleFolder(groupKey)}
                         >
-                            <span class="folder-chevron" onclick={(e) => { e.stopPropagation(); toggleFolder(groupKey); }}>
+                            <button class="folder-chevron" onclick={(e) => { e.stopPropagation(); toggleFolder(groupKey); }} aria-label={$t('leftpanel.toggleFolder')}>
                                 {#if folderExpanded}
                                     <ChevronDown size={14} strokeWidth={2.5} />
                                 {:else}
                                     <ChevronRight size={14} strokeWidth={2.5} />
-                                {/if}
-                            </span>
-                            <span class="folder-icon">
+{/if}
+		</button>
+		<span class="folder-icon">
                                 {#if folderExpanded}
                                     <FolderOpen size={13} strokeWidth={2} />
                                 {:else}
@@ -399,19 +400,19 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
 
                         <!-- Feed list -->
                         {#if folderExpanded && group.feeds.length > 0}
-                            <ul class="feed-list">
-                                {#each group.feeds as feed (feed.feed_sha256)}
-                                    <li
-                                        class="feed-row"
-                                        style="padding-left: {28 + indent}px;"
-                                        draggable={true}
-                                        ondragstart={(e) => onDragStart(e, 'feed', feed.feed_sha256!, groupKey)}
-                                        onclick={() => navigateToFeed(feed.feed_sha256!)}
-                                        role="button"
-                                        tabindex="0"
-                                        onkeydown={(e) => e.key === 'Enter' && navigateToFeed(feed.feed_sha256!)}
-                                        title={feedDisplayTitle(feed)}
-                                    >
+<ul class="feed-list" role="list">
+		{#each group.feeds as feed (feed.feed_sha256)}
+			<div
+				class="feed-row"
+				role="listitem"
+style="padding-left: {28 + indent}px;"
+				draggable={true}
+				ondragstart={(e) => onDragStart(e, 'feed', feed.feed_sha256!, groupKey)}
+				onclick={() => navigateToFeed(feed.feed_sha256!)}
+				tabindex="0"
+				onkeydown={(e) => e.key === 'Enter' && navigateToFeed(feed.feed_sha256!)}
+				title={feedDisplayTitle(feed)}
+			>
                                         <span class="drag-handle" aria-hidden="true">⠿</span>
                                         {#if feed.icon}
                                             <img
@@ -440,9 +441,9 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
                                             aria-label="{$t('leftpanel.feedOptions')}"
                                         >
                                             <MoreHorizontal size={14} strokeWidth={2} />
-                                        </button>
-                                    </li>
-                                {/each}
+</button>
+			</div>
+		{/each}
                             </ul>
                         {/if}
                     </div>

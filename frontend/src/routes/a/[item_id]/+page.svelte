@@ -2,25 +2,27 @@
     import { page } from '$app/stores';
     import { goto, beforeNavigate } from '$app/navigation';
     import { onMount } from 'svelte';
-    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Layers } from '@lucide/svelte';
+    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Layers, Tag, X } from '@lucide/svelte';
 
 import { t, locale } from 'svelte-i18n';
 import { get } from 'svelte/store';
 import { apiFetch } from '$lib/api';
 import { flushPending } from '$lib/stores/viewTracker';
+	import { clearFeedCache } from '$lib/stores/feedCache';
 
 type ItemMeta = {
-        item_id: string;
-        title: string;
-        link: string;
-        feed_title?: string;
-        feed_icon?: string;
-        author?: string;
-        pub_date?: string;
-        liked?: boolean;
-        disliked?: boolean;
-        saved?: boolean;
-    };
+  item_id: string;
+  title: string;
+  link: string;
+  feed_title?: string;
+  feed_icon?: string;
+  feed_sha256?: string;
+  author?: string;
+  pub_date?: string;
+  liked?: boolean;
+  disliked?: boolean;
+  saved?: boolean;
+};
 
     type SimilarArticle = {
         item_id: string;
@@ -31,19 +33,20 @@ type ItemMeta = {
         similarity_score?: number;
     };
 
-    type ReaderData = {
-        title: string;
-        content_html: string;
-        url: string;
-        feed_title?: string;
-        feed_icon?: string;
-        author?: string;
-        pub_date?: string;
-        liked?: boolean;
-        disliked?: boolean;
-        saved?: boolean;
-        similar_articles?: SimilarArticle[];
-    };
+type ReaderData = {
+  title: string;
+  content_html: string;
+  url: string;
+  feed_title?: string;
+  feed_icon?: string;
+  feed_sha256?: string;
+  author?: string;
+  pub_date?: string;
+  liked?: boolean;
+  disliked?: boolean;
+  saved?: boolean;
+  similar_articles?: SimilarArticle[];
+};
 
     let loadedItemId = $state<string | null>(null);
 
@@ -65,11 +68,19 @@ type ItemMeta = {
     let resumeLoading  = $state(false);
     let resumeError    = $state('');
 
-    // View toggle
-    let webView       = $state(false);
-    let iframeLoading = $state(false);
-    let iframeBlocked = $state(false);
-    let iframeTimeout: ReturnType<typeof setTimeout> | null = null;
+type ArticleTag = { tag_id: number; name: string; color?: string; source: string };
+type UserTag = { id: number; name: string; color?: string };
+
+let articleTags = $state<ArticleTag[]>([]);
+let userTags = $state<UserTag[]>([]);
+let tagDropdownOpen = $state(false);
+let tagAssignLoading = $state(false);
+
+// View toggle
+let webView = $state(false);
+let iframeLoading = $state(false);
+let iframeBlocked = $state(false);
+let iframeTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const IFRAME_TIMEOUT_MS = 12_000;
 
@@ -124,32 +135,99 @@ const res = await apiFetch(`/api/load-text/${id}`, {
                 catch { return ''; }
             })();
 
-            meta = {
-                item_id: id,
-                title:      data.title ?? '',
-                link:       data.url ?? '',
-                feed_title: data.feed_title ?? feedTitleFallback,
-                feed_icon:  data.feed_icon,
-                author:     data.author,
-                pub_date:   data.pub_date,
-                liked:      data.liked,
-                disliked:   data.disliked,
-                saved:      data.saved,
-            };
+      meta = {
+        item_id: id,
+        title: data.title ?? '',
+        link: data.url ?? '',
+        feed_title: data.feed_title ?? feedTitleFallback,
+        feed_icon: data.feed_icon,
+        feed_sha256: data.feed_sha256,
+        author: data.author,
+        pub_date: data.pub_date,
+        liked: data.liked,
+        disliked: data.disliked,
+        saved: data.saved,
+      };
 
             liked    = data.liked    ?? false;
             disliked = data.disliked ?? false;
             saved    = data.saved    ?? false;
 
-            if (data.title) document.title = `${data.title} — Berga`;
-        } catch (err: any) {
+		if (data.title) document.title = `${data.title} — Berga`;
+		loadArticleTags(id);
+	} catch (err: any) {
             error = err.message || get(t)('article.loadError');
-        } finally {
-            loading = false;
-        }
-    }
+	} finally {
+		loading = false;
+	}
+ }
 
-onMount(() => {
+async function loadArticleTags(id: string) {
+	try {
+		const [tagRes, userRes] = await Promise.all([
+			apiFetch(`/api/tags/article/${id}`, { credentials: 'include' }),
+			apiFetch(`/api/tags`, { credentials: 'include' }),
+		]);
+		if (tagRes.ok) {
+			const data = await tagRes.json();
+			articleTags = data.tags ?? [];
+		}
+		if (userRes.ok) {
+			const data = await userRes.json();
+			userTags = data.tags ?? [];
+		}
+	} catch { /* non-critical */ }
+}
+
+async function assignTag(tagId: number) {
+	if (!loadedItemId || tagAssignLoading) return;
+	tagAssignLoading = true;
+	try {
+		const res = await apiFetch('/api/tags/assign', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ item_id: loadedItemId, tag_id: tagId }),
+		});
+if (res.ok) {
+				clearFeedCache();
+				const ut = userTags.find(t => t.id === tagId);
+			if (ut && !articleTags.some(t => t.tag_id === tagId)) {
+				articleTags = [...articleTags, { tag_id: ut.id, name: ut.name, color: ut.color, source: 'manual' }];
+			}
+			tagDropdownOpen = false;
+		}
+	} catch { /* */ }
+	finally { tagAssignLoading = false; }
+}
+
+async function unassignTag(tagId: number) {
+	if (!loadedItemId || tagAssignLoading) return;
+	tagAssignLoading = true;
+	try {
+		const res = await apiFetch('/api/tags/assign', {
+			method: 'DELETE',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ item_id: loadedItemId, tag_id: tagId }),
+		});
+if (res.ok) {
+				clearFeedCache();
+				articleTags = articleTags.filter(t => t.tag_id !== tagId);
+		}
+	} catch { /* */ }
+	finally { tagAssignLoading = false; }
+}
+
+function toggleTagDropdown() {
+	tagDropdownOpen = !tagDropdownOpen;
+}
+
+function outsideClick(e: MouseEvent) {
+	if (tagDropdownOpen) tagDropdownOpen = false;
+}
+
+	onMount(() => {
     const id = $page.params.item_id;
     if (id) loadArticle(id);
 
@@ -287,31 +365,33 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         }
     }
 
-    async function toggleSave() {
-        if (saveLoading) return;
-        saveLoading = true;
-        try {
-const res = await apiFetch(`/api/feed/${loadedItemId}/save`, {
-      method: 'POST',
+async function toggleSave() {
+  if (saveLoading) return;
+  saveLoading = true;
+  try {
+    const res = await apiFetch(`/api/feed/${loadedItemId}/save`, {
+      method: saved ? 'DELETE' : 'POST',
       credentials: 'include'
     });
-            if (!res.ok) throw new Error();
-            saved = !saved;
-        } catch {
-            console.error('Erro ao salvar');
-        } finally {
-            saveLoading = false;
-        }
-    }
+    if (!res.ok) throw new Error();
+    saved = !saved;
+  } catch {
+    console.error('Erro ao salvar');
+  } finally {
+    saveLoading = false;
+  }
+}
 </script>
 
 <svelte:head>
-    {#if meta?.title}
-        <title>{meta.title} — Berga</title>
-        <meta property="og:title" content={meta.title} />
-        <meta property="og:url" content={$page.url.href} />
-    {/if}
+	{#if meta?.title}
+	<title>{meta.title} — Berga</title>
+	<meta property="og:title" content={meta.title} />
+	<meta property="og:url" content={$page.url.href} />
+	{/if}
 </svelte:head>
+
+<svelte:window onclick={outsideClick} />
 
 <div class="reader-page" class:web-mode={webView}>
 
@@ -323,84 +403,35 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/save`, {
                 <span class="back-label">{$t('article.backToFeed')}</span>
             </button>
 
-            <div class="source-info">
-                {#if meta?.feed_icon}
-                    <img src={meta.feed_icon} alt={meta.feed_title} class="source-icon" />
-                {/if}
-                <span class="source-name">{meta?.feed_title ?? ''}</span>
-            </div>
+        <div class="top-spacer"></div>
 
-            <div class="top-actions">
-                <button
-                    class="ghost-btn"
-                    class:active-view={webView}
-                    onclick={toggleView}
-                    title={webView ? $t('article.viewExtractedText') : $t('article.viewOriginalPage')}
-                    disabled={loading || !!error}
-                >
-                    {#if webView}
-                        <FileText size={16} />
-                    {:else}
-                        <Globe size={16} />
-                    {/if}
-                </button>
+        <div class="top-actions">
+          <button
+            class="ghost-btn"
+            class:active-view={webView}
+            onclick={toggleView}
+            title={webView ? $t('article.viewExtractedText') : $t('article.viewOriginalPage')}
+            disabled={loading || !!error}
+          >
+            {#if webView}
+              <FileText size={16} />
+            {:else}
+              <Globe size={16} />
+            {/if}
+          </button>
 
-                <div class="divider"></div>
-
-                <button
-                    class="ghost-btn"
-                    class:active-action={liked}
-                    onclick={() => sendVote('like')}
-                    title="{$t('article.like')}"
-                    disabled={likeLoading}
-                >
-                    {#if likeLoading}
-                        <span class="loading loading-spinner loading-xs"></span>
-                    {:else}
-                        <Heart size={16} fill={liked ? 'currentColor' : 'none'} />
-                    {/if}
-                </button>
-
-                <button
-                    class="ghost-btn"
-                    class:active-action={disliked}
-                    onclick={() => sendVote('dislike')}
-                    title="{$t('article.dislike')}"
-                    disabled={dislikeLoading}
-                >
-                    {#if dislikeLoading}
-                        <span class="loading loading-spinner loading-xs"></span>
-                    {:else}
-                        <ThumbsDown size={16} fill={disliked ? 'currentColor' : 'none'} />
-                    {/if}
-                </button>
-
-                <button
-                    class="ghost-btn"
-                    class:active-save={saved}
-                    onclick={toggleSave}
-                    title="{$t('article.save')}"
-                    disabled={saveLoading}
-                >
-                    {#if saveLoading}
-                        <span class="loading loading-spinner loading-xs"></span>
-                    {:else}
-                        <Bookmark size={16} fill={saved ? 'currentColor' : 'none'} />
-                    {/if}
-                </button>
-
-                {#if meta?.link}
-                    <a
-                        href={meta.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="ghost-btn"
-                        title="{$t('article.openOriginal')}"
-                    >
-                        <ExternalLink size={16} />
-                    </a>
-                {/if}
-            </div>
+          {#if meta?.link}
+            <a
+              href={meta.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="ghost-btn"
+              title="{$t('article.openOriginal')}"
+            >
+              <ExternalLink size={16} />
+            </a>
+          {/if}
+        </div>
         </div>
     </header>
 
@@ -465,19 +496,124 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/save`, {
                 {:else if readerData}
                     <article class="article-header">
 
-                        <div class="meta-row">
-                            {#if meta?.author}
-                                <span class="meta-author">{meta.author}</span>
-                            {/if}
-                            {#if meta?.pub_date}
-                                <span class="meta-sep">·</span>
-                                <span class="meta-date">{formatDate(meta.pub_date)}</span>
-                            {/if}
-                        </div>
+          <div class="meta-row">
+            <a
+              href={meta?.feed_sha256 ? `/f/${meta.feed_sha256}` : undefined}
+              class="meta-feed-link"
+            >
+              {#if meta?.feed_icon}
+                <img src={meta.feed_icon} alt={meta.feed_title ?? ''} class="meta-feed-icon" onerror={(e: Event) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+              {/if}
+              <span class="meta-feed-title">{meta?.feed_title ?? ''}</span>
+            </a>
+            {#if meta?.author}
+              <span class="meta-sep">·</span>
+              <span class="meta-author">{meta.author}</span>
+            {/if}
+            {#if meta?.pub_date}
+              <span class="meta-date">{formatDate(meta.pub_date)}</span>
+            {/if}
+          </div>
 
-                        <h1 class="article-title">{readerData.title}</h1>
+          <h1 class="article-title">{readerData.title}</h1>
 
-                        <!-- ── Caixa de resumo (AI) ─────────────────── -->
+          <div class="article-actions">
+            <button
+              class="action-btn"
+              class:action-active={liked}
+              onclick={() => sendVote('like')}
+              title="{$t('article.like')}"
+              disabled={likeLoading}
+            >
+              {#if likeLoading}
+                <span class="loading loading-spinner loading-xs"></span>
+              {:else}
+                <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
+              {/if}
+            </button>
+
+            <button
+              class="action-btn"
+              class:action-active={disliked}
+              onclick={() => sendVote('dislike')}
+              title="{$t('article.dislike')}"
+              disabled={dislikeLoading}
+            >
+              {#if dislikeLoading}
+                <span class="loading loading-spinner loading-xs"></span>
+              {:else}
+                <ThumbsDown size={15} fill={disliked ? 'currentColor' : 'none'} />
+              {/if}
+            </button>
+
+		<button
+			class="action-btn action-save"
+			class:action-save-active={saved}
+			onclick={toggleSave}
+			title="{$t('article.save')}"
+			disabled={saveLoading}
+		>
+			{#if saveLoading}
+				<span class="loading loading-spinner loading-xs"></span>
+			{:else}
+				<Bookmark size={15} fill={saved ? 'currentColor' : 'none'} />
+			{/if}
+		</button>
+
+		<div class="tag-assign-wrap">
+			<button
+				class="action-btn"
+				onclick={toggleTagDropdown}
+				title="{$t('article.tagArticle')}"
+				aria-expanded={tagDropdownOpen}
+				aria-haspopup="listbox"
+			>
+				<Tag size={15} />
+			</button>
+			{#if tagDropdownOpen}
+				<div class="tag-dropdown" onclick={(e) => e.stopPropagation()}>
+					{#if userTags.filter(ut => !articleTags.some(at => at.tag_id === ut.id)).length === 0}
+						<p class="tag-dropdown-empty">{$t('article.allTagsAssigned')}</p>
+					{:else}
+						{#each userTags.filter(ut => !articleTags.some(at => at.tag_id === ut.id)) as ut (ut.id)}
+							<button
+								class="tag-dropdown-item"
+								onclick={() => assignTag(ut.id)}
+								disabled={tagAssignLoading}
+							>
+								<span class="tag-dot" style="background: {ut.color || '#3b82f6'}"></span>
+								{ut.name}
+							</button>
+						{/each}
+					{/if}
+				</div>
+			{/if}
+		</div>
+	</div>
+
+	{#if articleTags.length > 0}
+		<div class="article-tag-chips">
+			{#each articleTags as at (at.tag_id)}
+				<span class="article-tag-chip" style="--chip-color: {at.color || '#3b82f6'}">
+					{at.name}
+					<span class="chip-source">{$t(`tags.source_${at.source}`)}</span>
+					{#if at.source === 'manual'}
+						<button
+							class="chip-remove"
+							onclick={() => unassignTag(at.tag_id)}
+							disabled={tagAssignLoading}
+							title="{$t('tags.removeTag')}"
+							aria-label="{$t('tags.removeTag')}: {at.name}"
+						>
+							<X size={10} />
+						</button>
+					{/if}
+				</span>
+			{/each}
+		</div>
+	{/if}
+
+          <!-- ── Caixa de resumo (AI) ─────────────────── -->
                         <button
                             class="resume-toggle"
                             onclick={fetchResume}
@@ -622,34 +758,16 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/save`, {
     }
     .ghost-btn:disabled { opacity: 0.4; cursor: default; }
 
-    /* Active action states */
-    .ghost-btn.active-action { color: var(--color-error); } /* Like */
-    .ghost-btn.active-save { color: var(--color-accent); } /* Save with yellow */
-    .ghost-btn.active-view { color: var(--color-accent); }
+/* Active view state */
+.ghost-btn.active-view { color: var(--color-accent); }
 
     .back-btn { margin-right: 8px; }
     .back-label { display: none; }
     @media (min-width: 768px) { .back-label { display: inline; } }
 
-    .source-info {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        min-width: 0;
-    }
-    .source-icon { width: 16px; height: 16px; border-radius: 50%; object-fit: contain; flex-shrink: 0; }
-    .source-name {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--color-accent);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+.top-spacer { flex: 1; }
 
-    .top-actions { display: flex; align-items: center; gap: 2px; }
-    .divider { width: 1px; height: 20px; background: var(--color-base-300); margin: 0 6px; flex-shrink: 0; }
+.top-actions { display: flex; align-items: center; gap: 2px; }
 
     /* ── Content Centralizer ─────────────────────────────────── */
     .reader-content {
@@ -670,26 +788,165 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/save`, {
         margin-bottom: 3rem;
     }
 
-    .meta-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-bottom: 16px;
-    }
-    .meta-author { font-size: 14px; font-weight: 600; color: var(--color-base-content); }
-    .meta-date   { font-size: 13px; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); }
-    .meta-sep    { color: var(--color-base-300); }
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+.meta-feed-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 0 1 auto;
+  text-decoration: none;
+  color: inherit;
+}
+.meta-feed-icon { width: 15px; height: 15px; border-radius: 50%; object-fit: contain; flex-shrink: 0; }
+.meta-feed-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.meta-author {
+  font-size: 11.5px;
+  color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.meta-sep { font-size: 11px; color: color-mix(in oklch, var(--color-base-content) 25%, transparent); flex-shrink: 0; }
+.meta-date {
+  margin-left: auto;
+  font-size: 11px;
+  color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-left: 8px;
+}
 
     /* Título em Serifa (Georgia), pesamento e espaçamento de jornal */
 .article-title {
-font-family: var(--font-post-title);
-        font-size: clamp(1.8rem, 5vw, 2.5rem);
-        font-weight: 500;
-        line-height: 1.2;
-        letter-spacing: -0.02em;
-        color: var(--color-base-content);
-        margin: 0 0 24px;
-    }
+  font-family: var(--font-post-title);
+  font-size: clamp(1.8rem, 5vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--color-base-content);
+  margin: 0 0 12px;
+}
+
+.article-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.action-btn:hover {
+  background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+  color: var(--color-base-content);
+}
+.action-btn:active { transform: scale(0.88); }
+.action-btn:disabled { opacity: 0.5; cursor: default; }
+.action-btn.action-active { color: var(--color-error); }
+.action-btn.action-save { margin-left: auto; }
+.action-btn.action-save-active { color: var(--color-accent); }
+
+.tag-assign-wrap { position: relative; margin-left: 4px; }
+.tag-dropdown {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	z-index: 30;
+	min-width: 180px;
+	max-height: 220px;
+	overflow-y: auto;
+	background: var(--color-base-100);
+	border: 1px solid var(--color-base-300);
+	border-radius: 8px;
+	box-shadow: 0 4px 16px rgba(0,0,0,.12);
+	padding: 4px;
+	margin-top: 4px;
+}
+.tag-dropdown-empty { font-size: 12px; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); padding: 8px; margin: 0; }
+.tag-dropdown-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 10px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--color-base-content);
+	font-size: 13px;
+	cursor: pointer;
+	text-align: left;
+	transition: background 100ms;
+}
+.tag-dropdown-item:hover { background: color-mix(in oklch, var(--color-base-content) 8%, transparent); }
+.tag-dropdown-item:disabled { opacity: .5; cursor: default; }
+.tag-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+.article-tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.article-tag-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 11px;
+	font-weight: 600;
+	padding: 3px 8px;
+	border-radius: 999px;
+	background: color-mix(in oklch, var(--chip-color) 14%, transparent);
+	color: var(--chip-color);
+	white-space: nowrap;
+	line-height: 1.5;
+}
+.chip-source {
+	font-size: 9px;
+	font-weight: 500;
+	opacity: .7;
+	text-transform: lowercase;
+}
+.chip-remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+	border: none;
+	border-radius: 50%;
+	background: color-mix(in oklch, var(--chip-color) 25%, transparent);
+	color: inherit;
+	cursor: pointer;
+	padding: 0;
+	margin-left: 2px;
+	transition: background 100ms;
+}
+.chip-remove:hover { background: color-mix(in oklch, var(--chip-color) 40%, transparent); }
 
     /* ── AI Resume ───────────────────────────────────────────── */
     .resume-toggle {

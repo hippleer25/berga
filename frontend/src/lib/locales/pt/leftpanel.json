@@ -15,5 +15,6 @@
   "folderNamePlaceholder": "Nome da pasta…",
   "cancel": "Cancelar",
   "create": "Criar",
-  "loadError": "Falha ao carregar inscrições"
+  "loadError": "Falha ao carregar inscrições",
+  "toggleFolder": "Abrir/fechar pasta"
 }

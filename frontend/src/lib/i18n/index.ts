@@ -6,10 +6,10 @@ export const SUPPORTED_LOCALES = ['pt', 'en', 'es', 'de', 'fr'] as const;
 export type SupportedLocale = typeof SUPPORTED_LOCALES[number];
 
 const NAMESPACES = [
-  'navbar', 'hometab', 'eventstab', 'motatab',
-  'settings', 'signup', 'signin', 'welcome', 'followerstab', 'affinity',
-  'search', 'feed', 'article', 'eventscard', 'followfeedmodal', 'leftpanel',
-  'postcard', 'topbar', 'folder', 'searchtab'
+	'navbar', 'hometab', 'eventstab', 'motatab',
+	'settings', 'signup', 'signin', 'welcome', 'followerstab', 'affinity',
+	'search', 'feed', 'article', 'eventscard', 'followfeedmodal', 'leftpanel',
+	'postcard', 'topbar', 'folder', 'searchtab', 'tags'
 ] as const;
 
 const localeFiles = import.meta.glob('../locales/**/*.json');
@@ -44,10 +44,10 @@ function buildLoader(lang: string) {
             namespaced[`${ns}.${key}`] = flat[key];
           }
           return namespaced;
-        } catch (e) {
-          console.error(`[i18n] Failed to load ${path}:`, e);
-          throw e;
-        }
+		} catch (e) {
+			console.error(`[i18n] Failed to load ${path}:`, e);
+			return {};
+		}
       })
     );
     const result = Object.assign({}, ...modules);

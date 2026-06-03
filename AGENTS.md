@@ -24,12 +24,18 @@ docker build berga_front
 # Backend only (needs MySQL, Qdrant, Redis running)
 dobker build berga_api
 
+# Dependency audit (run periodically)
+pip-audit -r backend/requirements.lock          # Python vulnerability check
+cd frontend && npm audit                         # JS vulnerability check
+```
+
 
 ## Key Config & Environment
 
 - All env vars live in `.env` at repo root (loaded by docker-compose for the backend container)
 - **Required env vars**: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `QDRANT_HOST`, `QDRANT_PORT`, `REDIS_HOST`, `EMBEDDING_MODEL_NAME`, `SECRET_KEY`
 - `EMBEDDING_MODEL_NAME` must be set or the backend crashes at import time (`intelligence/embeddings.py` enforces this)
+- `EMBEDDING_DESCRIPTION_CHARS` controls how much of the article description is included in the embedding vector (0 = title only, 200 = recommended). Changing this value after articles are already indexed requires running the `reembed_all` job to update existing vectors.
 - LLM calls go through LiteLLM — model and API key set via `CLUSTER_LLM_*` and `CHATBOT_LLM_*` env vars
 - Vite dev server proxies `/api` → `API_TARGET` (default `http://backend:5746`), stripping the `/api` prefix
 
@@ -73,3 +79,5 @@ dobker build berga_api
 - **Backend port** is 5746 (not a common port). Frontend dev proxy targets this.
 - **API prefix**: Frontend calls `/api/*`, Vite proxy strips `/api` before forwarding to backend (backend routes do NOT have `/api` prefix in their decorators — they already include it).
 - **Comments in .env** have spaces around `=`** (e.g. `CACHE_KEY = "weekly_events_cache"`) which may cause parsing issues in some tools — the `docker-compose env_file` directive handles this, but shell sourcing might not.
+- **All dependencies are pinned** — `requirements.txt` uses `==` for every package (no `>=`). The full transitive tree is frozen in `requirements.lock` (generated from `pip freeze` inside the Docker image). The Dockerfile installs from `requirements.lock`, not `requirements.txt`. To update a dependency: bump it in `requirements.txt`, rebuild the image, run `pip freeze > requirements.lock` inside the container, and commit the lock file.
+- **Frontend deps are pinned** — `package.json` uses exact versions (no `^` or `~`). `npm ci` in Docker reads from `package-lock.json`. To update: change `package.json`, run `npm install`, commit both files.

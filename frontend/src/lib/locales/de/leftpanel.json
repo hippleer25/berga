@@ -15,5 +15,6 @@
   "folderNamePlaceholder": "Ordnername…",
   "cancel": "Abbrechen",
   "create": "Erstellen",
-  "loadError": "Fehler beim Laden der Abonnements"
+  "loadError": "Fehler beim Laden der Abonnements",
+  "toggleFolder": "Ordner auf-/zuklappen"
 }

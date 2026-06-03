@@ -114,8 +114,8 @@ export function convertDaisyuiPluginToDataTheme(css: string): string {
 
 		const braceStart = css.indexOf('{', quoteStart);
 		if (braceStart === -1) {
-			i = braceStart + 1;
-			continue;
+			result.push(css.slice(pluginStart));
+			break;
 		}
 
 		let depth = 1;

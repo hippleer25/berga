@@ -1,0 +1,13 @@
+{
+  "select": "Sélectionner",
+  "deselect": "Désélectionner",
+  "like": "J'aime",
+  "unlike": "Retirer le j'aime",
+  "dislike": "Je n'aime pas",
+  "undoDislike": "Annuler le je n'aime pas",
+  "openOriginal": "Ouvrir l'article original",
+  "now": "maintenant",
+  "minutesShort": "min",
+  "hoursShort": "h",
+  "daysShort": "j"
+}

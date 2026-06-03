@@ -16,7 +16,7 @@ Respond with plain text only, no markdown, no JSON, no headers.
 
 
 def get(item_id: str, user) -> Generator[str, None, None]:
-    response = load.get(user, item_id)
+    response = load.get(user["id"], item_id)
     if response is None:
         yield "data: Error: article content could not be fetched.\n\n"
         yield "data: [DONE]\n\n"
@@ -37,7 +37,11 @@ def get(item_id: str, user) -> Generator[str, None, None]:
         {"role": "user", "content": cut_size_text},
     ]
 
-    for chunk in ai_lib.stream_llm_response(messages, max_tokens=300):
-        yield f"data: {chunk}\n\n"
+    try:
+        for chunk in ai_lib.stream_llm_response(messages, max_tokens=300):
+            yield f"data: {chunk}\n\n"
+    except Exception as e:
+        logger.error(f"[RESUME] Erro ao gerar resumo: {e}", exc_info=True)
+        yield f"data: {{\"error\": \"Erro ao gerar resumo: {e}\"}}\n\n"
 
     yield "data: [DONE]\n\n"

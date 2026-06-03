@@ -56,17 +56,18 @@ services:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
     container_name: berga_redis
-    restart: unless-stopped
-    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    restart: always
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     deploy:
       resources:
         limits:
-          memory: 80M
+          memory: 128M
     volumes:
       - redis_data:/data
     networks:
@@ -107,6 +108,8 @@ services:
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     ports:
       - "4657:5173"
+    environment:
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
     volumes:
       - ./frontend:/app
       - /app/node_modules

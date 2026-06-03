@@ -279,9 +279,11 @@ textarea:focus:not(:focus-visible) {
   box-shadow: none !important;
 }
 
-.chat-root {
-  position: fixed;
-  inset: 0;
+@keyframes ripple-anim {
+  to {
+    transform: scale(2.5);
+    opacity: 0;
+  }
 }
 
 .page-root {

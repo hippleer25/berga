@@ -9,7 +9,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
+from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME, TAG_PHRASES_COLLECTION
 from database.init_db import get_db
 from qdrant_client.http import models
 from qdrant_client.http.models import PointStruct
@@ -220,3 +220,41 @@ def ensure_payload_indexes() -> None:
 
 # Backward compatibility alias
 ensure_text_indexes = ensure_payload_indexes
+
+
+# ── Tag phrases collection ────────────────────────────────────────────────────
+
+def upsert_tag_phrase(tag_id: int, term: str, vector: list[float], manual_count: int = 0) -> None:
+    client = get_qdrant_client()
+    client.upsert(
+        collection_name=TAG_PHRASES_COLLECTION,
+        points=[PointStruct(
+            id=str(tag_id),
+            vector=vector,
+            payload={"term": term, "tag_id": tag_id, "manual_count": manual_count},
+        )],
+    )
+
+
+def delete_tag_phrase(tag_id: int) -> None:
+    client = get_qdrant_client()
+    try:
+        client.delete(
+            collection_name=TAG_PHRASES_COLLECTION,
+            points_selector=models.PointIdsList(points=[str(tag_id)]),
+        )
+    except Exception:
+        logger.warning("Could not delete tag phrase vector for tag_id=%d", tag_id)
+
+
+def search_tag_phrases(vector: list[float], limit: int = 10, threshold: float = 0.0) -> list:
+    client = get_qdrant_client()
+    response = client.query_points(
+        collection_name=TAG_PHRASES_COLLECTION,
+        query=vector,
+        limit=limit,
+        score_threshold=threshold if threshold > 0.0 else None,
+        with_payload=True,
+        with_vectors=False,
+    )
+    return response.points

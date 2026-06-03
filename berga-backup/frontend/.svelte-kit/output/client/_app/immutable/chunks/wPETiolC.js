@@ -1,0 +1,1 @@
+const t="Destacados",s="Buscar",a="Aún no hay suficientes eventos para mostrar.",e="Error al cargar los eventos",o={title:t,search:s,emptyTitle:a,loadError:e};export{o as default,a as emptyTitle,e as loadError,s as search,t as title};

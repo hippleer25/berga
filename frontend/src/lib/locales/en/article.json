@@ -17,5 +17,7 @@
   "streamUnavailable": "Stream unavailable",
   "resumeError": "Error generating summary.",
   "hideSummary": "Hide summary",
-  "originalPage": "Original page"
+  "originalPage": "Original page",
+  "tagArticle": "Tag article",
+  "allTagsAssigned": "All tags assigned"
 }

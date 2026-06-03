@@ -66,6 +66,12 @@ NEWS_INDICATOR_WORDS = [
 def is_simple_message(text: str) -> bool:
     text_clean = text.strip()
 
+    text_lower = text_clean.lower()
+    for indicator in NEWS_INDICATOR_WORDS:
+        if indicator in text_lower:
+            logger.info(f"[SIMPLE] Indicador de notícia '{indicator}' → NÃO é simples")
+            return False
+
     if len(text_clean) <= 4:
         return True
 
@@ -73,12 +79,6 @@ def is_simple_message(text: str) -> bool:
         if pattern.search(text_clean):
             logger.info(f"[SIMPLE] Detectada mensagem simples: {text_clean[:50]}")
             return True
-
-    text_lower = text_clean.lower()
-    for indicator in NEWS_INDICATOR_WORDS:
-        if indicator in text_lower:
-            logger.info(f"[SIMPLE] Indicador de notícia '{indicator}' → NÃO é simples")
-            return False
 
     if len(text_clean) <= 20 and '?' not in text_clean:
         logger.info(f"[SIMPLE] Mensagem curta sem '?': {text_clean[:50]}")

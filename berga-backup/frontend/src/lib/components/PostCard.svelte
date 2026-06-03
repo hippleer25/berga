@@ -1,0 +1,517 @@
+<script lang="ts">
+    import { Heart, ThumbsDown, ExternalLink, Check } from '@lucide/svelte';
+    import { t, locale } from 'svelte-i18n';
+    import { get } from 'svelte/store';
+
+    let {
+        item,
+        server        = '',
+        selectionMode = false,
+        selected      = false,
+        onToggleSelect,
+    } = $props<{
+        item: {
+            item_id:          string;
+            title:            string;
+            description?:     string;
+            author?:          string;
+            link:             string;
+            pub_date:         string;
+            feed_title?:      string;
+            feed_icon?:       string;
+            liked?:           boolean;
+            disliked?:        boolean;
+        };
+        server?:         string;
+        selectionMode?:  boolean;
+        selected?:       boolean;
+        onToggleSelect?: (item: any) => void;
+    }>();
+
+    let liked          = $state(item.liked    ?? false);
+    let disliked       = $state(item.disliked ?? false);
+    let likeLoading    = $state(false);
+    let dislikeLoading = $state(false);
+
+    // ── Long press ────────────────────────────────────────────────────────────
+    let pressTimer:  ReturnType<typeof setTimeout> | null = null;
+    let pressStartX = 0;
+    let pressStartY = 0;
+    let didLongPress = false;
+
+    function clearTimer() {
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    }
+
+    function triggerLongPress() {
+        didLongPress = true;
+        navigator.vibrate?.(40);
+        onToggleSelect?.(item);
+    }
+
+    // ── Touch (mobile) ────────────────────────────────────────────────────────
+    function onTouchStart(e: TouchEvent) {
+        pressStartX  = e.touches[0].clientX;
+        pressStartY  = e.touches[0].clientY;
+        didLongPress = false;
+        clearTimer();
+        pressTimer = setTimeout(triggerLongPress, 400);
+    }
+
+    function onTouchMove(e: TouchEvent) {
+        const dx = Math.abs(e.touches[0].clientX - pressStartX);
+        const dy = Math.abs(e.touches[0].clientY - pressStartY);
+        if (dx > 8 || dy > 8) clearTimer();
+    }
+
+    function onTouchEnd() { clearTimer(); }
+
+    // ── Mouse long press (desktop, left button) ───────────────────────────────
+    function onMouseDown(e: MouseEvent) {
+        if (e.button !== 0) return;
+        pressStartX  = e.clientX;
+        pressStartY  = e.clientY;
+        didLongPress = false;
+        clearTimer();
+        pressTimer = setTimeout(triggerLongPress, 500);
+    }
+
+    function onMouseMove(e: MouseEvent) {
+        const dx = Math.abs(e.clientX - pressStartX);
+        const dy = Math.abs(e.clientY - pressStartY);
+        if (dx > 6 || dy > 6) clearTimer();
+    }
+
+    function onMouseUp()    { clearTimer(); }
+    function onMouseLeave() { clearTimer(); }
+
+    // ── Right-click → selection (desktop) ────────────────────────────────────
+    function onContextMenu(e: MouseEvent) {
+        e.preventDefault();
+        onToggleSelect?.(item);
+    }
+
+    // ── Card click ────────────────────────────────────────────────────────────
+    function handleCardClick(e: MouseEvent) {
+        if (didLongPress) {
+            didLongPress = false;
+            e.preventDefault();
+            return;
+        }
+        if (selectionMode) {
+            e.preventDefault();
+            onToggleSelect?.(item);
+        }
+    }
+
+    // ── Checkbox circle ───────────────────────────────────────────────────────
+    function handleCheckboxClick(e: MouseEvent) {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleSelect?.(item);
+    }
+
+    // ── Voting ────────────────────────────────────────────────────────────────
+    async function sendVote(type: 'like' | 'dislike') {
+        if (!item.item_id) return;
+        if (type === 'like'    && likeLoading)    return;
+        if (type === 'dislike' && dislikeLoading) return;
+
+        if (type === 'like')    likeLoading    = true;
+        else                    dislikeLoading = true;
+
+        try {
+            const res = await fetch(`/api/feed/${item.item_id}/${type}`, {
+                method:      'POST',
+                credentials: 'include',
+                headers:     { 'Content-Type': 'application/json' },
+            });
+
+            if (res.status === 401) { window.location.replace('/'); return; }
+            if (!res.ok) throw new Error(`Error ${res.status}`);
+
+            if (type === 'like') {
+                liked    = !liked;
+                if (liked) disliked = false;
+            } else {
+                disliked = !disliked;
+                if (disliked) liked = false;
+            }
+        } catch (err) {
+            console.error(`Vote ${type} failed:`, err);
+        } finally {
+            if (type === 'like')    likeLoading    = false;
+            else                    dislikeLoading = false;
+        }
+    }
+
+    function handleLike(e: MouseEvent) {
+        e.preventDefault();
+        e.stopPropagation();
+        sendVote('like');
+    }
+    function handleDislike(e: MouseEvent) {
+        e.preventDefault();
+        e.stopPropagation();
+        sendVote('dislike');
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function formatDate(dateStr: string): string {
+        const now  = new Date();
+        const date = new Date(dateStr);
+        const ms   = now.getTime() - date.getTime();
+        const min  = Math.floor(ms / 60_000);
+        const h    = Math.floor(ms / 3_600_000);
+        const d    = Math.floor(ms / 86_400_000);
+
+        if (min < 1)  return get(t)('postcard.now');
+        if (min < 60) return `${min}${get(t)('postcard.minutesShort')}`;
+        if (h   < 24) return `${h}${get(t)('postcard.hoursShort')}`;
+        if (d   < 7)  return `${d}${get(t)('postcard.daysShort')}`;
+
+        return date.toLocaleDateString(get(locale) ?? 'en', {
+            day:   '2-digit',
+            month: 'short',
+            year:  date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+        });
+    }
+
+    function getDomain(url: string) {
+        try { return new URL(url).hostname.replace('www.', ''); }
+        catch { return url; }
+    }
+
+    function hideImage(event: Event) {
+        (event.currentTarget as HTMLImageElement).style.display = 'none';
+    }
+
+    // Limpa HTML para garantir que o line-clamp do CSS funcione perfeitamente em 2 linhas
+    function stripHtml(html: string): string {
+        let text = html.replace(/<br\s*[\/]?>/gi, ' '); // Transforma <br> em espaço
+        text = text.replace(/<[^>]+>/g, ''); // Remove todas as outras tags
+        return text.replace(/\s{2,}/g, ' ').trim(); // Remove espaços múltiplos
+    }
+</script>
+
+
+<article
+    class="post-card"
+    class:is-selected={selected}
+    class:sel-mode={selectionMode}
+    ontouchstart={onTouchStart}
+    ontouchmove={onTouchMove}
+    ontouchend={onTouchEnd}
+    onmousedown={onMouseDown}
+    onmousemove={onMouseMove}
+    onmouseup={onMouseUp}
+    onmouseleave={onMouseLeave}
+    oncontextmenu={onContextMenu}
+    onclick={handleCardClick}
+>
+    <!-- ── Seleção ────────────────────────────────────────────────────────── -->
+    <div class="sel-col" aria-hidden={!selectionMode}>
+        <button
+            class="sel-circle"
+            onclick={handleCheckboxClick}
+            aria-label={selected ? $t('postcard.deselect') : $t('postcard.select')}
+            aria-checked={selected}
+            role="checkbox"
+            tabindex={selectionMode ? 0 : -1}
+        >
+            {#if selected}
+                <Check size={11} strokeWidth={3.5} />
+            {/if}
+        </button>
+    </div>
+
+    <!-- ── Conteúdo ───────────────────────────────────────────────────────── -->
+    <div class="post-content">
+
+        <!-- Publisher row -->
+        <header class="publisher-row">
+            {#if item.feed_icon}
+                <img
+                    src={item.feed_icon}
+                    alt={item.feed_title ?? ''}
+                    class="feed-icon"
+                    onerror={hideImage}
+                />
+            {/if}
+            <span class="feed-title">{item.feed_title ?? getDomain(item.link)}</span>
+            {#if item.author}
+                <span class="separator" aria-hidden="true">·</span>
+                <span class="author">{item.author}</span>
+            {/if}
+            <time class="pub-date" datetime={item.pub_date}>{formatDate(item.pub_date)}</time>
+        </header>
+
+        <!-- Title -->
+        <a
+            href="/a/{item.item_id}"
+            class="title-link"
+            tabindex={selectionMode ? -1 : 0}
+            onclick={(e) => { if (selectionMode) { e.preventDefault(); e.stopPropagation(); } }}
+        >
+            {item.title}
+        </a>
+
+        <!-- Description -->
+        {#if item.description}
+            <p class="description">{stripHtml(item.description)}</p>
+        {/if}
+
+        <!-- Actions -->
+        {#if !selectionMode}
+            <footer class="actions-row">
+                <button
+                    onclick={handleLike}
+                    disabled={likeLoading}
+                    class="action-btn"
+                    class:action-active={liked}
+                    aria-label={liked ? $t('postcard.unlike') : $t('postcard.like')}
+                    aria-pressed={liked}
+                >
+                    {#if likeLoading}
+                        <span class="loading loading-spinner loading-xs"></span>
+                    {:else}
+                        <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
+                    {/if}
+                </button>
+
+                <button
+                    onclick={handleDislike}
+                    disabled={dislikeLoading}
+                    class="action-btn"
+                    class:action-active={disliked}
+                    aria-label={disliked ? $t('postcard.undoDislike') : $t('postcard.dislike')}
+                    aria-pressed={disliked}
+                >
+                    {#if dislikeLoading}
+                        <span class="loading loading-spinner loading-xs"></span>
+                    {:else}
+                        <ThumbsDown size={15} fill={disliked ? 'currentColor' : 'none'} />
+                    {/if}
+                </button>
+
+                <a
+                    href={item.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="action-btn action-external"
+                    aria-label="{$t('postcard.openOriginal')}"
+                    onclick={(e) => e.stopPropagation()}
+                >
+                    <ExternalLink size={13} />
+                </a>
+            </footer>
+        {/if}
+    </div>
+</article>
+
+
+<style>
+    /* ── Card ────────────────────────────────────────────────── */
+    .post-card {
+        display: flex;
+        align-items: flex-start;
+        padding: 12px 20px 4px;
+        border-bottom: 1px solid var(--color-base-300); /* Mais limpo que color-mix */
+        transition: background 120ms ease;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+        cursor: default;
+    }
+.post-card:hover {
+  background: var(--color-base-200);
+}
+.post-card:active:not(.sel-mode) {
+  background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+}
+    .post-card.is-selected {
+        background: color-mix(in oklch, var(--color-accent) 8%, transparent);
+        border-left: 3px solid var(--color-accent); /* Borda de destaque amarela para seleção */
+        padding-left: 17px; /* Compensa os 3px da borda para não pular o layout */
+    }
+    .post-card.sel-mode {
+        cursor: pointer;
+    }
+
+    /* ── Coluna de seleção ──────────────────────────────────── */
+    .sel-col {
+        flex-shrink: 0;
+        width: 0;
+        overflow: hidden;
+        display: flex;
+        align-items: flex-start;
+        padding-top: 2px;
+        transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+                    margin-right 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .sel-mode .sel-col {
+        width: 22px;
+        margin-right: 10px;
+    }
+
+    .sel-circle {
+        flex-shrink: 0;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 2px solid color-mix(in oklch, var(--color-base-content) 28%, transparent);
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: transparent;
+        transition: background 150ms, border-color 150ms, color 150ms;
+        padding: 0;
+    }
+    .is-selected .sel-circle {
+        background: var(--color-accent);
+        border-color: var(--color-accent);
+        color: var(--color-base-100); /* Ícone escuro no botão amarelo */
+    }
+
+    /* ── Body ────────────────────────────────────────────────── */
+    .post-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* ── Publisher row ───────────────────────────────────────── */
+    .publisher-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-bottom: 6px;
+        min-width: 0;
+    }
+
+    .feed-icon {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        object-fit: contain;
+        flex-shrink: 0;
+    }
+
+    .feed-title {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--color-accent); /* Usa o accent do tema */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        /* A mágica para não cortar cedo: flex e min-width */
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .separator {
+        font-size: 11px;
+        color: color-mix(in oklch, var(--color-base-content) 25%, transparent);
+        flex-shrink: 0;
+    }
+
+    .author {
+        font-size: 11.5px;
+        color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 0 1 auto; /* Pode encolher, mas não crescer além do necessário */
+        min-width: 0;
+    }
+
+    .pub-date {
+        margin-left: auto;
+        font-size: 11px;
+        color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+        white-space: nowrap;
+        flex-shrink: 0;
+        padding-left: 8px;
+    }
+
+    /* ── Title ───────────────────────────────────────────────── */
+.title-link {
+display: block;
+font-family: var(--font-post-title);
+        font-size: 16px;
+        font-weight: 500; /* Medium: muito mais legível que 600 no sans-serif */
+        line-height: 1.4;
+        margin-bottom: 6px;
+        color: var(--color-base-content);
+        text-decoration: none;
+        transition: color 140ms;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+.title-link:hover {
+  color: var(--color-accent);
+}
+.title-link:active {
+  opacity: 0.7;
+}
+
+    /* ── Description ─────────────────────────────────────────── */
+.description {
+font-family: var(--font-article-body);
+font-size: 13.5px;
+        font-weight: 400; /* Peso regular é melhor para corpo de texto longo */
+        line-height: 1.5;
+        color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+        margin-bottom: 8px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    /* ── Actions ─────────────────────────────────────────────── */
+    .actions-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding-bottom: 4px;
+    }
+
+    .action-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 6px; /* Menos arredondado, mais robusto */
+        border: none;
+        background: transparent;
+        color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+        cursor: pointer;
+        transition: background 120ms, color 120ms;
+    }
+.action-btn:hover {
+  background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+  color: var(--color-base-content);
+}
+.action-btn:active {
+  transform: scale(0.88);
+}
+    .action-btn:disabled { opacity: 0.5; cursor: default; }
+
+    /* Cores de Like/Dislike alinhadas ao DaisyUI sem serem muito gritantes */
+    .action-active {
+        color: var(--color-error) !important; /* Vermelho do tema para Like */
+    }
+    /* Deslike ficará com a cor padrão do conteúdo ao ativar, para não poluir visualmente */
+
+    .action-external {
+        text-decoration: none;
+        margin-left: 2px;
+        opacity: 0;
+        transition: opacity 140ms, background 120ms;
+    }
+    .post-card:hover .action-external { opacity: 1; }
+</style>

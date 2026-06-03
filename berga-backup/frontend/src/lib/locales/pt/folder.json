@@ -1,0 +1,14 @@
+{
+  "back": "Voltar",
+  "feeds": "Feeds",
+  "posts": "Posts",
+  "createdAt": "Criado em",
+  "filterMode": "Modo do feed",
+  "forYou": "Para você",
+  "recents": "Recentes",
+  "tryAgain": "Tentar novamente",
+  "noPosts": "Nenhum post encontrado nesta pasta.",
+  "upToDate": "Você está em dia ✓",
+  "loadFeedError": "Falha ao carregar feed",
+  "loadInfoError": "Não foi possível carregar informações da pasta"
+}

@@ -23,19 +23,23 @@
  let message = $state("");
  let loading = $state(false);
 
- let showInstanceField = $derived(
-   typeof window !== 'undefined' &&
-   (!!(window as any).Capacitor?.isNativePlatform?.() || window.location.origin !== `https://${get(instance)}`)
- );
+	let showInstanceField = $derived(
+		typeof window !== 'undefined' &&
+		(!!(window as any).Capacitor?.isNativePlatform?.() || window.location.origin !== `https://${get(instance)}`)
+	);
 
-  let usernameRef: HTMLInputElement;
-  let fullNameRef: HTMLInputElement;
-  let emailRef: HTMLInputElement;
-  let passwordRef: HTMLInputElement;
+	let usernameRef: HTMLInputElement;
+	let fullNameRef: HTMLInputElement;
+	let emailRef: HTMLInputElement;
+	let passwordRef: HTMLInputElement;
 
-  $effect(() => {
-    instance.setInstance(instanceUrl);
-  });
+	let instanceTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		if (instanceTimer) clearTimeout(instanceTimer);
+		instanceTimer = setTimeout(() => {
+			instance.setInstance(instanceUrl);
+		}, 500);
+	});
 
   function focusNext(nextRef: HTMLInputElement | undefined) {
     nextRef?.focus();

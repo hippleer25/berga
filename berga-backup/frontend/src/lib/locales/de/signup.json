@@ -1,0 +1,16 @@
+{
+  "title": "Registrieren",
+  "subtitle": "Sie erstellen ein Berga-Konto",
+  "accountLabel": "Konto",
+  "accountPlaceholder": "Geben Sie Ihren Benutzernamen ein",
+  "fullNameLabel": "Vollständiger Name",
+  "fullNamePlaceholder": "Geben Sie Ihren vollständigen Namen ein",
+  "emailLabel": "E-Mail",
+  "emailPlaceholder": "Geben Sie Ihre E-Mail ein",
+  "passwordLabel": "Passwort",
+  "passwordPlaceholder": "Geben Sie Ihr Passwort ein",
+  "errorSignup": "Fehler bei der Registrierung",
+  "back": "Zurück",
+  "registering": "Registrierung läuft...",
+  "done": "Fertig"
+}

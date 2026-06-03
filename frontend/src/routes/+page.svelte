@@ -1,30 +1,35 @@
 <script lang="ts">
-    import { browser } from '$app/environment';
-    import { onMount } from 'svelte';
-import { t } from 'svelte-i18n';
-import { apiFetch } from '$lib/api';
+	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { t } from 'svelte-i18n';
+	import { apiFetch } from '$lib/api';
+	import { auth } from '$lib/stores/auth';
 
-let ready = $state(false);
-    let checking = $state(false);
+	let ready = $state(false);
+	let checking = $state(false);
 
-    onMount(async () => {
-        if (!browser || checking) return;
-        checking = true;
+	onMount(async () => {
+		if (!browser || checking) return;
+		checking = true;
 
-        try {
-const res = await apiFetch('/api/feed/recommendations', {
-      credentials: 'include'
-    });
+		try {
+			const res = await apiFetch('/api/meu-perfil', {
+				credentials: 'include'
+			});
 
-            if (res.ok) {
-                window.location.replace('/home');
-            } else {
-                ready = true;
-            }
-        } catch {
-            ready = true;
-        }
-    });
+			if (res.ok) {
+				auth.setLoggedIn();
+				goto('/home');
+			} else {
+				auth.setLoggedOut();
+				ready = true;
+			}
+		} catch {
+			auth.setLoggedOut();
+			ready = true;
+		}
+	});
 </script>
 
 <style>
