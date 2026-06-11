@@ -398,40 +398,114 @@ async function toggleSave() {
     <!-- ── Top Navigation (Ghost Toolbar) ────────────────────── -->
     <header class="top-bar-wrap">
         <div class="top-bar">
-            <button class="ghost-btn back-btn" onclick={() => goto('/home')} title="{$t('article.backToFeed')}">
-                <ArrowLeft size={18} />
-                <span class="back-label">{$t('article.backToFeed')}</span>
-            </button>
+	<button class="ghost-btn back-btn" onclick={() => goto('/home')} title="{$t('article.backToFeed')}">
+			<ArrowLeft size={18} />
+		</button>
 
-        <div class="top-spacer"></div>
+		<div class="top-actions top-actions-left">
+			<button
+				class="ghost-btn"
+				class:action-active={liked}
+				onclick={() => sendVote('like')}
+				title="{$t('article.like')}"
+				disabled={likeLoading}
+			>
+				{#if likeLoading}
+					<span class="loading loading-spinner loading-xs"></span>
+				{:else}
+					<Heart size={16} fill={liked ? 'currentColor' : 'none'} />
+				{/if}
+			</button>
 
-        <div class="top-actions">
-          <button
-            class="ghost-btn"
-            class:active-view={webView}
-            onclick={toggleView}
-            title={webView ? $t('article.viewExtractedText') : $t('article.viewOriginalPage')}
-            disabled={loading || !!error}
-          >
-            {#if webView}
-              <FileText size={16} />
-            {:else}
-              <Globe size={16} />
-            {/if}
-          </button>
+			<button
+				class="ghost-btn"
+				class:action-active={disliked}
+				onclick={() => sendVote('dislike')}
+				title="{$t('article.dislike')}"
+				disabled={dislikeLoading}
+			>
+				{#if dislikeLoading}
+					<span class="loading loading-spinner loading-xs"></span>
+				{:else}
+					<ThumbsDown size={16} fill={disliked ? 'currentColor' : 'none'} />
+				{/if}
+			</button>
 
-          {#if meta?.link}
-            <a
-              href={meta.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="ghost-btn"
-              title="{$t('article.openOriginal')}"
-            >
-              <ExternalLink size={16} />
-            </a>
-          {/if}
-        </div>
+			<div class="tag-assign-wrap">
+				<button
+					class="ghost-btn"
+					class:action-tag-active={articleTags.length > 0}
+					onclick={toggleTagDropdown}
+					title="{$t('article.tagArticle')}"
+					aria-expanded={tagDropdownOpen}
+					aria-haspopup="listbox"
+				>
+					<Tag size={16} />
+				</button>
+				{#if tagDropdownOpen}
+					<div class="tag-dropdown" onclick={(e) => e.stopPropagation()}>
+						{#if userTags.filter(ut => !articleTags.some(at => at.tag_id === ut.id)).length === 0}
+							<p class="tag-dropdown-empty">{$t('article.allTagsAssigned')}</p>
+						{:else}
+							{#each userTags.filter(ut => !articleTags.some(at => at.tag_id === ut.id)) as ut (ut.id)}
+								<button
+									class="tag-dropdown-item"
+									onclick={() => assignTag(ut.id)}
+									disabled={tagAssignLoading}
+								>
+									<span class="tag-dot" style="background: {ut.color || '#3b82f6'}"></span>
+									{ut.name}
+								</button>
+							{/each}
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			<button
+				class="ghost-btn"
+				class:action-save-active={saved}
+				onclick={toggleSave}
+				title="{$t('article.save')}"
+				disabled={saveLoading}
+			>
+				{#if saveLoading}
+					<span class="loading loading-spinner loading-xs"></span>
+				{:else}
+					<Bookmark size={16} fill={saved ? 'currentColor' : 'none'} />
+				{/if}
+			</button>
+		</div>
+
+		<div class="top-spacer"></div>
+
+		<div class="top-actions">
+			<button
+				class="ghost-btn"
+				class:active-view={webView}
+				onclick={toggleView}
+				title={webView ? $t('article.viewExtractedText') : $t('article.viewOriginalPage')}
+				disabled={loading || !!error}
+			>
+				{#if webView}
+					<FileText size={16} />
+				{:else}
+					<Globe size={16} />
+				{/if}
+			</button>
+
+			{#if meta?.link}
+				<a
+					href={meta.link}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="ghost-btn"
+					title="{$t('article.openOriginal')}"
+				>
+					<ExternalLink size={16} />
+				</a>
+			{/if}
+		</div>
         </div>
     </header>
 
@@ -515,83 +589,9 @@ async function toggleSave() {
             {/if}
           </div>
 
-          <h1 class="article-title">{readerData.title}</h1>
+	<h1 class="article-title">{readerData.title}</h1>
 
-          <div class="article-actions">
-            <button
-              class="action-btn"
-              class:action-active={liked}
-              onclick={() => sendVote('like')}
-              title="{$t('article.like')}"
-              disabled={likeLoading}
-            >
-              {#if likeLoading}
-                <span class="loading loading-spinner loading-xs"></span>
-              {:else}
-                <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
-              {/if}
-            </button>
-
-            <button
-              class="action-btn"
-              class:action-active={disliked}
-              onclick={() => sendVote('dislike')}
-              title="{$t('article.dislike')}"
-              disabled={dislikeLoading}
-            >
-              {#if dislikeLoading}
-                <span class="loading loading-spinner loading-xs"></span>
-              {:else}
-                <ThumbsDown size={15} fill={disliked ? 'currentColor' : 'none'} />
-              {/if}
-            </button>
-
-		<button
-			class="action-btn action-save"
-			class:action-save-active={saved}
-			onclick={toggleSave}
-			title="{$t('article.save')}"
-			disabled={saveLoading}
-		>
-			{#if saveLoading}
-				<span class="loading loading-spinner loading-xs"></span>
-			{:else}
-				<Bookmark size={15} fill={saved ? 'currentColor' : 'none'} />
-			{/if}
-		</button>
-
-		<div class="tag-assign-wrap">
-			<button
-				class="action-btn"
-				onclick={toggleTagDropdown}
-				title="{$t('article.tagArticle')}"
-				aria-expanded={tagDropdownOpen}
-				aria-haspopup="listbox"
-			>
-				<Tag size={15} />
-			</button>
-			{#if tagDropdownOpen}
-				<div class="tag-dropdown" onclick={(e) => e.stopPropagation()}>
-					{#if userTags.filter(ut => !articleTags.some(at => at.tag_id === ut.id)).length === 0}
-						<p class="tag-dropdown-empty">{$t('article.allTagsAssigned')}</p>
-					{:else}
-						{#each userTags.filter(ut => !articleTags.some(at => at.tag_id === ut.id)) as ut (ut.id)}
-							<button
-								class="tag-dropdown-item"
-								onclick={() => assignTag(ut.id)}
-								disabled={tagAssignLoading}
-							>
-								<span class="tag-dot" style="background: {ut.color || '#3b82f6'}"></span>
-								{ut.name}
-							</button>
-						{/each}
-					{/if}
-				</div>
-			{/if}
-		</div>
-	</div>
-
-	{#if articleTags.length > 0}
+		{#if articleTags.length > 0}
 		<div class="article-tag-chips">
 			{#each articleTags as at (at.tag_id)}
 				<span class="article-tag-chip" style="--chip-color: {at.color || '#3b82f6'}">
@@ -761,13 +761,16 @@ async function toggleSave() {
 /* Active view state */
 .ghost-btn.active-view { color: var(--color-accent); }
 
-    .back-btn { margin-right: 8px; }
-    .back-label { display: none; }
-    @media (min-width: 768px) { .back-label { display: inline; } }
+.back-btn { margin-right: 8px; }
 
 .top-spacer { flex: 1; }
 
 .top-actions { display: flex; align-items: center; gap: 2px; }
+.top-actions-left { margin-right: 8px; }
+
+.ghost-btn.action-active { color: var(--color-error); }
+.ghost-btn.action-save-active { color: var(--color-accent); }
+.ghost-btn.action-tag-active { color: var(--color-accent); }
 
     /* ── Content Centralizer ─────────────────────────────────── */
     .reader-content {
@@ -845,37 +848,7 @@ async function toggleSave() {
   margin: 0 0 12px;
 }
 
-.article-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-bottom: 16px;
-}
-
-.action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
-  cursor: pointer;
-  transition: background 120ms, color 120ms;
-}
-.action-btn:hover {
-  background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
-  color: var(--color-base-content);
-}
-.action-btn:active { transform: scale(0.88); }
-.action-btn:disabled { opacity: 0.5; cursor: default; }
-.action-btn.action-active { color: var(--color-error); }
-.action-btn.action-save { margin-left: auto; }
-.action-btn.action-save-active { color: var(--color-accent); }
-
-.tag-assign-wrap { position: relative; margin-left: 4px; }
+.tag-assign-wrap { position: relative; display: inline-flex; }
 .tag-dropdown {
 	position: absolute;
 	top: 100%;

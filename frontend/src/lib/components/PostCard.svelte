@@ -438,61 +438,61 @@ disabled={!onTagClick}
     {/if}
     </button>
 
-    <div class="tag-assign-wrap" onclick={(e) => e.stopPropagation()}>
-    <button
-    onclick={toggleTagDropdown}
-    disabled={tagAssignLoading}
-    class="action-btn"
-    class:action-tag-active={localTags.length > 0}
-    aria-label={$t('postcard.tag')}
-    aria-expanded={tagDropdownOpen}
-    >
-    {#if tagAssignLoading}
-    <span class="loading loading-spinner loading-xs"></span>
-    {:else}
-    <Tag size={15} />
-    {/if}
-    </button>
-    {#if tagDropdownOpen}
-    <div class="tag-dropdown" onclick={(e) => e.stopPropagation()}>
-    {#if userTags.length === 0}
-    <p class="tag-dropdown-empty">{$t('postcard.noTagsYet')}</p>
-    {:else}
-    {#each userTags as ut (ut.id)}
-    {@const isAssigned = localTags.some(t => t.tag_id === ut.id)}
-    <button
-    class="tag-dropdown-item"
-    class:tag-dropdown-item--assigned={isAssigned}
-    onclick={(e) => isAssigned ? unassignTag(ut.id, e) : assignTag(ut.id, e)}
-    disabled={tagAssignLoading}
-    >
-    <span class="tag-dot" style="background: {ut.color || '#3b82f6'}"></span>
-    <span class="tag-dropdown-item-text">{ut.name}</span>
-    {#if isAssigned}
-    <Check size={12} class="tag-check" />
-    {/if}
-    </button>
-    {/each}
-    {/if}
-    </div>
-    {/if}
-    </div>
+	<div class="tag-assign-wrap" onclick={(e) => e.stopPropagation()}>
+		<button
+			onclick={toggleTagDropdown}
+			disabled={tagAssignLoading}
+			class="action-btn"
+			class:action-tag-active={localTags.length > 0}
+			aria-label={$t('postcard.tag')}
+			aria-expanded={tagDropdownOpen}
+		>
+			{#if tagAssignLoading}
+				<span class="loading loading-spinner loading-xs"></span>
+			{:else}
+				<Tag size={15} />
+			{/if}
+		</button>
+		{#if tagDropdownOpen}
+			<div class="tag-dropdown" onclick={(e) => e.stopPropagation()}>
+				{#if userTags.length === 0}
+					<p class="tag-dropdown-empty">{$t('postcard.noTagsYet')}</p>
+				{:else}
+					{#each userTags as ut (ut.id)}
+						{@const isAssigned = localTags.some(t => t.tag_id === ut.id)}
+						<button
+							class="tag-dropdown-item"
+							class:tag-dropdown-item--assigned={isAssigned}
+							onclick={(e) => isAssigned ? unassignTag(ut.id, e) : assignTag(ut.id, e)}
+							disabled={tagAssignLoading}
+						>
+							<span class="tag-dot" style="background: {ut.color || '#3b82f6'}"></span>
+							<span class="tag-dropdown-item-text">{ut.name}</span>
+							{#if isAssigned}
+								<Check size={12} class="tag-check" />
+							{/if}
+						</button>
+					{/each}
+				{/if}
+			</div>
+		{/if}
+	</div>
 
-    <button
-          onclick={toggleSave}
-          disabled={saveLoading}
-          class="action-btn action-save"
-          class:action-save-active={saved}
-          aria-label={saved ? $t('postcard.unsave') : $t('postcard.save')}
-          aria-pressed={saved}
-        >
-          {#if saveLoading}
-            <span class="loading loading-spinner loading-xs"></span>
-          {:else}
-            <Bookmark size={15} fill={saved ? 'currentColor' : 'none'} />
-          {/if}
-        </button>
-      </footer>
+	<button
+		onclick={toggleSave}
+		disabled={saveLoading}
+		class="action-btn action-save"
+		class:action-save-active={saved}
+		aria-label={saved ? $t('postcard.unsave') : $t('postcard.save')}
+		aria-pressed={saved}
+	>
+		{#if saveLoading}
+			<span class="loading loading-spinner loading-xs"></span>
+		{:else}
+			<Bookmark size={15} fill={saved ? 'currentColor' : 'none'} />
+		{/if}
+	</button>
+	</footer>
     {/if}
     </div>
 </article>
@@ -728,12 +728,9 @@ font-family: var(--font-post-title);
 
 /* Like/Dislike colors aligned with DaisyUI without being too loud */
 .action-active {
-  color: var(--color-error) !important;
+	color: var(--color-error) !important;
 }
 
-.action-save {
-    margin-left: auto;
-}
 .action-save-active {
     color: var(--color-accent) !important;
 }
@@ -741,7 +738,7 @@ font-family: var(--font-post-title);
     color: var(--color-accent) !important;
 }
 
-.tag-assign-wrap { position: relative; display: inline-flex; }
+.tag-assign-wrap { position: relative; display: inline-flex; margin-left: auto; }
 .tag-dropdown {
     position: absolute;
     bottom: calc(100% + 6px);
