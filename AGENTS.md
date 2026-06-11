@@ -4,6 +4,13 @@
 - Berga is a FOSS project and should be able to run even inside local home servers.
 - The ideia is to build a very fast and sophisticated RSS reader powered with AI and algorithm, everything under the control of the user.
 
+## Execution Policy
+
+- **NEVER run Node.js, Python, pip, npm, or any runtime/tool directly on the host machine.** All execution must happen inside Docker containers.
+- Use `docker compose exec`, `docker compose run`, or `docker compose up --build` for everything.
+- If you need a shell inside a container: `docker compose exec backend bash` or `docker compose exec frontend sh`.
+- The only commands allowed on the host are `docker compose` and `git`.
+
 ## Architecture
 
 - **`backend/`** — Python 3.12 FastAPI app (port 5746). Two processes via supervisord:

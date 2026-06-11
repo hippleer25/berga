@@ -1,248 +1,351 @@
 <script lang="ts">
- import { onMount, tick } from 'svelte';
- import { goto } from '$app/navigation';
- import Send from '@lucide/svelte/icons/send';
- import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
- import Sparkles from '@lucide/svelte/icons/sparkles';
- import ChevronDown from '@lucide/svelte/icons/chevron-down';
- import Settings from '@lucide/svelte/icons/settings';
- import BookOpen from '@lucide/svelte/icons/book-open';
- import Globe from '@lucide/svelte/icons/globe';
- import Database from '@lucide/svelte/icons/database';
- import Blend from '@lucide/svelte/icons/blend';
- import Newspaper from '@lucide/svelte/icons/newspaper';
- import { pendingMotaPosts } from '$lib/stores/swipe';
- import { t } from 'svelte-i18n';
- import { get } from 'svelte/store';
- import { apiFetch } from '$lib/api';
+  import { onMount, tick } from 'svelte';
+  import { goto } from '$app/navigation';
+  import Send from '@lucide/svelte/icons/send';
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+  import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import ChevronUp from '@lucide/svelte/icons/chevron-up';
+  import Settings from '@lucide/svelte/icons/settings';
+  import BookOpen from '@lucide/svelte/icons/book-open';
+  import Globe from '@lucide/svelte/icons/globe';
+  import Database from '@lucide/svelte/icons/database';
+  import Blend from '@lucide/svelte/icons/blend';
+  import Newspaper from '@lucide/svelte/icons/newspaper';
+  import Check from '@lucide/svelte/icons/check';
+  import { pendingMotaPosts } from '$lib/stores/swipe';
+  import { t } from 'svelte-i18n';
+  import { get } from 'svelte/store';
+  import { apiFetch } from '$lib/api';
 
- type Message = {
-  role: 'user' | 'assistant';
-  content: string;
-  id: number;
-  fromFeed?: boolean;
-  feedTitles?: string[];
- };
+  type Message = {
+    role: 'user' | 'assistant';
+    content: string;
+    id: number;
+    fromFeed?: boolean;
+    feedTitles?: string[];
+  };
 
- type SourceMode = 'local' | 'online' | 'mixed';
- type WaitingPhase = 'thinking' | 'searching' | 'reading' | 'synthesizing' | null;
+  type SourceMode = 'local' | 'online' | 'mixed';
+  type WaitingPhase = 'thinking' | 'searching' | 'reading' | 'synthesizing' | null;
 
- let messages = $state<Message[]>([]);
- let input = $state('');
- let loading = $state(false);
- let streaming = $state(false);
- let error = $state('');
- let idCounter = 0;
- let waitingPhase = $state<WaitingPhase>(null);
+  let messages = $state<Message[]>([]);
+  let input = $state('');
+  let loading = $state(false);
+  let streaming = $state(false);
+  let error = $state('');
+  let idCounter = 0;
+  let waitingPhase = $state<WaitingPhase>(null);
 
- let deepReading = $state(false);
- let sourceMode = $state<SourceMode>('local');
+  let deepReading = $state(true);
+  let sourceMode = $state<SourceMode>('mixed');
+  let dropdownOpen = $state(false);
 
- let textareaRef: HTMLTextAreaElement;
- let scrollContainer: HTMLElement;
- let messagesEnd: HTMLDivElement;
+  let textareaRef: HTMLTextAreaElement;
+  let scrollContainer: HTMLElement;
+  let messagesEnd: HTMLDivElement;
+  let dropdownRef: HTMLElement;
 
- let showScrollBtn = $state(false);
+  let showScrollBtn = $state(false);
 
- let hasStarted = $derived(messages.some(m => m.role === 'user'));
+  let hasStarted = $derived(messages.some(m => m.role === 'user'));
 
-	let waitingMessages = $derived.by(() => ({
-		thinking: get(t)('motatab.waitThinking'),
-		searching: get(t)('motatab.waitSearching'),
-		reading: get(t)('motatab.waitReading'),
-		synthesizing: get(t)('motatab.waitSynthesizing'),
-	}));
+  let waitingMessages = $derived.by(() => ({
+    thinking: get(t)('motatab.waitThinking'),
+    searching: get(t)('motatab.waitSearching'),
+    reading: get(t)('motatab.waitReading'),
+    synthesizing: get(t)('motatab.waitSynthesizing'),
+  }));
 
-	let sourceLabels = $derived.by(() => ({
-		local: get(t)('motatab.sourceLocal'),
-		online: get(t)('motatab.sourceOnline'),
-		mixed: get(t)('motatab.sourceMixed'),
-	} as Record<SourceMode, string>));
+  let sourceOptions = $derived.by(() => [
+    { value: 'local' as SourceMode, label: get(t)('motatab.sourceLocal'), Icon: Database },
+    { value: 'online' as SourceMode, label: get(t)('motatab.sourceOnline'), Icon: Globe },
+    { value: 'mixed' as SourceMode, label: get(t)('motatab.sourceMixed'), Icon: Blend },
+  ]);
 
- let suggestions = $derived([
-  { key: 'suggestSummarize', Icon: Newspaper },
-  { key: 'suggestResearch', Icon: Globe },
-  { key: 'suggestTrending', Icon: Blend },
-  { key: 'suggestDeepRead', Icon: BookOpen },
- ]);
+  let currentSourceLabel = $derived.by(() => {
+    const opt = sourceOptions.find(o => o.value === sourceMode);
+    return opt ? opt.label : get(t)('motatab.sourceMixed');
+  });
 
- onMount(() => {});
+  onMount(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
+        dropdownOpen = false;
+      }
+    }
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  });
 
- $effect(() => {
-  const posts = $pendingMotaPosts;
-  if (posts.length > 0) {
-   const snapshot = [...posts];
-   pendingMotaPosts.set([]);
-   handleIncomingFeedPosts(snapshot);
+  $effect(() => {
+    const posts = $pendingMotaPosts;
+    if (posts.length > 0) {
+      const snapshot = [...posts];
+      pendingMotaPosts.set([]);
+      handleIncomingFeedPosts(snapshot);
+    }
+  });
+
+  async function handleIncomingFeedPosts(posts: any[]) {
+    if (loading) return;
+
+    const feedTitles = posts.map((p: any) => p.title);
+    const apiMessage = get(t)('motatab.feedPrompt');
+
+    const userMsgId = idCounter++;
+    messages = [
+      ...messages,
+      {
+        role: 'user',
+        content: apiMessage,
+        id: userMsgId,
+        fromFeed: true,
+        feedTitles,
+      },
+    ];
+
+    await scrollToBottom(true);
+    await streamResponse(apiMessage, posts);
   }
- });
 
- async function handleIncomingFeedPosts(posts: any[]) {
-  if (loading) return;
+  function handleScroll() {
+    if (!scrollContainer) return;
+    const { scrollTop, clientHeight, scrollHeight } = scrollContainer;
+    showScrollBtn = scrollHeight - scrollTop - clientHeight > 120;
+  }
 
-  const feedTitles = posts.map((p: any) => p.title);
-  const apiMessage = get(t)('motatab.feedPrompt');
+  async function scrollToBottom(smooth = true) {
+    await tick();
+    messagesEnd?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
+  }
 
-  const userMsgId = idCounter++;
-  messages = [
-   ...messages,
-   {
-    role: 'user',
-    content: apiMessage,
-    id: userMsgId,
-    fromFeed: true,
-    feedTitles,
-   },
-  ];
+  function autoResize() {
+    if (!textareaRef) return;
+    textareaRef.style.height = 'auto';
+    textareaRef.style.height = Math.min(textareaRef.scrollHeight, 120) + 'px';
+  }
 
-  await scrollToBottom(true);
-  await streamResponse(apiMessage, posts);
- }
+  async function sendMessage() {
+    const text = input.trim();
+    if (!text || loading) return;
 
- function handleScroll() {
-  if (!scrollContainer) return;
-  const { scrollTop, clientHeight, scrollHeight } = scrollContainer;
-  showScrollBtn = scrollHeight - scrollTop - clientHeight > 120;
- }
+    input = '';
+    dropdownOpen = false;
+    if (textareaRef) textareaRef.style.height = 'auto';
 
- async function scrollToBottom(smooth = true) {
-  await tick();
-  messagesEnd?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant' });
- }
+    messages = [...messages, { role: 'user', content: text, id: idCounter++ }];
+    await scrollToBottom(true);
 
-	function autoResize() {
-	if (!textareaRef) return;
-	textareaRef.style.height = 'auto';
-	textareaRef.style.height = Math.min(textareaRef.scrollHeight, 120) + 'px';
-}
+    await streamResponse(text);
+  }
 
-async function sendMessage() {
-  const text = input.trim();
-  if (!text || loading) return;
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  }
 
-  input = '';
-  if (textareaRef) textareaRef.style.height = 'auto';
+  function clearChat() {
+    messages = [];
+    error = '';
+    idCounter = 0;
+    waitingPhase = null;
+  }
 
-  messages = [...messages, { role: 'user', content: text, id: idCounter++ }];
-  await scrollToBottom(true);
+  function toggleDropdown(e: MouseEvent) {
+    e.stopPropagation();
+    dropdownOpen = !dropdownOpen;
+  }
 
-  await streamResponse(text);
- }
+  async function streamResponse(text: string, posts?: any[]) {
+    loading = true;
+    streaming = true;
+    waitingPhase = null;
+    error = '';
 
- function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
- }
+    const assistantId = idCounter++;
+    messages = [...messages, { role: 'assistant', content: '', id: assistantId }];
 
- function clearChat() {
-  messages = [];
-  error = '';
-  idCounter = 0;
-  waitingPhase = null;
- }
+    try {
+      const articles = (posts || []).map((p: any) => ({
+        item_id: p.item_id || '',
+        title: p.title || '',
+        description: p.description || '',
+        link: p.link || '',
+        feed_title: p.feed_title || '',
+        pub_date: p.pub_date || '',
+        author: p.author || '',
+      }));
 
- function applySuggestion(text: string) {
-  input = text;
-  textareaRef?.focus();
- }
+      const res = await apiFetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          source_mode: sourceMode,
+          deep_reading: deepReading,
+          articles,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(errText || `Error ${res.status}`);
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+
+          const data = trimmed.slice(6);
+          if (data === '[DONE]') continue;
+
+          let parsed: any;
+          try { parsed = JSON.parse(data); } catch { continue; }
+
+          if (parsed.status) {
+            waitingPhase = parsed.status;
+          } else if (parsed.content) {
+            const msg = messages.find((m: Message) => m.id === assistantId);
+            if (msg) msg.content += parsed.content;
+          } else if (parsed.error) {
+            error = parsed.error;
+          }
+        }
+      }
+    } catch (e: any) {
+      error = e.message || String(e);
+    } finally {
+      loading = false;
+      streaming = false;
+      waitingPhase = null;
+
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg?.role === 'assistant' && !lastMsg.content.trim()) {
+        messages = messages.filter((m: Message) => m.id !== assistantId);
+      }
+    }
+  }
+
+  function renderMarkdown(content: string): string {
+    let html = content
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, _lang, code) =>
+      `<pre><code>${code.trim()}</code></pre>`
+    );
+    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/___(.+?)___/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    html = html.replace(/(?<!\w)\*(.+?)\*(?!\w)/g, '<em>$1</em>');
+    html = html.replace(/(?<!\w)_(.+?)_(?!\w)/g, '<em>$1</em>');
+    html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+    html = html.replace(/^---+$/gm, '<hr>');
+    html = html.replace(/^\*\*\*+$/gm, '<hr>');
+
+    html = html.replace(/((?:^\|.+\|(?:\n|$))+)/gm, (block) => {
+      const rows = block.trim().split('\n').map(l => l.trim()).filter(Boolean);
+      if (rows.length < 2) return block;
+      if (!/^\|[\s\-:]+\|?$/.test(rows[1])) return block;
+
+      const parseCells = (line: string) => {
+        const cells = line.split('|').map(c => c.trim());
+        if (cells[0] === '') cells.shift();
+        if (cells[cells.length - 1] === '') cells.pop();
+        return cells;
+      };
+
+      const headers = parseCells(rows[0]);
+      const bodyRows = rows.slice(2);
+
+      let t = '<div class="md-table-wrap"><table><thead><tr>';
+      t += headers.map(h => `<th>${h}</th>`).join('');
+      t += '</tr></thead><tbody>';
+      for (const row of bodyRows) {
+        const cells = parseCells(row);
+        t += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+      }
+      t += '</tbody></table></div>';
+      return t;
+    });
+
+    const lines = html.split('\n');
+    const out: string[] = [];
+    let inUl = false;
+    let inOl = false;
+
+    for (const ln of lines) {
+      const ulMatch = ln.match(/^[*\-] (.+)$/);
+      const olMatch = ln.match(/^\d+\. (.+)$/);
+
+      if (ulMatch) {
+        if (!inUl) { out.push('<ul>'); inUl = true; }
+        out.push(`<li>${ulMatch[1]}</li>`);
+      } else if (olMatch) {
+        if (!inOl) { out.push('<ol>'); inOl = true; }
+        out.push(`<li>${olMatch[1]}</li>`);
+      } else {
+        if (inUl) { out.push('</ul>'); inUl = false; }
+        if (inOl) { out.push('</ol>'); inOl = false; }
+        out.push(ln);
+      }
+    }
+    if (inUl) out.push('</ul>');
+    if (inOl) out.push('</ol>');
+
+    html = out.join('\n');
+    html = html.replace(/\n{2,}/g, '</p><p>');
+    html = html.replace(/\n/g, '<br>');
+    return '<p>' + html + '</p>';
+  }
+
+  function renderMarkdownWithCursor(content: string): string {
+    return renderMarkdown(content) + '<span class="stream-cursor"></span>';
+  }
 </script>
 
 
 <div class="page-root mota-page">
 
- <!-- ── Top Header + Welcome + Filter (in scrollable flow) ─────────── -->
- {#if !hasStarted}
- <div class="main-content">
+  <!-- ── Top Header + Welcome (in scrollable flow) ─────────── -->
+  {#if !hasStarted}
+  <div class="main-content">
 
-  <header class="top-header">
-   <button class="settings-btn" onclick={() => goto('/settings/appearance')} aria-label="Settings">
-    <Settings size={20} />
-   </button>
-  </header>
+    <header class="top-header">
+      <button class="settings-btn" onclick={() => goto('/settings/appearance')} aria-label="Settings">
+        <Settings size={20} />
+      </button>
+    </header>
 
-  <div class="welcome-section">
-   <h1 class="welcome-title">Mota</h1>
-   <p class="welcome-subtitle">{$t('motatab.subtitle')}</p>
+    <div class="welcome-section">
+      <h1 class="welcome-title">Mota</h1>
+      <p class="welcome-subtitle">{$t('motatab.subtitle')}</p>
+    </div>
+
+    <div class="feed-wrap"></div>
   </div>
-
-  <div class="suggestion-cards">
-   {#each suggestions as s (s.key)}
-    <button class="suggestion-card" onclick={() => applySuggestion($t(`motatab.${s.key}`))}>
-     <s.Icon size={15} strokeWidth={1.8} />
-     <span>{$t(`motatab.${s.key}`)}</span>
-    </button>
-   {/each}
-  </div>
-
-  <p class="welcome-hint">{$t('motatab.welcomeHint')}</p>
-
-  <!-- ── Filter Bar ──────────────────────────────────────────────── -->
-  <div class="filter-bar">
-   <div class="mode-pill" role="group" aria-label="Source mode">
-    {#each ([
-     { value: 'local', label: $t('motatab.sourceLocal'), Icon: Database },
-     { value: 'online', label: $t('motatab.sourceOnline'), Icon: Globe },
-     { value: 'mixed', label: $t('motatab.sourceMixed'), Icon: Blend },
-    ] as const) as opt (opt.value)}
-     <button
-      class="mode-btn"
-      class:active={sourceMode === opt.value}
-      onclick={() => sourceMode = opt.value}
-      aria-pressed={sourceMode === opt.value}
-     >
-      <opt.Icon size={13} />
-      <span>{opt.label}</span>
-     </button>
-    {/each}
-   </div>
-
-   <button
-    class="filter-chip"
-    class:chip-active={deepReading}
-    onclick={() => deepReading = !deepReading}
-    aria-pressed={deepReading}
-   >
-    <BookOpen size={13} />
-    <span>{$t('motatab.deepReading')}</span>
-   </button>
-  </div>
-
-  <div class="feed-wrap"></div>
- </div>
- {:else}
- <div class="main-content">
-  <div class="filter-bar filter-bar--compact">
-   <div class="mode-pill" role="group" aria-label="Source mode">
-    {#each ([
-     { value: 'local', label: $t('motatab.sourceLocal'), Icon: Database },
-     { value: 'online', label: $t('motatab.sourceOnline'), Icon: Globe },
-     { value: 'mixed', label: $t('motatab.sourceMixed'), Icon: Blend },
-    ] as const) as opt (opt.value)}
-     <button
-      class="mode-btn"
-      class:active={sourceMode === opt.value}
-      onclick={() => sourceMode = opt.value}
-      aria-pressed={sourceMode === opt.value}
-     >
-      <opt.Icon size={13} />
-      <span>{opt.label}</span>
-     </button>
-    {/each}
-   </div>
-
-   <button
-    class="filter-chip"
-    class:chip-active={deepReading}
-    onclick={() => deepReading = !deepReading}
-    aria-pressed={deepReading}
-   >
-    <BookOpen size={13} />
-    <span>{$t('motatab.deepReading')}</span>
-   </button>
-  </div>
-
-  <div class="feed-wrap"></div>
- </div>
- {/if}
+  {/if}
 
  <!-- ── Scrollable messages ────────────────────────────────────────── -->
  <div class="scroll-wrap">
@@ -318,45 +421,91 @@ async function sendMessage() {
   </button>
  </div>
 
- <!-- ── Footer ─────────────────────────────────────────────────────── -->
- <footer class="chat-footer">
-  <div class="main-content footer-inner">
-   <div class="input-wrap">
-    <textarea
-     bind:this={textareaRef}
-     bind:value={input}
-     oninput={autoResize}
-     onkeydown={handleKeydown}
-     placeholder="{$t('motatab.placeholder')}"
-     rows={1}
-     class="chat-textarea"
-    ></textarea>
+  <!-- ── Footer ─────────────────────────────────────────────────────── -->
+  <footer class="chat-footer">
+    <div class="main-content footer-inner">
 
-    <button
-     class="send-btn {input.trim() && !loading ? 'ready' : 'idle'}"
-     onclick={sendMessage}
-     disabled={loading || !input.trim()}
-     title="{$t('motatab.send')}"
-    >
-     <Send size={15} />
-    </button>
-   </div>
+    <div class="input-wrap">
+      {#if dropdownOpen}
+      <div class="dropdown-panel" bind:this={dropdownRef}>
+        <div class="dropdown-section">
+          <p class="dropdown-section-title">{$t('motatab.sourceMode')}</p>
+          {#each sourceOptions as opt (opt.value)}
+          <button
+            class="dropdown-item"
+            class:dropdown-item--active={sourceMode === opt.value}
+            onclick={() => { sourceMode = opt.value; }}
+          >
+            <opt.Icon size={15} />
+            <span class="dropdown-item-label">{opt.label}</span>
+            {#if sourceMode === opt.value}
+            <Check size={14} class="dropdown-check" />
+            {/if}
+          </button>
+          {/each}
+        </div>
 
-   <div class="footer-meta">
-    <p class="disclaimer-text">
-     {$t('motatab.disclaimer')}
-    </p>
-    <button
-     class="clear-btn"
-     onclick={clearChat}
-     title="{$t('motatab.newConversation')}"
-    >
-     <RotateCcw size={11} />
-     <span>{$t('motatab.clearChat')}</span>
-    </button>
-   </div>
-  </div>
- </footer>
+        <div class="dropdown-divider"></div>
+
+        <button
+          class="dropdown-item"
+          onclick={() => { deepReading = !deepReading; }}
+        >
+          <BookOpen size={15} />
+          <span class="dropdown-item-label">{$t('motatab.deepReading')}</span>
+          <span class="dropdown-toggle {deepReading ? 'dropdown-toggle--on' : 'dropdown-toggle--off'}">
+            {deepReading ? $t('motatab.on') : $t('motatab.off')}
+          </span>
+        </button>
+      </div>
+      {/if}
+
+      <textarea
+        bind:this={textareaRef}
+        bind:value={input}
+        oninput={autoResize}
+        onkeydown={handleKeydown}
+        placeholder="{$t('motatab.placeholder')}"
+        rows={1}
+        class="chat-textarea"
+      ></textarea>
+
+      <button
+        class="mode-trigger"
+        onclick={toggleDropdown}
+        aria-expanded={dropdownOpen}
+        aria-haspopup="listbox"
+        title="{$t('motatab.sourceMode')}"
+      >
+        <span class="mode-trigger-label">{currentSourceLabel}</span>
+        <ChevronUp size={14} />
+      </button>
+
+      <button
+        class="send-btn {input.trim() && !loading ? 'ready' : 'idle'}"
+        onclick={sendMessage}
+        disabled={loading || !input.trim()}
+        title="{$t('motatab.send')}"
+      >
+        <Send size={15} />
+      </button>
+    </div>
+
+      <div class="footer-meta">
+        <p class="disclaimer-text">
+          {$t('motatab.disclaimer')}
+        </p>
+        <button
+          class="clear-btn"
+          onclick={clearChat}
+          title="{$t('motatab.newConversation')}"
+        >
+          <RotateCcw size={11} />
+          <span>{$t('motatab.clearChat')}</span>
+        </button>
+      </div>
+    </div>
+  </footer>
 
 </div>
 
@@ -435,121 +584,7 @@ async function sendMessage() {
   line-height: 1.4;
  }
 
- /* ── Suggestion Cards ──────────────────────────────── */
- .suggestion-cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
- }
- .suggestion-card {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--color-base-300);
-  background: transparent;
-  font-size: 13px;
-  font-weight: 500;
-  color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
-  cursor: pointer;
-  transition: background 140ms, color 140ms, border-color 140ms;
-  white-space: nowrap;
- }
- .suggestion-card:hover {
-  background: var(--color-base-200);
-  color: var(--color-base-content);
-  border-color: color-mix(in oklch, var(--color-base-content) 15%, transparent);
- }
- .suggestion-card:active {
-  transform: scale(0.97);
- }
-
- .welcome-hint {
-  font-size: 13px;
-  color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
-  margin: 0 0 20px;
-  line-height: 1.4;
- }
-
- /* ── Filter Bar (matches HomeTab) ──────────────────── */
- .filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-top: 8px;
-  padding-bottom: 12px;
-  background: var(--color-base-100);
-  overflow-x: auto;
-  scrollbar-width: none;
-  touch-action: pan-y pan-x;
- }
- .filter-bar::-webkit-scrollbar { display: none; }
-
- .filter-bar--compact {
-  padding-top: 10px;
-  padding-bottom: 10px;
- }
-
- .mode-pill {
-  display: flex;
-  background: var(--color-base-200);
-  border-radius: 13px;
-  padding: 3px;
-  gap: 2px;
-  flex-shrink: 0;
- }
- .mode-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 14px;
-  border-radius: 10px;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  font-weight: 500;
-  color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
-  cursor: pointer;
-  transition: background 150ms ease, color 150ms ease, font-weight 0ms;
-  white-space: nowrap;
- }
- .mode-btn.active {
-  background: var(--color-base-100);
-  color: var(--color-base-content);
-  font-weight: 700;
-  box-shadow: 0 1px 3px color-mix(in oklch, black 10%, transparent);
- }
-
- .filter-chip {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--color-base-300);
-  background: transparent;
-  font-size: 13px;
-  font-weight: 500;
-  color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
-  cursor: pointer;
-  transition: background 130ms, color 130ms, border-color 130ms;
-  white-space: nowrap;
-  flex-shrink: 0;
- }
- .filter-chip:hover {
-  background: var(--color-base-200);
-  color: var(--color-base-content);
- }
- .filter-chip.chip-active {
-  background: color-mix(in oklch, var(--color-accent) 12%, transparent);
-  border-color: color-mix(in oklch, var(--color-accent) 60%, transparent);
-  color: var(--color-accent);
-  font-weight: 600;
- }
-
- .feed-wrap {
+.feed-wrap {
   border-top: 1px solid var(--color-base-300);
  }
 
@@ -728,10 +763,10 @@ async function sendMessage() {
   text-align: center;
  }
 
- /* ── Textarea ────────────────────────────────────────── */
- .chat-textarea {
+/* ── Textarea ────────────────────────────────────────── */
+.chat-textarea {
   resize: none;
-  line-height: 1.55;
+  line-height: 1.3;
   outline: none !important;
   box-shadow: none !important;
   border: none;
@@ -741,69 +776,202 @@ async function sendMessage() {
   min-width: 0;
   font-size: 15px;
   color: var(--color-base-content);
-  min-height: 26px;
   max-height: 120px;
-  padding: 6px 0;
- }
- .chat-textarea::placeholder {
+  padding: 0;
+}
+.chat-textarea::placeholder {
   color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
- }
- .chat-textarea:focus, .chat-textarea:focus-visible {
+}
+.chat-textarea:focus, .chat-textarea:focus-visible {
   outline: none !important;
   box-shadow: none !important;
   border: none !important;
- }
+}
 
- @media (min-width: 768px) {
+@media (min-width: 768px) {
   .chat-textarea {
-   font-size: 0.95rem;
-   min-height: 32px;
+    font-size: 0.95rem;
   }
- }
+}
 
- /* ── Input wrap ──────────────────────────────────────── */
- .input-wrap {
-  display: flex; align-items: flex-end; gap: 10px;
+/* ── Input wrap ──────────────────────────────────────── */
+.input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 46px;
   background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
   border: 1px solid var(--color-base-300);
   border-radius: 10px;
-  padding: 0 12px;
+  padding: 0 4px 0 16px;
+  position: relative;
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
- }
- .input-wrap:focus-within {
+}
+.input-wrap:focus-within {
   background: var(--color-base-100);
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 15%, transparent);
- }
+}
 
- /* ── Send button ─────────────────────────────────────── */
- .send-btn {
-  flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px;
-  border: none; display: flex; align-items: center; justify-content: center;
-  transition: background 160ms, box-shadow 160ms, transform 100ms; cursor: pointer;
- }
+/* ── Mode trigger (dropdown button) ─────────────────── */
+.mode-trigger {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+  transition: background 140ms, color 140ms;
+  white-space: nowrap;
+}
+.mode-trigger:hover {
+  background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+  color: var(--color-base-content);
+}
+.mode-trigger-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── Dropdown panel ─────────────────────────────────── */
+.dropdown-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px color-mix(in oklch, black 16%, transparent),
+              0 2px 6px color-mix(in oklch, black 8%, transparent);
+  padding: 6px;
+  z-index: 60;
+  animation: dropdownIn 150ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes dropdownIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dropdown-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dropdown-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+  padding: 6px 10px 4px;
+  margin: 0;
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: color-mix(in oklch, var(--color-base-content) 75%, transparent);
+  transition: background 120ms, color 120ms;
+  width: 100%;
+  text-align: left;
+}
+.dropdown-item:hover {
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+.dropdown-item--active {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+.dropdown-item--active:hover {
+  background: color-mix(in oklch, var(--color-accent) 8%, transparent);
+  color: var(--color-accent);
+}
+.dropdown-item-label {
+  flex: 1;
+}
+.dropdown-check {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+.dropdown-toggle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.dropdown-toggle--on {
+  background: color-mix(in oklch, var(--color-accent) 15%, transparent);
+  color: var(--color-accent);
+}
+.dropdown-toggle--off {
+  background: var(--color-base-200);
+  color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+}
+.dropdown-divider {
+  height: 1px;
+  background: var(--color-base-300);
+  margin: 4px 6px;
+}
+
+/* ── Send button ─────────────────────────────────────── */
+.send-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin: 5px;
+  border-radius: 8px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 160ms, box-shadow 160ms, transform 100ms;
+  cursor: pointer;
+}
  .send-btn.ready { background: var(--color-accent); color: var(--color-base-100); }
  .send-btn.ready:hover { box-shadow: 0 4px 12px color-mix(in oklch, var(--color-accent) 35%, transparent); transform: translateY(-1px); }
  .send-btn.ready:active { transform: scale(0.95); }
  .send-btn.idle { background: color-mix(in oklch, var(--color-base-300) 90%, transparent); color: color-mix(in oklch, var(--color-base-content) 40%, transparent); cursor: not-allowed; }
 
- /* ── Footer ──────────────────────────────────────────── */
- .chat-footer {
+/* ── Footer ──────────────────────────────────────────── */
+.chat-footer {
   flex-shrink: 0;
   background: var(--color-base-100);
-  border-top: 1px solid var(--color-base-300);
+  border-top: none;
   z-index: 10;
- }
+  position: relative;
+}
 
- .footer-inner {
+.footer-inner {
   padding-top: 12px;
   padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
- }
+  position: relative;
+}
 
- @media (min-width: 768px) {
+@media (max-width: 767px) {
+  .footer-inner {
+    padding-bottom: calc(12px + 64px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 768px) {
   .footer-inner { padding: 16px 0; }
-  .input-wrap { padding: 0 14px; border-radius: 14px; }
- }
+}
 
  .footer-meta {
   display: flex;
