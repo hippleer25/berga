@@ -2,7 +2,7 @@
     import { page } from '$app/stores';
     import { goto, beforeNavigate } from '$app/navigation';
     import { onMount } from 'svelte';
-    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Layers, Tag, X } from '@lucide/svelte';
+    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Layers, Tag, X, Highlighter, Trash2 } from '@lucide/svelte';
 
 import { t, locale } from 'svelte-i18n';
 import { get } from 'svelte/store';
@@ -34,19 +34,30 @@ type ItemMeta = {
     };
 
 type ReaderData = {
-  title: string;
-  content_html: string;
-  url: string;
-  feed_title?: string;
-  feed_icon?: string;
-  feed_sha256?: string;
-  author?: string;
-  pub_date?: string;
-  liked?: boolean;
-  disliked?: boolean;
-  saved?: boolean;
-  similar_articles?: SimilarArticle[];
+    title: string;
+    content_html: string;
+    url: string;
+    feed_title?: string;
+    feed_icon?: string;
+    feed_sha256?: string;
+    author?: string;
+    pub_date?: string;
+    liked?: boolean;
+    disliked?: boolean;
+    saved?: boolean;
+    archived?: boolean;
+    similar_articles?: SimilarArticle[];
+    highlights?: Highlight[];
 };
+
+type Highlight = {
+    id: number;
+    text: string;
+    color: string;
+    sort_order: number;
+};
+
+const HIGHLIGHT_PRESETS = ['#FFEB3B', '#66BB6A', '#42A5F5', '#F48FB1'] as const;
 
     let loadedItemId = $state<string | null>(null);
 
@@ -82,7 +93,14 @@ let iframeLoading = $state(false);
 let iframeBlocked = $state(false);
 let iframeTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    const IFRAME_TIMEOUT_MS = 12_000;
+const IFRAME_TIMEOUT_MS = 12_000;
+
+// Highlights
+let highlights = $state<Highlight[]>([]);
+let highlightMenu = $state<{ x: number; y: number; text: string } | null>(null);
+let highlightPopover = $state<{ x: number; y: number; highlightId: number } | null>(null);
+let highlightLoading = $state(false);
+let articleBodyEl: HTMLDivElement | undefined = $state();
 
     async function loadArticle(id: string) {
         if (!id || id === loadedItemId) return;
@@ -149,12 +167,19 @@ const res = await apiFetch(`/api/load-text/${id}`, {
         saved: data.saved,
       };
 
-            liked    = data.liked    ?? false;
-            disliked = data.disliked ?? false;
-            saved    = data.saved    ?? false;
+        liked = data.liked ?? false;
+        disliked = data.disliked ?? false;
+        saved = data.saved ?? false;
+        highlights = (data as any).highlights ?? [];
 
-		if (data.title) document.title = `${data.title} — Berga`;
-		loadArticleTags(id);
+        if (data.title) document.title = `${data.title} — Berga`;
+        loadArticleTags(id);
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                renderHighlights();
+            });
+        });
 	} catch (err: any) {
             error = err.message || get(t)('article.loadError');
 	} finally {
@@ -223,9 +248,14 @@ function toggleTagDropdown() {
 	tagDropdownOpen = !tagDropdownOpen;
 }
 
-function outsideClick(e: MouseEvent) {
-	if (tagDropdownOpen) tagDropdownOpen = false;
-}
+    function outsideClick(e: MouseEvent) {
+        if (tagDropdownOpen) tagDropdownOpen = false;
+        const target = e.target as HTMLElement;
+        if (!target.closest('.hl-toolbar') && !target.closest('.hl-popover') && !target.closest('mark.bergahl')) {
+            highlightMenu = null;
+            highlightPopover = null;
+        }
+    }
 
 	onMount(() => {
     const id = $page.params.item_id;
@@ -365,22 +395,230 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         }
     }
 
-async function toggleSave() {
-  if (saveLoading) return;
-  saveLoading = true;
-  try {
-    const res = await apiFetch(`/api/feed/${loadedItemId}/save`, {
-      method: saved ? 'DELETE' : 'POST',
-      credentials: 'include'
-    });
-    if (!res.ok) throw new Error();
-    saved = !saved;
-  } catch {
-    console.error('Erro ao salvar');
-  } finally {
-    saveLoading = false;
-  }
-}
+    async function toggleSave() {
+        if (saveLoading) return;
+        saveLoading = true;
+        try {
+            const res = await apiFetch(`/api/feed/${loadedItemId}/save`, {
+                method: saved ? 'DELETE' : 'POST',
+                credentials: 'include'
+            });
+            if (!res.ok) throw new Error();
+            saved = !saved;
+        } catch {
+            console.error('Erro ao salvar');
+        } finally {
+            saveLoading = false;
+        }
+    }
+
+    // ── Highlights ───────────────────────────────────────────────────
+
+    function renderHighlights() {
+        if (!articleBodyEl) return;
+        clearHighlightMarks();
+        if (highlights.length === 0) return;
+
+        const sorted = [...highlights].sort((a, b) => a.sort_order - b.sort_order);
+        for (const hl of sorted) {
+            wrapTextInMark(articleBodyEl, hl.text, hl.id, hl.color);
+        }
+    }
+
+    function clearHighlightMarks() {
+        if (!articleBodyEl) return;
+        const marks = articleBodyEl.querySelectorAll('mark.bergahl');
+        marks.forEach(mark => {
+            const parent = mark.parentNode;
+            if (parent) {
+                while (mark.firstChild) {
+                    parent.insertBefore(mark.firstChild, mark);
+                }
+                parent.removeChild(mark);
+                parent.normalize();
+            }
+        });
+    }
+
+    function wrapTextInMark(root: Node, searchText: string, highlightId: number, color: string) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+        const textNodes: Text[] = [];
+        let node: Text | null;
+        while ((node = walker.nextNode() as Text | null)) {
+            if (node.parentElement?.tagName !== 'MARK' || !node.parentElement.classList.contains('bergahl')) {
+                textNodes.push(node);
+            }
+        }
+
+        let fullText = textNodes.map(n => n.textContent ?? '').join('');
+        let searchFrom = 0;
+
+        while (searchFrom <= fullText.length) {
+            const idx = fullText.indexOf(searchText, searchFrom);
+            if (idx === -1) break;
+
+            let charCount = 0;
+            let startNodeIdx = -1;
+            let startOffset = 0;
+            let endNodeIdx = -1;
+            let endOffset = 0;
+
+            for (let i = 0; i < textNodes.length; i++) {
+                const len = textNodes[i].textContent?.length ?? 0;
+                if (startNodeIdx === -1 && charCount + len > idx) {
+                    startNodeIdx = i;
+                    startOffset = idx - charCount;
+                }
+                if (charCount + len >= idx + searchText.length) {
+                    endNodeIdx = i;
+                    endOffset = idx + searchText.length - charCount;
+                    break;
+                }
+                charCount += len;
+            }
+
+            if (startNodeIdx === -1 || endNodeIdx === -1) break;
+
+            try {
+                const range = document.createRange();
+                range.setStart(textNodes[startNodeIdx], startOffset);
+                range.setEnd(textNodes[endNodeIdx], endOffset);
+
+                const mark = document.createElement('mark');
+                mark.className = 'bergahl';
+                mark.dataset.highlightId = String(highlightId);
+                mark.style.backgroundColor = color;
+
+                range.surroundContents(mark);
+
+                const newWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+                const newTextNodes: Text[] = [];
+                let nn: Text | null;
+                while ((nn = newWalker.nextNode() as Text | null)) {
+                    if (nn.parentElement?.tagName !== 'MARK' || !nn.parentElement.classList.contains('bergahl')) {
+                        newTextNodes.push(nn);
+                    }
+                }
+                textNodes.length = 0;
+                textNodes.push(...newTextNodes);
+                fullText = textNodes.map(n => n.textContent ?? '').join('');
+            } catch {
+                break;
+            }
+
+            searchFrom = idx + searchText.length;
+            if (searchFrom >= fullText.length) break;
+        }
+    }
+
+    function onArticleBodyMouseup(e: MouseEvent) {
+        if (webView) return;
+        highlightMenu = null;
+        highlightPopover = null;
+
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
+
+        const bodyEl = articleBodyEl;
+        if (!bodyEl) return;
+
+        if (!bodyEl.contains(sel.anchorNode)) return;
+
+        const text = sel.toString().trim();
+        if (text.length < 1) return;
+
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+
+        highlightMenu = {
+            x: rect.left + rect.width / 2,
+            y: rect.top - 8,
+            text,
+        };
+    }
+
+    function onArticleBodyClick(e: MouseEvent) {
+        const target = e.target as HTMLElement;
+        const mark = target.closest('mark.bergahl') as HTMLElement | null;
+        if (!mark) {
+            highlightPopover = null;
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const hlId = parseInt(mark.dataset.highlightId ?? '0', 10);
+        if (!hlId) return;
+
+        const rect = mark.getBoundingClientRect();
+        highlightPopover = {
+            x: rect.left + rect.width / 2,
+            y: rect.top - 8,
+            highlightId: hlId,
+        };
+        highlightMenu = null;
+    }
+
+    async function applyHighlight(color: string) {
+        if (!highlightMenu || !loadedItemId || highlightLoading) return;
+        highlightLoading = true;
+        const text = highlightMenu.text;
+        highlightMenu = null;
+
+        try {
+            const res = await apiFetch(`/api/highlights/${loadedItemId}`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, color }),
+            });
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            if (data.highlight) {
+                highlights = [...highlights, {
+                    id: data.highlight.id,
+                    text: data.highlight.text,
+                    color: data.highlight.color,
+                    sort_order: data.highlight.sort_order,
+                }];
+            }
+        } catch {
+            console.error('Failed to save highlight');
+        } finally {
+            highlightLoading = false;
+            window.getSelection()?.removeAllRanges();
+            requestAnimationFrame(() => renderHighlights());
+        }
+    }
+
+    async function removeHighlight(highlightId: number) {
+        if (highlightLoading) return;
+        highlightLoading = true;
+        highlightPopover = null;
+
+        try {
+            const res = await apiFetch(`/api/highlights/${highlightId}`, {
+                method: 'DELETE',
+                credentials: 'include',
+            });
+            if (!res.ok) throw new Error();
+            highlights = highlights.filter(h => h.id !== highlightId);
+        } catch {
+            console.error('Failed to remove highlight');
+        } finally {
+            highlightLoading = false;
+            clearHighlightMarks();
+            requestAnimationFrame(() => renderHighlights());
+        }
+    }
+
+    function onCustomColorInput(e: Event) {
+        const input = e.target as HTMLInputElement;
+        if (input.value) {
+            applyHighlight(input.value);
+        }
+    }
 </script>
 
 <svelte:head>
@@ -649,9 +887,9 @@ async function toggleSave() {
 
                     </article>
 
-                    <div class="article-body">
-                        {@html readerData.content_html}
-                    </div>
+                <div class="article-body" bind:this={articleBodyEl} onmouseup={onArticleBodyMouseup} onclick={onArticleBodyClick} onkeydown={() => {}} role="application">
+                    {@html readerData.content_html}
+                </div>
 
                     <!-- ── Find Similars Section ─────────────────────── -->
                     {#if readerData.similar_articles && readerData.similar_articles.length > 0}
@@ -683,9 +921,53 @@ async function toggleSave() {
                         </section>
                     {/if}
 
-                {/if}
+        {/if}
 
-            </div>
+    </div>
+
+    <!-- ── Highlight Selection Toolbar ─────────────────────── -->
+    {#if highlightMenu}
+        <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+        <div
+            class="hl-toolbar"
+            style="left: {highlightMenu.x}px; top: {highlightMenu.y}px;"
+            onclick={(e) => e.stopPropagation()}
+        >
+            {#each HIGHLIGHT_PRESETS as color}
+                <button
+                    class="hl-color-btn"
+                    style="background: {color};"
+                    onclick={() => applyHighlight(color)}
+                    disabled={highlightLoading}
+                    title={color}
+                ></button>
+            {/each}
+            <label class="hl-custom-btn" title={$t('article.customColor')}>
+                <input type="color" value="#FF9800" oninput={onCustomColorInput} disabled={highlightLoading} />
+                <Highlighter size={13} />
+            </label>
+        </div>
+    {/if}
+
+    <!-- ── Highlight Delete Popover ─────────────────────────── -->
+    {#if highlightPopover}
+        <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+        <div
+            class="hl-popover"
+            style="left: {highlightPopover.x}px; top: {highlightPopover.y}px;"
+            onclick={(e) => e.stopPropagation()}
+        >
+            <button
+                class="hl-delete-btn"
+                onclick={() => removeHighlight(highlightPopover!.highlightId)}
+                disabled={highlightLoading}
+                title={$t('article.removeHighlight')}
+            >
+                <Trash2 size={13} />
+                <span>{$t('article.removeHighlight')}</span>
+            </button>
+        </div>
+    {/if}
         </main>
     {/if}
 
@@ -1005,6 +1287,106 @@ font-family: var(--font-post-title);
     }
     .article-body :global(pre) { background: var(--color-base-200); border-radius: 6px; padding: 1em; overflow-x: auto; font-size: 0.9em; margin: 1.5em 0; }
     .article-body :global(hr) { border: none; border-top: 1px solid var(--color-base-300); margin: 3em 0; }
+
+    /* ── Highlights ────────────────────────────────────────── */
+    .article-body :global(mark.bergahl) {
+        border-radius: 2px;
+        padding: 0 1px;
+        cursor: pointer;
+        transition: opacity 120ms;
+    }
+    .article-body :global(mark.bergahl:hover) {
+        opacity: 0.75;
+    }
+
+    .hl-toolbar {
+        position: fixed;
+        transform: translate(-50%, -100%);
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--color-base-100);
+        border: 1px solid var(--color-base-300);
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0,0,0,.15);
+        padding: 6px 8px;
+    }
+
+    .hl-color-btn {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 2px solid var(--color-base-300);
+        cursor: pointer;
+        transition: transform 100ms, border-color 100ms;
+        flex-shrink: 0;
+    }
+    .hl-color-btn:hover {
+        transform: scale(1.15);
+        border-color: var(--color-base-content);
+    }
+    .hl-color-btn:disabled { opacity: 0.5; cursor: default; }
+
+    .hl-custom-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 2px dashed var(--color-base-300);
+        cursor: pointer;
+        color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+        background: transparent;
+        position: relative;
+        overflow: hidden;
+        flex-shrink: 0;
+        transition: border-color 100ms;
+    }
+    .hl-custom-btn:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+    }
+    .hl-custom-btn input[type="color"] {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .hl-popover {
+        position: fixed;
+        transform: translate(-50%, -100%);
+        z-index: 40;
+        background: var(--color-base-100);
+        border: 1px solid var(--color-base-300);
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0,0,0,.15);
+        padding: 4px;
+    }
+
+    .hl-delete-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--color-error);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 100ms;
+        white-space: nowrap;
+    }
+    .hl-delete-btn:hover {
+        background: color-mix(in oklch, var(--color-error) 10%, transparent);
+    }
+    .hl-delete-btn:disabled { opacity: 0.5; cursor: default; }
 
     /* ── Similar Articles ────────────────────────────────────── */
     .similar-section {

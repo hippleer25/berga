@@ -88,17 +88,75 @@ def _get_interaction_status(user_id: int, item_id: str) -> dict:
         cursor = conn.cursor(dictionary=True)
         try:
             cursor.execute(
-                "SELECT action FROM interactions WHERE user_id = %s AND item_id = %s",
+                "SELECT action, archived FROM interactions WHERE user_id = %s AND item_id = %s",
                 (user_id, item_id),
             )
-            actions = {row["action"] for row in cursor.fetchall()}
+            rows = cursor.fetchall()
+            actions = {row["action"] for row in rows}
+            archived = any(row.get("archived") for row in rows if row["action"] == "saved")
         finally:
             cursor.close()
-    return {
-        "liked": "like" in actions,
-        "disliked": "dislike" in actions,
-        "saved": "saved" in actions,
-    }
+        return {
+            "liked": "like" in actions,
+            "disliked": "dislike" in actions,
+            "saved": "saved" in actions,
+            "archived": bool(archived),
+            "highlights": _get_highlights(user_id, item_id),
+        }
+
+
+def _get_highlights(user_id: int, item_id: str) -> list:
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT id, text, color, sort_order FROM highlights "
+                "WHERE user_id = %s AND item_id = %s ORDER BY sort_order",
+                (user_id, item_id),
+            )
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+
+
+def _cache_article(item_id: str, content_html: str) -> None:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO article_cache (item_id, content_html) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE content_html = VALUES(content_html)",
+                (item_id, content_html),
+            )
+            conn.commit()
+        except Exception as e:
+            logger.warning("[cache] failed to cache article %s: %s", item_id, e)
+            conn.rollback()
+        finally:
+            cursor.close()
+
+
+def _get_cached_article(item_id: str, archived_only: bool = False) -> str | None:
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            if archived_only:
+                cursor.execute(
+                    "SELECT ac.content_html FROM article_cache ac "
+                    "INNER JOIN interactions i ON i.item_id = ac.item_id "
+                    "WHERE ac.item_id = %s AND i.action = 'saved' AND i.archived = 1 "
+                    "LIMIT 1",
+                    (item_id,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT content_html FROM article_cache WHERE item_id = %s",
+                    (item_id,),
+                )
+            row = cursor.fetchone()
+            return row["content_html"] if row else None
+        finally:
+            cursor.close()
 
 
 def get(user_id: int, item_id: str):
@@ -142,6 +200,23 @@ def get(user_id: int, item_id: str):
     except Exception as e:
         logger.warning("[reader] error fetching similar articles: %s", e)
 
+    interaction = _get_interaction_status(user_id, item_id)
+    cached_html = _get_cached_article(item_id, archived_only=interaction["archived"])
+
+    if cached_html is not None:
+        return {
+            "url": url,
+            "title": payload.get("title", ""),
+            "feed_title": feed_title,
+            "author": author,
+            "feed_icon": feed_icon,
+            "pub_date": pub_date,
+            "feed_sha256": feed_sha256,
+            "content_html": cached_html,
+            "similar_articles": similar_articles,
+            **interaction,
+        }
+
     try:
         _refresh_session_locale()
         session = _get_session()
@@ -152,6 +227,8 @@ def get(user_id: int, item_id: str):
         content_html = _resolve_images(doc.summary(), url)
         content_html = _clean_html(content_html)
 
+        _cache_article(item_id, content_html)
+
         return {
             "url": url,
             "title": doc.title(),
@@ -160,10 +237,10 @@ def get(user_id: int, item_id: str):
             "feed_icon": feed_icon,
             "pub_date": pub_date,
             "feed_sha256": feed_sha256,
-            "content_html": content_html,
-            "similar_articles": similar_articles,
-            **_get_interaction_status(user_id, item_id),
-        }
+        "content_html": content_html,
+        "similar_articles": similar_articles,
+        **interaction,
+    }
 
     except Exception as e:
         logger.error("[reader] error fetching %s: %s", url, e)
@@ -177,7 +254,7 @@ def get(user_id: int, item_id: str):
             "pub_date": pub_date,
             "feed_sha256": feed_sha256,
             "content_html": "",
-            "similar_articles": similar_articles,
-            **_get_interaction_status(user_id, item_id),
-        }
-        return fallback
+        "similar_articles": similar_articles,
+        **interaction,
+    }
+    return fallback

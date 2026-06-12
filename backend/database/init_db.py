@@ -376,6 +376,29 @@ def init_db():
         ) {_TABLE_OPTIONS}
         """)
             _migrate_smart_tags(cursor)
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS article_cache (
+                item_id VARCHAR(64) PRIMARY KEY,
+                content_html MEDIUMTEXT NOT NULL,
+                cached_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) {_TABLE_OPTIONS}
+        """)
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS highlights (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                item_id VARCHAR(64) NOT NULL,
+                text VARCHAR(1000) NOT NULL,
+                color VARCHAR(7) NOT NULL,
+                sort_order SMALLINT NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE KEY uq_highlight_user_item_text (user_id, item_id, text(200)),
+                INDEX idx_highlights_user_item (user_id, item_id)
+        ) {_TABLE_OPTIONS}
+        """)
+            _add_column_if_missing(cursor, "interactions", "archived", "TINYINT(1) DEFAULT 0")
             conn.commit()
             logger.info("Database initialised successfully")
         except Exception as e:

@@ -19,5 +19,7 @@
   "hideSummary": "Zusammenfassung ausblenden",
   "originalPage": "Originalseite",
   "tagArticle": "Artikel taggen",
-  "allTagsAssigned": "Alle Tags bereits zugewiesen"
+  "allTagsAssigned": "Alle Tags bereits zugewiesen",
+  "customColor": "Benutzerdefinierte Farbe",
+  "removeHighlight": "Markierung entfernen"
 }

@@ -1,6 +1,35 @@
 from database.init_db import get_db
 from interactions.profile_updater import interact as _interact
 from intelligence.recommendations import invalidate_cache, invalidate_interaction_cache
+from post.load import _cache_article
+
+
+def _fetch_and_cache(item_id: str) -> None:
+    try:
+        from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
+        client = get_qdrant_client()
+        result = client.retrieve(
+            collection_name=COLLECTION_NAME,
+            ids=[item_id],
+            with_payload=True,
+        )
+        if not result:
+            return
+        url = result[0].payload.get("link", "")
+        if not url:
+            return
+        import requests
+        from readability import Document
+        from post.load import _get_session, _resolve_images, _clean_html
+        session = _get_session()
+        resp = session.get(url, timeout=15)
+        resp.raise_for_status()
+        doc = Document(resp.text)
+        content_html = _resolve_images(doc.summary(), url)
+        content_html = _clean_html(content_html)
+        _cache_article(item_id, content_html)
+    except Exception:
+        pass
 
 
 def like_article(user_id: int, item_id: str):
@@ -21,7 +50,23 @@ def read_article(user_id: int, item_id: str):
 
 
 def save_article(user_id: int, item_id: str):
-    return _interact(user_id, item_id, "saved")
+    result = _interact(user_id, item_id, "saved")
+    if result.get("status") == "success":
+        with get_db() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "UPDATE interactions SET archived = 1 "
+                    "WHERE user_id = %s AND item_id = %s AND action = 'saved'",
+                    (user_id, item_id),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+            finally:
+                cursor.close()
+        _fetch_and_cache(item_id)
+    return result
 
 
 def unsave_article(user_id: int, item_id: str):

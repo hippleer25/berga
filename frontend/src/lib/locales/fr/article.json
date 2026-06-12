@@ -19,5 +19,7 @@
   "hideSummary": "Masquer le résumé",
   "originalPage": "Page originale",
   "tagArticle": "Tagger l'article",
-  "allTagsAssigned": "Tous les tags déjà attribués"
+  "allTagsAssigned": "Tous les tags déjà attribués",
+  "customColor": "Couleur personnalisée",
+  "removeHighlight": "Supprimer le surlignage"
 }

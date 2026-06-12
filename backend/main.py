@@ -35,6 +35,7 @@ from search.item.search_item import search_articles_by_text
 from search.feed.search_feed_urls import feeds
 from search.feed import search_feed_online
 from post import load
+from post import highlights as hl
 from utils.opml import opml_import, opml_export
 from utils.regex_utils import validate_regex_pattern
 from feed.following_structure.structure import following_structure, StructureRequest, list_subscriptions, get_folder_info
@@ -172,6 +173,11 @@ class ChatRequest(BaseModel):
     articles: list[ArticleInput] = []
 
 
+class HighlightRequest(BaseModel):
+    text: str
+    color: str
+
+
 @app.post("/api/register")
 def register(x_user_data: UserData, response: Response):
     result = auth_register.user_register(x_user_data)
@@ -279,6 +285,21 @@ async def parse_user_all(request: Request, user: dict = Depends(get_current_user
 @app.post("/api/load-text/{item_id}")
 def load_text(item_id: str, user=Depends(get_current_user)):
     return load.get(user["id"], item_id)
+
+
+@app.get("/api/highlights/{item_id}")
+def get_highlights(item_id: str, user=Depends(get_current_user)):
+    return {"highlights": hl.get_highlights(user["id"], item_id)}
+
+
+@app.post("/api/highlights/{item_id}")
+def create_highlight(item_id: str, body: HighlightRequest, user=Depends(get_current_user)):
+    return hl.create_highlight(user["id"], item_id, body.text, body.color)
+
+
+@app.delete("/api/highlights/{highlight_id}")
+def delete_highlight(highlight_id: int, user=Depends(get_current_user)):
+    return hl.delete_highlight(user["id"], highlight_id)
 
 
 @app.post("/api/feed/{item_id}/like")

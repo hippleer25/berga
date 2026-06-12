@@ -19,5 +19,7 @@
   "hideSummary": "Ocultar resumen",
   "originalPage": "Página original",
   "tagArticle": "Etiquetar artículo",
-  "allTagsAssigned": "Todas las etiquetas ya asignadas"
+  "allTagsAssigned": "Todas las etiquetas ya asignadas",
+  "customColor": "Color personalizado",
+  "removeHighlight": "Eliminar resaltado"
 }

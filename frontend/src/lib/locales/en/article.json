@@ -19,5 +19,7 @@
   "hideSummary": "Hide summary",
   "originalPage": "Original page",
   "tagArticle": "Tag article",
-  "allTagsAssigned": "All tags assigned"
+  "allTagsAssigned": "All tags assigned",
+  "customColor": "Custom color",
+  "removeHighlight": "Remove highlight"
 }
