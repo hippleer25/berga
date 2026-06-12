@@ -79,29 +79,29 @@ let formAiReinforcement = $state(true);
 
   async function loadStructure() {
     try {
-      const res = await apiFetch('/api/following_structure', { credentials: 'include' });
+      const res = await apiFetch('/api/list-subscriptions', { credentials: 'include' });
       if (!res.ok) return;
-      const data = await res.json();
+      const raw = await res.json();
+      const items: any[] = Array.isArray(raw) ? raw : (raw.feeds ?? []);
       const feedList: FeedInfo[] = [];
-      const folderList: FolderInfo[] = [];
-      if (data.folders) {
-        for (const folder of data.folders) {
-          folderList.push({ id: String(folder.id), name: folder.name || `Folder ${folder.id}` });
-          if (folder.feeds) {
-            for (const f of folder.feeds) {
-              feedList.push({ feed_sha256: f.feed_sha256, feed_title: f.feed_title || f.feed_url || f.feed_sha256 });
-            }
+      const folderMap = new Map<string, FolderInfo>();
+      for (const f of items) {
+        if (f._empty_folder) {
+          if (f.folder && f.folder.id != null && !folderMap.has(String(f.folder.id))) {
+            folderMap.set(String(f.folder.id), { id: String(f.folder.id), name: f.folder.name || `Folder ${f.folder.id}` });
           }
+          continue;
         }
-      }
-      if (data.orphan_feeds) {
-        for (const f of data.orphan_feeds) {
-          feedList.push({ feed_sha256: f.feed_sha256, feed_title: f.feed_title || f.feed_url || f.feed_sha256 });
+        if (f.feed_sha256) {
+          feedList.push({ feed_sha256: f.feed_sha256, feed_title: f.title || f.url || f.feed_sha256 });
+        }
+        if (f.folder && f.folder.id != null && !folderMap.has(String(f.folder.id))) {
+          folderMap.set(String(f.folder.id), { id: String(f.folder.id), name: f.folder.name || `Folder ${f.folder.id}` });
         }
       }
       const seen = new Set<string>();
       feeds = feedList.filter(f => { if (seen.has(f.feed_sha256)) return false; seen.add(f.feed_sha256); return true; });
-      folders = folderList;
+      folders = [...folderMap.values()];
     } catch (err) {
       console.error('Failed to load structure:', err);
     }
