@@ -100,6 +100,8 @@ let highlights = $state<Highlight[]>([]);
 let highlightMenu = $state<{ x: number; y: number; text: string } | null>(null);
 let highlightPopover = $state<{ x: number; y: number; highlightId: number } | null>(null);
 let highlightLoading = $state(false);
+let suppressOutsideClick = false;
+let selectionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let articleBodyEl: HTMLDivElement | undefined = $state();
 
     async function loadArticle(id: string) {
@@ -250,6 +252,7 @@ function toggleTagDropdown() {
 
     function outsideClick(e: MouseEvent) {
         if (tagDropdownOpen) tagDropdownOpen = false;
+        if (suppressOutsideClick) return;
         const target = e.target as HTMLElement;
         if (!target.closest('.hl-toolbar') && !target.closest('.hl-popover') && !target.closest('mark.bergahl')) {
             highlightMenu = null;
@@ -261,9 +264,16 @@ function toggleTagDropdown() {
     const id = $page.params.item_id;
     if (id) loadArticle(id);
 
+    document.addEventListener('selectionchange', onSelectionChange);
+
 	beforeNavigate(() => {
 		flushPending();
 	});
+
+    return () => {
+        document.removeEventListener('selectionchange', onSelectionChange);
+        if (selectionDebounceTimer) clearTimeout(selectionDebounceTimer);
+    };
 });
 
     $effect(() => {
@@ -535,6 +545,43 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
             y: rect.top - 8,
             text,
         };
+
+        suppressOutsideClick = true;
+        setTimeout(() => { suppressOutsideClick = false; }, 0);
+    }
+
+    function onSelectionChange() {
+        if (selectionDebounceTimer) clearTimeout(selectionDebounceTimer);
+        selectionDebounceTimer = setTimeout(() => {
+            if (webView) return;
+
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+                if (!suppressOutsideClick) {
+                    highlightMenu = null;
+                }
+                return;
+            }
+
+            const bodyEl = articleBodyEl;
+            if (!bodyEl) return;
+            if (!bodyEl.contains(sel.anchorNode)) return;
+
+            const text = sel.toString().trim();
+            if (text.length < 1) return;
+
+            const range = sel.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+
+            highlightMenu = {
+                x: rect.left + rect.width / 2,
+                y: rect.top - 8,
+                text,
+            };
+
+            suppressOutsideClick = true;
+            setTimeout(() => { suppressOutsideClick = false; }, 150);
+        }, 150);
     }
 
     function onArticleBodyClick(e: MouseEvent) {
