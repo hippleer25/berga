@@ -28,5 +28,7 @@
   "saved": "Enregistrés",
   "noSavedYet": "Aucun article enregistré pour le moment.",
   "loadError": "Échec du chargement du flux",
-  "articles": "articles"
+  "articles": "articles",
+  "pullToRefresh": "Tirer pour actualiser",
+  "releaseToRefresh": "Relâcher pour actualiser"
 }

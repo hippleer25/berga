@@ -1,34 +1,39 @@
 <script lang="ts">
 import { onMount } from 'svelte';
-  import { page } from '$app/stores';
-import { goto, beforeNavigate } from '$app/navigation';
-  import { slide } from 'svelte/transition';
-  import { get } from 'svelte/store';
-  import PostCard from '$lib/components/PostCard.svelte';
-  import Portal from '$lib/components/Portal.svelte';
-import {
-  selectionMode,
-  selectedPosts,
-  pendingMotaPosts,
-  activeTabIdx,
-} from '$lib/stores/swipe';
-import { subscriptionChanged } from '$lib/stores/subscription';
-import { onViewed, flushPending, destroyViewTracker } from '$lib/stores/viewTracker';
+   import { page } from '$app/stores';
+ import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
+   import { slide } from 'svelte/transition';
+   import { get } from 'svelte/store';
+   import PostCard from '$lib/components/PostCard.svelte';
+   import Portal from '$lib/components/Portal.svelte';
+ import {
+   selectionMode,
+   selectedPosts,
+   pendingMotaPosts,
+   activeTabIdx,
+ } from '$lib/stores/swipe';
+ import { subscriptionChanged } from '$lib/stores/subscription';
+ import { onViewed, flushPending, destroyViewTracker } from '$lib/stores/viewTracker';
 import {
 		Rss, FolderOpen, ChevronDown,
 		X, Check, Settings, Share2, Sparkles, Bookmark, Tag,
 	} from '@lucide/svelte';
-import { t } from 'svelte-i18n';
-import { apiFetch } from '$lib/api';
-import {
-	feedCacheKey,
-	loadFeedCache,
-	saveFeedCache,
-	clearFeedCache,
-	loadSubsCache,
-	saveSubsCache,
-	clearSubsCache,
-} from '$lib/stores/feedCache';
+import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+ import { t } from 'svelte-i18n';
+ import { apiFetch } from '$lib/api';
+ import {
+ 	feedCacheKey,
+ 	loadFeedCache,
+ 	saveFeedCache,
+ 	clearFeedCache,
+	feedBustNeeded,
+	clearBustFlag,
+ 	loadSubsCache,
+ 	saveSubsCache,
+ 	clearSubsCache,
+ } from '$lib/stores/feedCache';
+
+const TAB_ROUTES = ['/followers', '/home', '/events', '/mota'];
 
 type Mode = 'recommendations' | 'recents' | 'saved';
 
@@ -78,6 +83,16 @@ let tagBtnEl = $state<HTMLButtonElement | null>(null);
 // Bulk tag
 let bulkTagPickerOpen = $state<boolean>(false);
 let bulkTagLoading = $state<boolean>(false);
+
+// Pull-to-refresh
+let pageRootEl: HTMLElement | null = $state(null);
+let ptrContentEl: HTMLElement | null = $state(null);
+let pullOffset = $state(0);
+let pulling = $state(false);
+let pullStartY = 0;
+let scrollContainer: HTMLElement | null = null;
+const PULL_THRESHOLD = 60;
+const PULL_RESISTANCE = 0.4;
 
     // Derived lists
     let folders = $derived.by(() => {
@@ -141,6 +156,18 @@ let bulkTagLoading = $state<boolean>(false);
 		{ rootMargin: '0px 0px 600px 0px' }
 	);
 
+	if (pageRootEl) {
+		let el = pageRootEl.parentElement;
+		while (el) {
+			const style = getComputedStyle(el);
+			if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+				scrollContainer = el;
+				break;
+			}
+			el = el.parentElement;
+		}
+	}
+
 	loadSubscriptions();
 		loadFeed(true);
 		applyTagFromUrl();
@@ -158,9 +185,19 @@ let bulkTagLoading = $state<boolean>(false);
 		flushPending();
 	});
 
+	const navCleanup = afterNavigate(({ from, to }) => {
+		if (!from) return;
+		const fromIsTab = TAB_ROUTES.some(r => from.url.pathname === r);
+		const toIsHome = to.url.pathname === '/home';
+		if (toIsHome && !fromIsTab) {
+			loadFeed(true);
+		}
+	});
+
 	return () => {
 		observer?.disconnect();
 		unsub();
+		navCleanup?.destroy();
 		destroyViewTracker();
 		viewObserver?.disconnect();
 	};
@@ -214,7 +251,16 @@ $effect(() => {
 		return `/api/feed/recents?${p}`;
 	}
 
+	function fetchCacheOpt(): RequestInit {
+		return feedBustNeeded() ? { credentials: 'include', cache: 'no-store' } : { credentials: 'include' };
+	}
+
+	function consumeBust() {
+		if (feedBustNeeded()) clearBustFlag();
+	}
+
 	async function loadFeed(reset: boolean = false) {
+		consumeBust();
 		if (reset) {
 			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
 			const cached = loadFeedCache<any[]>(cacheKey);
@@ -226,15 +272,14 @@ $effect(() => {
 				pageNum = 0;
 				hasMore = true;
 				try {
-					const res = await apiFetch(buildUrl(0), { credentials: 'include' });
-					if (res.status === 401) { window.location.replace('/'); return; }
+					const res = await apiFetch(buildUrl(0), fetchCacheOpt());
+					if (res.status === 401) { window.location.replace('/login'); return; }
 					if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
 					const data: any[] = await res.json();
 					feed = data;
 					hasMore = data.length > 0;
 					saveFeedCache(cacheKey, data);
 				} catch (e: any) {
-					// Network failed but we already have cached data — keep it silently
 				}
 				refreshing = false;
 				return;
@@ -246,8 +291,8 @@ $effect(() => {
 			error = '';
 		}
 		try {
-			const res = await apiFetch(buildUrl(0), { credentials: 'include' });
-			if (res.status === 401) { window.location.replace('/'); return; }
+			const res = await apiFetch(buildUrl(0), fetchCacheOpt());
+			if (res.status === 401) { window.location.replace('/login'); return; }
 			if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
 			const data: any[] = await res.json();
 			feed = data;
@@ -502,6 +547,63 @@ if (res.ok) {
         shareCopied = true;
         setTimeout(() => { shareCopied = false; }, 2000);
     }
+
+    // ── Pull-to-refresh ─────────────────────────────────────
+    function onPullStart(e: TouchEvent) {
+        if (loading || refreshing) return;
+        if (scrollContainer && scrollContainer.scrollTop > 4) return;
+        pullStartY = e.touches[0].clientY;
+        pulling = false;
+        pullOffset = 0;
+    }
+
+    function onPullMove(e: TouchEvent) {
+        if (loading || refreshing) return;
+        if (scrollContainer && scrollContainer.scrollTop > 4) return;
+        const dy = e.touches[0].clientY - pullStartY;
+        if (dy > 0) {
+            pulling = true;
+            pullOffset = Math.min(dy * PULL_RESISTANCE, 120);
+            if (ptrContentEl) {
+                ptrContentEl.style.transition = 'none';
+                ptrContentEl.style.transform = `translateY(${pullOffset}px)`;
+            }
+        } else if (pulling) {
+            pulling = false;
+            pullOffset = 0;
+            snapPtrBack();
+        }
+    }
+
+    function onPullEnd(_e: TouchEvent) {
+        if (!pulling) return;
+        pulling = false;
+        if (pullOffset > PULL_THRESHOLD && !refreshing) {
+            if (ptrContentEl) {
+                ptrContentEl.style.transition = 'transform 0.25s ease';
+                ptrContentEl.style.transform = 'translateY(55px)';
+            }
+            pullOffset = 55;
+            refreshing = true;
+            loadFeed(true);
+        } else {
+            snapPtrBack();
+        }
+    }
+
+    $effect(() => {
+        if (!refreshing && pullOffset > 0) {
+            snapPtrBack();
+        }
+    });
+
+    function snapPtrBack() {
+        pullOffset = 0;
+        if (ptrContentEl) {
+            ptrContentEl.style.transition = 'transform 0.3s ease';
+            ptrContentEl.style.transform = 'translateY(0)';
+        }
+    }
 </script>
 
 {#snippet skeletonCard()}
@@ -524,9 +626,26 @@ if (res.ok) {
     </div>
 {/snippet}
 
-<div class="page-root">
+<div
+    class="page-root"
+    bind:this={pageRootEl}
+    ontouchstart={onPullStart}
+    ontouchmove={onPullMove}
+    ontouchend={onPullEnd}
+>
+    <!-- Pull-to-refresh indicator -->
+    <div class="ptr-indicator" class:ptr-visible={pullOffset > 0 || refreshing}>
+        {#if refreshing}
+            <LoaderCircle size={20} class="spin" />
+        {:else if pullOffset > PULL_THRESHOLD}
+            <span class="ptr-text">{$t('hometab.releaseToRefresh')}</span>
+        {:else}
+            <span class="ptr-text">{$t('hometab.pullToRefresh')}</span>
+        {/if}
+    </div>
+
     <!-- Contêiner Centralizador -->
-    <div class="main-content">
+    <div class="main-content" bind:this={ptrContentEl}>
         
         <!-- Top Header (Settings only) -->
         <header class="top-header">
@@ -878,6 +997,33 @@ if (res.ok) {
 </div>
 
 <style>
+/* ── Pull-to-refresh ────────────────────────── */
+    .ptr-indicator {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 40px;
+        margin-top: -40px;
+        margin-bottom: 0;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    .ptr-indicator.ptr-visible {
+        opacity: 1;
+    }
+    .ptr-text {
+        font-size: 13px;
+        font-weight: 500;
+        color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+    }
+    .spin {
+        animation: rot 0.8s linear infinite;
+        color: var(--color-accent);
+    }
+    @keyframes rot { to { transform: rotate(360deg); } }
+
 /* ── O Contêiner Centralizador ───────────────── */
     .main-content {
         max-width: 42rem;

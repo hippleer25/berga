@@ -147,7 +147,7 @@ def time_decay_multiplier(
     without instantly burying older stories.
     """
     if pub_timestamp is None:
-        return 0.0
+        return 1.0 / (0.0 + time_const) ** gravity
 
     age_seconds = max(now_timestamp - pub_timestamp, 0.0)
     age_minutes = age_seconds / 60.0

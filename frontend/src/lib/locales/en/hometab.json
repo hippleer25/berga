@@ -28,5 +28,7 @@
   "saved": "Saved",
   "noSavedYet": "No saved articles yet.",
   "loadError": "Failed to load feed",
-  "articles": "articles"
+  "articles": "articles",
+  "pullToRefresh": "Pull to refresh",
+  "releaseToRefresh": "Release to refresh"
 }

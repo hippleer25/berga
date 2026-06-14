@@ -28,5 +28,7 @@
   "saved": "Gespeichert",
   "noSavedYet": "Noch keine gespeicherten Artikel.",
   "loadError": "Fehler beim Laden des Feeds",
-  "articles": "Artikel"
+  "articles": "Artikel",
+  "pullToRefresh": "Zum Aktualisieren ziehen",
+  "releaseToRefresh": "Loslassen zum Aktualisieren"
 }

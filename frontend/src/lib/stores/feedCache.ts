@@ -59,7 +59,18 @@ export function saveFeedCache<T>(key: string, items: T): void {
 	write(key, items);
 }
 
+let _needsBust = false;
+
+export function feedBustNeeded(): boolean {
+	return _needsBust;
+}
+
+export function clearBustFlag(): void {
+	_needsBust = false;
+}
+
 export function clearFeedCache(key?: string): void {
+	_needsBust = true;
 	if (key) {
 		remove(key);
 		return;

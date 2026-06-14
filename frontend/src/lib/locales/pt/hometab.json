@@ -28,5 +28,7 @@
   "saved": "Salvos",
   "noSavedYet": "Nenhum artigo salvo ainda.",
   "loadError": "Falha ao carregar feed",
-  "articles": "artigos"
+  "articles": "artigos",
+  "pullToRefresh": "Puxe para atualizar",
+  "releaseToRefresh": "Solte para atualizar"
 }

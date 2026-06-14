@@ -4,10 +4,12 @@
     import { beforeNavigate, goto } from '$app/navigation';
     import PostCard from '$lib/components/PostCard.svelte';
 	import { Clock, Sparkles, ArrowLeft, FolderOpen, Rss } from '@lucide/svelte';
+import LoaderCircle from '@lucide/svelte/icons/loader-circle';
     import { t, locale } from 'svelte-i18n';
 import { get } from 'svelte/store';
 import { onViewed, flushPending, destroyViewTracker } from '$lib/stores/viewTracker';
 import { apiFetch } from '$lib/api';
+import { feedBustNeeded, clearBustFlag } from '$lib/stores/feedCache';
 
 type Mode = 'recommendations' | 'recents';
 
@@ -16,6 +18,16 @@ type Mode = 'recommendations' | 'recents';
 
     // ── Mode ──────────────────────────────────────────────
     let mode = $state<Mode>('recommendations');
+
+    // ── Pull-to-refresh ─────────────────────────────────
+    let pageRootEl: HTMLElement | null = $state(null);
+    let ptrContentEl: HTMLElement | null = $state(null);
+    let pullOffset = $state(0);
+    let pulling = $state(false);
+    let pullStartY = 0;
+    let scrollContainer: HTMLElement | null = null;
+    const PULL_THRESHOLD = 60;
+    const PULL_RESISTANCE = 0.4;
 
     // ── Folder info ───────────────────────────────────────
 type FolderInfoRaw = {
@@ -35,6 +47,7 @@ let folderInfo = $state<FolderInfoRaw | null>(null);
     // ── Feed items ────────────────────────────────────────
     let feed = $state<any[]>([]);
     let loading = $state(true);
+    let refreshing = $state(false);
     let loadingMore = $state(false);
     let hasMore = $state(true);
     let error = $state('');
@@ -83,6 +96,18 @@ onMount(() => {
             { rootMargin: '0px 0px 600px 0px' }
         );
 
+	if (pageRootEl) {
+		let el = pageRootEl.parentElement;
+		while (el) {
+			const style = getComputedStyle(el);
+			if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+				scrollContainer = el;
+				break;
+			}
+			el = el.parentElement;
+		}
+	}
+
 loadFolderInfo();
     loadFeed(true);
     loadUserTags();
@@ -126,7 +151,7 @@ function formatDate(iso: string | null): string {
         try {
             const res = await apiFetch(`/api/folder-info/${folderId}`, { credentials: 'include' });
             if (res.status === 401) {
-                window.location.replace('/');
+                window.location.replace('/login');
                 return;
             }
             if (!res.ok) throw new Error(`${get(t)('folder.loadInfoError')} (${res.status})`);
@@ -164,6 +189,9 @@ const p = new URLSearchParams({
     }
 
     async function loadFeed(reset: boolean = false) {
+	const bust = feedBustNeeded();
+	if (bust) clearBustFlag();
+	const fetchOpt: RequestInit = bust ? { credentials: 'include', cache: 'no-store' } : { credentials: 'include' };
         if (reset) {
             loading = true;
             feed = [];
@@ -172,9 +200,9 @@ const p = new URLSearchParams({
             error = '';
         }
         try {
-const res = await apiFetch(buildUrl(0), { credentials: 'include' });
+const res = await apiFetch(buildUrl(0), fetchOpt);
     if (res.status === 401) {
-      window.location.replace('/');
+      window.location.replace('/login');
       return;
     }
     if (!res.ok) throw new Error(`${get(t)('folder.loadFeedError')} (${res.status})`);
@@ -185,6 +213,7 @@ const res = await apiFetch(buildUrl(0), { credentials: 'include' });
             error = (e as Error).message || get(t)('folder.loadFeedError', { default: 'Failed to load feed' });
         }
         loading = false;
+        refreshing = false;
     }
 
     async function loadMore() {
@@ -241,6 +270,63 @@ const res = await apiFetch(buildUrl(0), { credentials: 'include' });
         mode = next;
         loadFeed(true);
     }
+
+    // ── Pull-to-refresh ─────────────────────────────────────
+    function onPullStart(e: TouchEvent) {
+        if (loading || refreshing) return;
+        if (scrollContainer && scrollContainer.scrollTop > 4) return;
+        pullStartY = e.touches[0].clientY;
+        pulling = false;
+        pullOffset = 0;
+    }
+
+    function onPullMove(e: TouchEvent) {
+        if (loading || refreshing) return;
+        if (scrollContainer && scrollContainer.scrollTop > 4) return;
+        const dy = e.touches[0].clientY - pullStartY;
+        if (dy > 0) {
+            pulling = true;
+            pullOffset = Math.min(dy * PULL_RESISTANCE, 120);
+            if (ptrContentEl) {
+                ptrContentEl.style.transition = 'none';
+                ptrContentEl.style.transform = `translateY(${pullOffset}px)`;
+            }
+        } else if (pulling) {
+            pulling = false;
+            pullOffset = 0;
+            snapPtrBack();
+        }
+    }
+
+    function onPullEnd(_e: TouchEvent) {
+        if (!pulling) return;
+        pulling = false;
+        if (pullOffset > PULL_THRESHOLD && !refreshing) {
+            if (ptrContentEl) {
+                ptrContentEl.style.transition = 'transform 0.25s ease';
+                ptrContentEl.style.transform = 'translateY(55px)';
+            }
+            pullOffset = 55;
+            refreshing = true;
+            loadFeed(true);
+        } else {
+            snapPtrBack();
+        }
+    }
+
+    $effect(() => {
+        if (!refreshing && pullOffset > 0) {
+            snapPtrBack();
+        }
+    });
+
+    function snapPtrBack() {
+        pullOffset = 0;
+        if (ptrContentEl) {
+            ptrContentEl.style.transition = 'transform 0.3s ease';
+            ptrContentEl.style.transform = 'translateY(0)';
+        }
+    }
 </script>
 
 <!-- ── Snippets ─────────────────────────────────────── -->
@@ -278,8 +364,25 @@ const res = await apiFetch(buildUrl(0), { credentials: 'include' });
 
 <!-- ── Markup ──────────────────────────────────────── -->
 
-<div class="page-root">
-    <div class="main-content">
+<div
+    class="page-root"
+    bind:this={pageRootEl}
+    ontouchstart={onPullStart}
+    ontouchmove={onPullMove}
+    ontouchend={onPullEnd}
+>
+    <!-- Pull-to-refresh indicator -->
+    <div class="ptr-indicator" class:ptr-visible={pullOffset > 0 || refreshing}>
+        {#if refreshing}
+            <LoaderCircle size={20} class="spin" />
+        {:else if pullOffset > PULL_THRESHOLD}
+            <span class="ptr-text">{$t('folder.releaseToRefresh', { default: 'Release to refresh' })}</span>
+        {:else}
+            <span class="ptr-text">{$t('folder.pullToRefresh', { default: 'Pull to refresh' })}</span>
+        {/if}
+    </div>
+
+    <div class="main-content" bind:this={ptrContentEl}>
 
         <!-- Back navigation -->
         <header class="top-header">
@@ -398,6 +501,33 @@ const res = await apiFetch(buildUrl(0), { credentials: 'include' });
 </div>
 
 <style>
+/* ── Pull-to-refresh ────────────────────────── */
+    .ptr-indicator {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 40px;
+        margin-top: -40px;
+        margin-bottom: 0;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    .ptr-indicator.ptr-visible {
+        opacity: 1;
+    }
+    .ptr-text {
+        font-size: 13px;
+        font-weight: 500;
+        color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+    }
+    .spin {
+        animation: rot 0.8s linear infinite;
+        color: var(--color-accent);
+    }
+    @keyframes rot { to { transform: rotate(360deg); } }
+
 /* ── Centralizer ─────────────────────────────────────────── */
     .main-content {
         max-width: 42rem;

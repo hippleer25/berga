@@ -6,7 +6,7 @@ import os
 import socket
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import aiohttp
@@ -146,6 +146,10 @@ def parse_and_save_feed(feed_url: str, raw_content: str = None):
                         pub_date = datetime(*value[:6])
                         pub_timestamp = pub_date.timestamp()
                         break
+
+                if pub_timestamp is None:
+                    pub_date = datetime.now(timezone.utc)
+                    pub_timestamp = pub_date.timestamp()
 
                 vector = embedding_text(build_embedding_text(title, description))
                 logger.debug("[parser] %sd vector — %s", f"{len(vector)}d", title[:80])

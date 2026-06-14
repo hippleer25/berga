@@ -151,7 +151,7 @@ def get_recents(
     scroll_result = client.scroll(
         collection_name=COLLECTION_NAME,
         scroll_filter=filter_condition,
-        limit=limit * 3,  # margin for exclusions
+        limit=limit * 5,  # margin for exclusions
         with_payload=True,
         with_vectors=False,
     )[0]

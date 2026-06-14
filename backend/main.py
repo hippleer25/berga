@@ -117,11 +117,11 @@ def _etag_for(data) -> str:
     return '"' + hashlib.sha256(body).hexdigest()[:32] + '"'
 
 CACHE_HEADERS = {
-    "recommendations": {"Cache-Control": "private, max-age=300"},
-    "recents": {"Cache-Control": "private, max-age=60"},
-    "saved": {"Cache-Control": "private, max-age=120"},
-    "events": {"Cache-Control": "private, max-age=21600"},
-    "subscriptions": {"Cache-Control": "private, max-age=300"},
+    "recommendations": {"Cache-Control": "private, max-age=300, must-revalidate"},
+    "recents": {"Cache-Control": "private, max-age=60, must-revalidate"},
+    "saved": {"Cache-Control": "private, max-age=120, must-revalidate"},
+    "events": {"Cache-Control": "private, max-age=21600, must-revalidate"},
+    "subscriptions": {"Cache-Control": "private, max-age=300, must-revalidate"},
 }
 
 def _check_etag(request: Request, etag: str):

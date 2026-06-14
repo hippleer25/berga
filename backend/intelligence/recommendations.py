@@ -201,7 +201,8 @@ def _get_interacted_ids(user_id: int) -> set[str]:
 
     with _get_cursor() as cursor:
         cursor.execute(
-            "SELECT DISTINCT item_id FROM interactions WHERE user_id = %s",
+            "SELECT DISTINCT item_id FROM interactions "
+            "WHERE user_id = %s AND action NOT IN ('view', 'saved')",
             (user_id,),
         )
         ids: set[str] = {str(row["item_id"]) for row in cursor.fetchall()}
@@ -215,7 +216,8 @@ def _get_interacted_ids(user_id: int) -> set[str]:
 def get_interacted_ids_except_view(user_id: int) -> set[str]:
     with _get_cursor() as cursor:
         cursor.execute(
-            "SELECT DISTINCT item_id FROM interactions WHERE user_id = %s AND action != 'view'",
+            "SELECT DISTINCT item_id FROM interactions "
+            "WHERE user_id = %s AND action NOT IN ('view', 'saved')",
             (user_id,),
         )
         return {str(row["item_id"]) for row in cursor.fetchall()}
@@ -620,11 +622,13 @@ def _build_full_processed_list(
     # ── 4. Sort by raw score ───────────────────────────────────────────────
     all_items.sort(key=lambda x: x.get("relevance_score", 0.0), reverse=True)
 
+    single_publisher = feed_filter is not None and len(feed_filter) == 1
+
     # ── 5. Cluster deduplication ───────────────────────────────────────────
-    all_items = _apply_cluster_dedup(all_items)
+    all_items = _apply_cluster_dedup(all_items, single_publisher=single_publisher)
 
     # ── 6. Publisher diversity penalty ────────────────────────────────────
-    all_items = _apply_diversity_penalty(all_items)
+    all_items = _apply_diversity_penalty(all_items, single_publisher=single_publisher)
 
     # ── 7. Normalise scores globally ──────────────────────────────────────
     _finalize_scores(all_items, global_max_score)
@@ -643,11 +647,11 @@ def _build_full_processed_list(
 
 # ── Cluster deduplication ──────────────────────────────────────────────────────
 
-def _apply_cluster_dedup(items: list[dict]) -> list[dict]:
+def _apply_cluster_dedup(items: list[dict], single_publisher: bool = False) -> list[dict]:
     cluster_index    = get_cluster_index()
     cluster_summaries = get_cluster_summaries()
 
-    if not cluster_index:
+    if not cluster_index or single_publisher:
         return items
 
     id_to_pos:           dict[str, int] = {item["item_id"]: i for i, item in enumerate(items) if item.get("item_id")}
@@ -682,8 +686,9 @@ def _apply_diversity_penalty(
     items:             list[dict],
     max_per_publisher: int   = MAX_PER_PUBLISHER,
     penalty_factor:    float = DIVERSITY_PENALTY,
+    single_publisher:  bool  = False,
 ) -> list[dict]:
-    if max_per_publisher <= 0 or not items:
+    if max_per_publisher <= 0 or not items or single_publisher:
         return items
 
     publisher_count: dict[str, int] = {}
