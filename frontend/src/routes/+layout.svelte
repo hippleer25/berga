@@ -36,6 +36,12 @@
 				}, 100);
 			});
 		}
+
+		setTimeout(async () => {
+			try {
+				await SplashScreen.hide({ fadeOutDuration: 300 });
+			} catch { /* already hidden */ }
+		}, 5000);
 	});
 </script>
 

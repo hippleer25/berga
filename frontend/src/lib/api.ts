@@ -3,50 +3,78 @@ import { locale } from 'svelte-i18n';
 import { instance } from '$lib/stores/instance';
 
 const LOCALE_MAP: Record<string, string> = {
-  pt: 'pt-BR,pt;q=0.9,en;q=0.8',
-  en: 'en-US,en;q=0.9',
-  es: 'es-ES,es;q=0.9,en;q=0.8',
-  de: 'de-DE,de;q=0.9,en;q=0.8',
-  fr: 'fr-FR,fr;q=0.9,en;q=0.8',
+	pt: 'pt-BR,pt;q=0.9,en;q=0.8',
+	en: 'en-US,en;q=0.9',
+	es: 'es-ES,es;q=0.9,en;q=0.8',
+	de: 'de-DE,de;q=0.9,en;q=0.8',
+	fr: 'fr-FR,fr;q=0.9,en;q=0.8',
 };
 
+const NATIVE_TOKEN_KEY = 'berga_native_token';
+
 function getAcceptLanguage(): string {
-  const loc = get(locale) ?? 'en';
-  const key = (Array.isArray(loc) ? loc[0] : String(loc)) as string;
-  return LOCALE_MAP[key] ?? LOCALE_MAP['en'];
+	const loc = get(locale) ?? 'en';
+	const key = (Array.isArray(loc) ? loc[0] : String(loc)) as string;
+	return LOCALE_MAP[key] ?? LOCALE_MAP['en'];
 }
 
 function getBaseURL(): string {
-  const inst = get(instance);
-  if (!inst) return '';
-  const instanceOrigin = `https://${inst}`;
-  if (typeof window !== 'undefined' && window.location.origin === instanceOrigin) return '';
-  return instanceOrigin;
+	const inst = get(instance);
+	if (!inst) return '';
+	const instanceOrigin = `https://${inst}`;
+	if (typeof window !== 'undefined' && window.location.origin === instanceOrigin) return '';
+	return instanceOrigin;
+}
+
+function getNativeToken(): string | null {
+	if (typeof window === 'undefined') return null;
+	const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
+	if (!isNative) return null;
+	try {
+		return localStorage.getItem(NATIVE_TOKEN_KEY);
+	} catch { return null; }
+}
+
+export function setNativeToken(token: string): void {
+	try {
+		localStorage.setItem(NATIVE_TOKEN_KEY, token);
+	} catch { /* ignore */ }
+}
+
+export function clearNativeToken(): void {
+	try {
+		localStorage.removeItem(NATIVE_TOKEN_KEY);
+	} catch { /* ignore */ }
 }
 
 export function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  let url: string;
-  if (typeof input === 'string') {
-    const base = getBaseURL();
-    url = base && input.startsWith('/api/') ? `${base}${input}` : input;
-  } else if (input instanceof URL) {
-    url = input.toString();
-  } else {
-    url = (input as Request).url;
-  }
+	let url: string;
+	if (typeof input === 'string') {
+		const base = getBaseURL();
+		url = base && input.startsWith('/api/') ? `${base}${input}` : input;
+	} else if (input instanceof URL) {
+		url = input.toString();
+	} else {
+		url = (input as Request).url;
+	}
 
-  const headers = new Headers(init?.headers);
-  if (!headers.has('Accept-Language')) {
-    headers.set('Accept-Language', getAcceptLanguage());
-  }
+	const headers = new Headers(init?.headers);
+	if (!headers.has('Accept-Language')) {
+		headers.set('Accept-Language', getAcceptLanguage());
+	}
 
-  const isCrossOrigin = url.startsWith('https://') || url.startsWith('http://');
-  const mergedInit: RequestInit = {
-    ...init,
-    headers,
-    credentials: 'include',
-    ...(isCrossOrigin ? { mode: 'cors' } : {}),
-  };
+	const nativeToken = getNativeToken();
+	if (nativeToken && !headers.has('Authorization')) {
+		headers.set('Authorization', `Bearer ${nativeToken}`);
+	}
 
-  return fetch(url, mergedInit);
+	const isCrossOrigin = url.startsWith('https://') || url.startsWith('http://');
+	const mergedInit: RequestInit = {
+		...init,
+		headers,
+		credentials: 'include',
+		...(isCrossOrigin ? { mode: 'cors' } : {}),
+	};
+
+	return fetch(url, mergedInit);
 }

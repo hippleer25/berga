@@ -96,6 +96,7 @@ DEFAULT_ORIGINS = {
 	"http://localhost",
 	"https://localhost",
 	"capacitor://localhost",
+	"https://localhost",
 }
 allowed = set(ALLOWED_ORIGINS.split(",")) | DEFAULT_ORIGINS
 

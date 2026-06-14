@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import User from "@lucide/svelte/icons/user";
-  import Mail from "@lucide/svelte/icons/mail";
-  import Lock from "@lucide/svelte/icons/lock";
-  import Eye from "@lucide/svelte/icons/eye";
-  import EyeClosed from "@lucide/svelte/icons/eye-closed";
-  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-  import Globe from '@lucide/svelte/icons/globe';
+import { goto } from '$app/navigation';
+	import User from "@lucide/svelte/icons/user";
+	import Mail from "@lucide/svelte/icons/mail";
+	import Lock from "@lucide/svelte/icons/lock";
+	import Eye from "@lucide/svelte/icons/eye";
+	import EyeClosed from "@lucide/svelte/icons/eye-closed";
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import Globe from '@lucide/svelte/icons/globe';
 
-  import { t } from 'svelte-i18n';
-  import { get } from 'svelte/store';
- import { apiFetch } from '$lib/api';
+	import { t } from 'svelte-i18n';
+	import { get } from 'svelte/store';
+	import { apiFetch, setNativeToken } from '$lib/api';
  import { instance } from '$lib/stores/instance';
  import { auth } from '$lib/stores/auth';
 
@@ -55,9 +55,13 @@
 
       const data = await response.json();
 
-  if (data.status === "success") {
-    auth.setLoggedIn();
-    window.location.href = '/home';
+if (data.status === "success") {
+		const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
+		if (isNative && data.access_token) {
+			setNativeToken(data.access_token);
+		}
+		auth.setLoggedIn();
+		window.location.href = '/home';
       } else {
         message = data.message || get(t)('signin.invalidCredentials');
       }

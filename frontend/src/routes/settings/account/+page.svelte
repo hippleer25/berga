@@ -1,8 +1,8 @@
 <script lang="ts">
- import LogOut from '@lucide/svelte/icons/log-out';
- import Globe from '@lucide/svelte/icons/globe';
- import { t } from 'svelte-i18n';
- import { apiFetch } from '$lib/api';
+import LogOut from '@lucide/svelte/icons/log-out';
+  import Globe from '@lucide/svelte/icons/globe';
+  import { t } from 'svelte-i18n';
+  import { apiFetch, clearNativeToken } from '$lib/api';
  import { instance } from '$lib/stores/instance';
  import { auth } from '$lib/stores/auth';
  import { ripple } from '$lib/actions/ripple';
@@ -13,14 +13,15 @@
    instance.setInstance(instanceUrl);
  }
 
- async function logout() {
-   try {
-     await apiFetch('/api/logout', { method: 'POST', credentials: 'include' });
-   } finally {
+async function logout() {
+    try {
+      await apiFetch('/api/logout', { method: 'POST', credentials: 'include' });
+    } finally {
+      clearNativeToken();
       auth.setLoggedOut();
-     window.location.replace('/');
-   }
- }
+      window.location.replace('/');
+    }
+  }
 </script>
 
 <div class="tab-panel">
