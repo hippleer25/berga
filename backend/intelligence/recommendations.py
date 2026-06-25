@@ -351,26 +351,45 @@ def _compute_personalised_list(
 ) -> tuple[list[tuple[str, float]], dict[str, dict]]:
     row = _get_user_profile(user_id)
 
-    if not row or not row.get("pos_vector") or row["pos_vector"] == "[]":
+    # Treat the "[]" placeholder (written by _ensure_user_vector_row) as
+    # "no learned vector" so a user who only has affinity boosts still
+    # reaches the personalised tier instead of falling through to cold-start.
+    raw_pos = row.get("pos_vector") if row else None
+    pos_vector: Optional[list[float]] = (
+        json.loads(raw_pos) if raw_pos and raw_pos != "[]" else None
+    )
+    neg_vector: Optional[list[float]] = (
+        json.loads(row["neg_vector"]) if row and row.get("neg_vector") else None
+    )
+    affinity_pos: Optional[list[float]] = (
+        json.loads(row["affinity_pos_vector"]) if row and row.get("affinity_pos_vector") else None
+    )
+    affinity_neg: Optional[list[float]] = (
+        json.loads(row["affinity_neg_vector"]) if row and row.get("affinity_neg_vector") else None
+    )
+
+    if not row or (pos_vector is None and affinity_pos is None):
         logger.info("No vectors for user_id=%s — falling back to cold-start", user_id)
         return [], {}
 
-    pos_vector: list[float] = json.loads(row["pos_vector"])
-    neg_vector: Optional[list[float]] = (
-        json.loads(row["neg_vector"]) if row.get("neg_vector") else None
-    )
-    affinity_pos: Optional[list[float]] = (
-        json.loads(row["affinity_pos_vector"]) if row.get("affinity_pos_vector") else None
-    )
-    affinity_neg: Optional[list[float]] = (
-        json.loads(row["affinity_neg_vector"]) if row.get("affinity_neg_vector") else None
-    )
+    # Effective query vectors: blend interaction-learned vectors with
+    # affinity boosts. Mirrors analyze_affinity() so the recommendation
+    # engine sees the same profile the affinity analysis reports.
+    if pos_vector is not None and affinity_pos is not None:
+        query_pos = blend_vectors(pos_vector, affinity_pos, AFFINITY_WEIGHT)
+    elif pos_vector is not None:
+        query_pos = pos_vector
+    else:
+        query_pos = affinity_pos
 
-    query_pos = blend_vectors(pos_vector, affinity_pos, AFFINITY_WEIGHT)
-    query_neg = (
-        blend_vectors(neg_vector, affinity_neg, AFFINITY_WEIGHT)
-        if neg_vector else None
-    )
+    if neg_vector is not None and affinity_neg is not None:
+        query_neg = blend_vectors(neg_vector, affinity_neg, AFFINITY_WEIGHT)
+    elif neg_vector is not None:
+        query_neg = neg_vector
+    elif affinity_neg is not None:
+        query_neg = affinity_neg
+    else:
+        query_neg = None
 
     pub_likes:    dict[str, int]   = json.loads(row["publisher_likes"])    if row.get("publisher_likes")    else {}
     pub_dislikes: dict[str, int]   = json.loads(row["publisher_dislikes"]) if row.get("publisher_dislikes") else {}
@@ -424,7 +443,8 @@ def _compute_personalised_list(
         feed_hash = payload.get("feed_sha256")
         likes     = float(pub_likes.get(feed_hash, 0))              if feed_hash else 0.0
         dislikes  = float(pub_dislikes.get(feed_hash, 0))           if feed_hash else 0.0
-        freq      = FREQ_REF_DAYS / max(float(pub_freq.get(feed_hash, FREQ_REF_DAYS)), 1.0) if feed_hash else FREQ_REF_DAYS
+        pub_cnt   = float(pub_freq.get(feed_hash, 0))               if feed_hash else 0.0
+        freq      = (FREQ_REF_DAYS / pub_cnt)                       if pub_cnt > 0 else 1.0
 
         eng  = publisher_engagement(likes, dislikes, ENGAGEMENT_EXPONENT)
         fbon = publisher_frequency_bonus(freq, FREQ_REF_DAYS, FREQ_EXPONENT, FREQ_BONUS_CAP)

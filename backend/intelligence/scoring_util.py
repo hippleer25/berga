@@ -112,17 +112,23 @@ def publisher_frequency_bonus(
     """
     Bonus for publishers that publish *less* frequently.
 
-        bonus = min( (ref_days / max(freq_days, 1)) ^ exponent ,  cap )
+    ``freq_days`` is the average days-between-posts for the publisher
+    (derived upstream as ref_days / post_count).  Higher = rarer.
 
-    A daily publisher (freq=1) over 30 days gets  (30/1)^0.5 ≈ 5.5,
-    capped to 3.0.
-    A weekly publisher (freq=7) gets  (30/7)^0.5 ≈ 2.1.
-    A monthly publisher (freq=30) gets (30/30)^0.5 = 1.0  (no bonus).
+        bonus = min( max(freq_days, 1) ^ exponent ,  cap )
+
+    A daily publisher   (freq_days=1)  gets  1^0.5   = 1.0  (neutral).
+    A weekly publisher  (freq_days=7)  gets  7^0.5   ≈ 2.6.
+    A monthly publisher (freq_days=30) gets  30^0.5  ≈ 5.5, capped 3.0.
 
     Rationale: rare posts from a publisher you follow are more likely
-    to be noteworthy than the 12th daily article.
+    to be noteworthy than the 12th daily article, so rare publishers
+    receive a bonus while daily ones stay neutral (1.0).
+
+    ``ref_days`` is retained for API compatibility; the caller uses it to
+    convert post-counts into ``freq_days`` before calling this function.
     """
-    raw = (ref_days / max(freq_days, 1.0)) ** exponent
+    raw = max(freq_days, 1.0) ** exponent
     return min(raw, cap)
 
 
