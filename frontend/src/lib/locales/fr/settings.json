@@ -23,6 +23,9 @@
 "fetching": "Récupération…",
 "done": "Terminé !",
 "fetchArticles": "Récupérer des articles",
+"refreshClusters": "Actualiser les clusters",
+"refreshClustersDesc": "Relancez le clustering d'événements pour découvrir de nouveaux sujets et tendances.",
+"refreshingClusters": "Actualisation des clusters…",
 "account": "Compte",
 "logOut": "Se déconnecter",
 "affinity": "Préférences intelligentes",
@@ -36,5 +39,10 @@
 "resetCss": "Réinitialiser",
 "instanceLabel": "URL de l'instance",
 "instancePlaceholder": "ex. bergamonta.net.br",
-"instanceDesc": "Le serveur auquel l'app se connecte. Les modifications prennent effet immédiatement."
+"instanceDesc": "Le serveur auquel l'app se connecte. Les modifications prennent effet immédiatement.",
+"showCoverImages": "Afficher les images de couverture",
+"showCoverImagesDesc": "Afficher les images de couverture dans les cartes de publication lorsqu'elles sont disponibles.",
+"coverImagePosition": "Position de l'image de couverture",
+"coverImagePositionRight": "À droite",
+"coverImagePositionBottom": "En dessous"
 }

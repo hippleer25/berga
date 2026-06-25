@@ -113,6 +113,7 @@ _PAYLOAD_FIELDS: frozenset[str] = frozenset({
     "feed_icon",
     "url_hash",
     "_model_fp",
+    "image_url",
     # Computed by the ranking pipeline
     "item_id",
     "relevance_score",
@@ -350,7 +351,7 @@ def _compute_personalised_list(
 ) -> tuple[list[tuple[str, float]], dict[str, dict]]:
     row = _get_user_profile(user_id)
 
-    if not row or not row.get("pos_vector"):
+    if not row or not row.get("pos_vector") or row["pos_vector"] == "[]":
         logger.info("No vectors for user_id=%s — falling back to cold-start", user_id)
         return [], {}
 
@@ -423,7 +424,7 @@ def _compute_personalised_list(
         feed_hash = payload.get("feed_sha256")
         likes     = float(pub_likes.get(feed_hash, 0))              if feed_hash else 0.0
         dislikes  = float(pub_dislikes.get(feed_hash, 0))           if feed_hash else 0.0
-        freq      = float(pub_freq.get(feed_hash, FREQ_REF_DAYS))   if feed_hash else FREQ_REF_DAYS
+        freq      = FREQ_REF_DAYS / max(float(pub_freq.get(feed_hash, FREQ_REF_DAYS)), 1.0) if feed_hash else FREQ_REF_DAYS
 
         eng  = publisher_engagement(likes, dislikes, ENGAGEMENT_EXPONENT)
         fbon = publisher_frequency_bonus(freq, FREQ_REF_DAYS, FREQ_EXPONENT, FREQ_BONUS_CAP)
@@ -591,8 +592,6 @@ def _build_full_processed_list(
     if not scores:
         return []
 
-    global_max_score = max(score for _, score in scores)
-
     # ── 2. Build slim item list from scored candidates ─────────────────────
     all_items: list[dict] = []
     for item_id, raw_score in scores:
@@ -631,6 +630,7 @@ def _build_full_processed_list(
     all_items = _apply_diversity_penalty(all_items, single_publisher=single_publisher)
 
     # ── 7. Normalise scores globally ──────────────────────────────────────
+    global_max_score = max((item.get("relevance_score", 0.0) for item in all_items), default=0.0)
     _finalize_scores(all_items, global_max_score)
 
     # ── 8. Cache slim list ─────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import { t, locale } from 'svelte-i18n';
  import { get } from 'svelte/store';
  import { apiFetch } from '$lib/api';
 	import { clearFeedCache } from '$lib/stores/feedCache';
+	import { showCoverImages, coverImagePosition } from '$lib/stores/preferences';
 
 let {
     item,
@@ -30,6 +31,7 @@ let {
         liked?: boolean;
         disliked?: boolean;
         saved?: boolean;
+        image_url?: string;
     };
     server?: string;
     selectionMode?: boolean;
@@ -314,6 +316,14 @@ onMount(() => {
         text = text.replace(/<[^>]+>/g, ''); // Removes all other tags
         return text.replace(/\s{2,}/g, ' ').trim(); // Removes multiple spaces
     }
+
+	// ── Cover image helpers ─────────────────────────────────────────────────
+	let showCover = $derived($showCoverImages && !!item.image_url);
+	let coverPos = $derived($coverImagePosition);
+
+	function onCoverError(event: Event) {
+		(event.currentTarget as HTMLElement).style.display = 'none';
+	}
 </script>
 
 
@@ -321,6 +331,8 @@ onMount(() => {
     class="post-card"
     class:is-selected={selected}
     class:sel-mode={selectionMode}
+    class:cover-right={showCover && coverPos === 'right'}
+    class:cover-bottom={showCover && coverPos === 'bottom'}
     ontouchstart={onTouchStart}
     ontouchmove={onTouchMove}
     ontouchend={onTouchEnd}
@@ -387,6 +399,15 @@ onMount(() => {
 		<!-- Description -->
 		{#if item.description}
 			<p class="description">{stripHtml(item.description)}</p>
+		{/if}
+
+		{#if showCover && coverPos === 'bottom'}
+			<img
+				src={item.image_url}
+				alt=""
+				class="cover-image cover-image--bottom"
+				onerror={onCoverError}
+			/>
 		{/if}
 
 <!-- Tag chips -->
@@ -495,6 +516,16 @@ disabled={!onTagClick}
 	</footer>
     {/if}
     </div>
+
+	<!-- Cover image right -->
+	{#if showCover && coverPos === 'right'}
+		<img
+			src={item.image_url}
+			alt=""
+			class="cover-image cover-image--right"
+			onerror={onCoverError}
+		/>
+	{/if}
 </article>
 
 
@@ -567,6 +598,24 @@ disabled={!onTagClick}
         flex: 1;
         min-width: 0;
     }
+
+	/* ── Cover images ────────────────────────────────────────── */
+	.cover-image {
+		object-fit: cover;
+		border-radius: 8px;
+		flex-shrink: 0;
+	}
+	.cover-image--right {
+		width: 110px;
+		height: 80px;
+		margin-left: 10px;
+		margin-top: 2px;
+	}
+	.cover-image--bottom {
+		width: 100%;
+		max-height: 160px;
+		margin-bottom: 8px;
+	}
 
     /* ── Publisher row ───────────────────────────────────────── */
     .publisher-row {

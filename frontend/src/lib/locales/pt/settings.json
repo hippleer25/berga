@@ -23,6 +23,9 @@
 "fetching": "Buscando…",
 "done": "Feito!",
 "fetchArticles": "Buscar artigos",
+"refreshClusters": "Atualizar clusters",
+"refreshClustersDesc": "Reexecute o agrupamento de eventos para descobrir novos tópicos e tendências.",
+"refreshingClusters": "Atualizando clusters…",
 "account": "Conta",
 "logOut": "Sair",
 "affinity": "Preferências inteligentes",
@@ -36,5 +39,10 @@
 "resetCss": "Redefinir",
 "instanceLabel": "URL da instância",
 "instancePlaceholder": "ex. bergamonta.net.br",
-"instanceDesc": "O servidor ao qual o app se conecta. Alterações entram em vigor imediatamente."
+"instanceDesc": "O servidor ao qual o app se conecta. Alterações entram em vigor imediatamente.",
+"showCoverImages": "Mostrar imagens de capa",
+"showCoverImagesDesc": "Exibir imagens de capa nos cards de post quando disponíveis.",
+"coverImagePosition": "Posição da imagem de capa",
+"coverImagePositionRight": "À direita",
+"coverImagePositionBottom": "Abaixo"
 }

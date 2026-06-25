@@ -3,6 +3,7 @@ import hashlib
 import ipaddress
 import logging
 import os
+import re as _re
 import socket
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -73,6 +74,53 @@ def _validate_feed_url(url: str) -> bool:
         return False
     return True
 
+
+# ── Image extraction ──────────────────────────────────────────────────────────
+
+def _extract_image_url(entry: dict) -> str | None:
+    """
+    Try to extract a cover/thumbnail image URL from a feedparser entry.
+    Only explicit media fields are checked; no HTML scraping is done.
+    """
+    # 1. <enclosure> tags — only when type is image/*
+    try:
+        enclosures = entry.get("enclosures")
+        if enclosures:
+            for enc in enclosures:
+                enc_type = (enc.get("type") or "").lower()
+                href = enc.get("href")
+                if href and enc_type.startswith("image/"):
+                    return href
+    except Exception:
+        pass
+
+    # 2. <media:thumbnail>
+    try:
+        media_thumbnails = entry.get("media_thumbnail")
+        if media_thumbnails:
+            for thumb in media_thumbnails:
+                url = thumb.get("url")
+                if url:
+                    return url
+    except Exception:
+        pass
+
+    # 3. <media:content> with medium="image" or type starting with image/
+    try:
+        media_content = entry.get("media_content")
+        if media_content:
+            for media in media_content:
+                medium = (media.get("medium") or "").lower()
+                mtype = (media.get("type") or "").lower()
+                url = media.get("url")
+                if url and (medium == "image" or mtype.startswith("image/")):
+                    return url
+    except Exception:
+        pass
+
+    return None
+
+
 async def fetch_feed_content(session: aiohttp.ClientSession, feed_url: str) -> str:
     timeout = aiohttp.ClientTimeout(total=FEED_FETCH_TIMEOUT)
     async with session.get(feed_url, timeout=timeout) as response:
@@ -132,6 +180,7 @@ def parse_and_save_feed(feed_url: str, raw_content: str = None):
                 title = entry.get("title", "").strip()
                 description = entry.get("description", "").strip()
                 author = entry.get("author", "").strip()
+                image_url = _extract_image_url(entry)
 
                 if not title:
                     continue
@@ -166,6 +215,7 @@ def parse_and_save_feed(feed_url: str, raw_content: str = None):
                     "feed_icon": icon_feed,
                     "url_hash": old_hash,
                     "_model_fp": model_fp,
+                    "image_url": image_url,
                 }
 
                 add_item_to_qdrant(item_id, vector, payload)

@@ -13,6 +13,8 @@ import { t } from 'svelte-i18n';
 	let importError = $state('');
 	let fetchStatus = $state<'idle' | 'loading' | 'success' | 'error'>('idle');
 	let fetchError = $state('');
+	let clusterStatus = $state<'idle' | 'loading' | 'success' | 'error'>('idle');
+	let clusterError = $state('');
 	let fileInput: HTMLInputElement;
 
 	async function exportOpml() {
@@ -66,6 +68,23 @@ import { t } from 'svelte-i18n';
 			fetchError = err.message;
 		}
 	}
+
+	async function refreshClusters() {
+		clusterStatus = 'loading';
+		clusterError = '';
+		try {
+			const res = await apiFetch('/api/cluster/refresh', { method: 'POST', credentials: 'include' });
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				throw new Error(data.detail || data.message || `${get(t)('settings.serverError').replace('{status}', res.status)}`);
+			}
+			clusterStatus = 'success';
+			setTimeout(() => (clusterStatus = 'idle'), 3000);
+		} catch (err: any) {
+			clusterStatus = 'error';
+			clusterError = err.message;
+		}
+	}
 </script>
 
 <div class="tab-panel">
@@ -95,6 +114,17 @@ import { t } from 'svelte-i18n';
 		{:else}<RefreshCw size={16} /><span>{$t('settings.fetchArticles')}</span>{/if}
 	</button>
 	{#if fetchStatus === 'error'}<p class="error-text">{fetchError}</p>{/if}
+
+	<div class="section-divider"></div>
+
+	<h2 class="section-title">{$t('settings.refreshClusters')}</h2>
+	<p class="section-desc">{$t('settings.refreshClustersDesc')}</p>
+	<button class="action-btn full-width" use:ripple class:success={clusterStatus === 'success'} class:error={clusterStatus === 'error'} onclick={refreshClusters} disabled={clusterStatus === 'loading'}>
+		{#if clusterStatus === 'loading'}<span class="spinner"></span><span>{$t('settings.refreshingClusters')}</span>
+		{:else if clusterStatus === 'success'}<Check size={16} /><span>{$t('settings.done')}</span>
+		{:else}<RefreshCw size={16} /><span>{$t('settings.refreshClusters')}</span>{/if}
+	</button>
+	{#if clusterStatus === 'error'}<p class="error-text">{clusterError}</p>{/if}
 </div>
 
 <style>

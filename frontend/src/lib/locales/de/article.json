@@ -21,5 +21,12 @@
   "tagArticle": "Artikel taggen",
   "allTagsAssigned": "Alle Tags bereits zugewiesen",
   "customColor": "Benutzerdefinierte Farbe",
-  "removeHighlight": "Markierung entfernen"
+  "removeHighlight": "Markierung entfernen",
+  "comment": "Kommentieren",
+  "hideComment": "Kommentar ausblenden",
+  "editComment": "Bearbeiten",
+  "deleteComment": "Löschen",
+  "deleteCommentConfirm": "Diesen Kommentar löschen?",
+  "saveComment": "Speichern",
+  "commentPlaceholder": "Schreibe deinen Kommentar in Markdown..."
 }

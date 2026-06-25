@@ -7,6 +7,7 @@ from urllib.parse import urljoin, urlparse
 from database.init_db import get_db
 from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
 from intelligence.similar import get_similar_articles
+from post.comments import get_comment as _get_comment
 from i18n.locale_map import accept_language_header
 
 logger = logging.getLogger(__name__)
@@ -96,12 +97,14 @@ def _get_interaction_status(user_id: int, item_id: str) -> dict:
             archived = any(row.get("archived") for row in rows if row["action"] == "saved")
         finally:
             cursor.close()
+        comment = _get_comment(user_id, item_id)
         return {
             "liked": "like" in actions,
             "disliked": "dislike" in actions,
             "saved": "saved" in actions,
             "archived": bool(archived),
             "highlights": _get_highlights(user_id, item_id),
+            "comment": comment["content_md"] if comment else None,
         }
 
 

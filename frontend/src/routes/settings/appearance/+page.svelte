@@ -16,8 +16,10 @@
     migrateOldFontPref,
   } from '$lib/utils/appearance';
   import type { FontCategory, FontName } from '$lib/utils/appearance';
+  import { get } from 'svelte/store';
   import { ripple } from '$lib/actions/ripple';
   import Portal from '$lib/components/Portal.svelte';
+  import { showCoverImages, coverImagePosition, type CoverPosition } from '$lib/stores/preferences';
 
   const LOCALE_LABELS: Record<SupportedLocale, string> = {
     pt: 'Português',
@@ -49,6 +51,8 @@
   let fontDropStyles = $state<Record<string, string>>({});
   let customCss = $state('');
   let cssSaveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
+  let showCover = $state(false);
+  let coverPos = $state<CoverPosition>('right');
 
   $effect(() => {
     console.log('[settings] $locale changed to:', $locale);
@@ -62,6 +66,8 @@
     }
     activeTheme = localStorage.getItem('preferred-theme') || 'berga';
     customCss = localStorage.getItem('custom-css') || '';
+    showCover = get(showCoverImages);
+    coverPos = get(coverImagePosition);
 
     if (customCss.trim()) {
       const converted = convertDaisyuiPluginToDataTheme(customCss);
@@ -94,6 +100,17 @@
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
   });
+
+  function toggleShowCover() {
+    showCover = !showCover;
+    showCoverImages.setEnabled(showCover);
+  }
+
+  function toggleCoverPos() {
+    const next: CoverPosition = coverPos === 'right' ? 'bottom' : 'right';
+    coverPos = next;
+    coverImagePosition.setPosition(next);
+  }
 
   function selectFont(category: FontCategory, fontName: string) {
     applyFont(category, fontName, true);
@@ -236,6 +253,28 @@
     </button>
   </div>
 
+  <div class="setting-row">
+    <div class="setting-text">
+      <span class="setting-label">{$t('settings.showCoverImages')}</span>
+    </div>
+    <button class="pill-toggle" class:on={showCover} use:ripple onclick={toggleShowCover}>
+      <div class="pill-thumb"></div>
+    </button>
+  </div>
+
+  {#if showCover}
+    <div class="setting-row">
+    <span class="setting-label">{$t('settings.coverImagePosition')}</span>
+    <div class="position-wrap">
+      <span class="position-label" class:active={coverPos === 'right'}>{$t('settings.coverImagePositionRight')}</span>
+      <button class="pill-toggle mini" class:on={coverPos === 'bottom'} use:ripple onclick={toggleCoverPos}>
+        <div class="pill-thumb"></div>
+      </button>
+      <span class="position-label" class:active={coverPos === 'bottom'}>{$t('settings.coverImagePositionBottom')}</span>
+    </div>
+  </div>
+  {/if}
+
   {#each fontCategories as cat}
     <div class="setting-row">
       <span class="setting-label">{$t(cat.labelKey)}</span>
@@ -343,6 +382,33 @@
     transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
   }
   .pill-toggle.on .pill-thumb { transform: translateX(20px); }
+
+  .position-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .position-label {
+    font-size: 12px;
+    color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+    transition: color 150ms;
+    white-space: nowrap;
+  }
+  .position-label.active {
+    color: var(--color-accent);
+    font-weight: 600;
+  }
+  .pill-toggle.mini {
+    width: 36px;
+    height: 20px;
+  }
+  .pill-toggle.mini .pill-thumb {
+    width: 14px;
+    height: 14px;
+    top: 3px;
+    left: 3px;
+  }
+  .pill-toggle.mini.on .pill-thumb { transform: translateX(16px); }
 
   .css-editor {
     width: 100%; padding: 12px; border-radius: 10px;

@@ -2,11 +2,12 @@
     import { page } from '$app/stores';
     import { goto, beforeNavigate } from '$app/navigation';
     import { onMount } from 'svelte';
-    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Layers, Tag, X, Highlighter, Trash2 } from '@lucide/svelte';
+    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Layers, Tag, X, Highlighter, Trash2, MessageSquare, Bold, Italic, Heading, Link2, List, ListOrdered, Quote, Code } from '@lucide/svelte';
 
 import { t, locale } from 'svelte-i18n';
 import { get } from 'svelte/store';
 import { apiFetch } from '$lib/api';
+import { renderMarkdown } from '$lib/utils/markdown';
 import { flushPending } from '$lib/stores/viewTracker';
 	import { clearFeedCache } from '$lib/stores/feedCache';
 
@@ -48,6 +49,7 @@ type ReaderData = {
     archived?: boolean;
     similar_articles?: SimilarArticle[];
     highlights?: Highlight[];
+    comment?: string | null;
 };
 
 type Highlight = {
@@ -78,6 +80,14 @@ const HIGHLIGHT_PRESETS = ['#FFEB3B', '#66BB6A', '#42A5F5', '#F48FB1'] as const;
     let resumeText     = $state('');
     let resumeLoading  = $state(false);
     let resumeError    = $state('');
+
+    // Comment state
+    let commentText    = $state('');
+    let commentVisible = $state(false);
+    let editingComment = $state(false);
+    let commentSaving  = $state(false);
+    let commentError   = $state('');
+    let commentDeleteConfirm = $state(false);
 
 type ArticleTag = { tag_id: number; name: string; color?: string; source: string };
 type UserTag = { id: number; name: string; color?: string };
@@ -124,6 +134,13 @@ let articleBodyEl: HTMLDivElement | undefined = $state();
         resumeText = '';
         resumeLoading = false;
         resumeError = '';
+
+        commentText = '';
+        commentVisible = false;
+        editingComment = false;
+        commentSaving = false;
+        commentError = '';
+        commentDeleteConfirm = false;
 
         webView = false;
         iframeLoading = false;
@@ -173,6 +190,7 @@ const res = await apiFetch(`/api/load-text/${id}`, {
         disliked = data.disliked ?? false;
         saved = data.saved ?? false;
         highlights = (data as any).highlights ?? [];
+        commentText = (data as any).comment ?? '';
 
         if (data.title) document.title = `${data.title} — Berga`;
         loadArticleTags(id);
@@ -420,6 +438,104 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         } finally {
             saveLoading = false;
         }
+    }
+
+    // ── Comment ──────────────────────────────────────────────────────
+
+    function toggleComment() {
+        if (!loadedItemId) return;
+        if (commentText && !editingComment) {
+            commentVisible = !commentVisible;
+            return;
+        }
+        commentVisible = true;
+        editingComment = true;
+    }
+
+    async function saveComment() {
+        if (!loadedItemId || commentSaving) return;
+        commentSaving = true;
+        commentError = '';
+        try {
+            const res = await apiFetch(`/api/comments/${loadedItemId}`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content_md: commentText }),
+            });
+            if (res.status === 401) { goto('/'); return; }
+            if (!res.ok) throw new Error();
+            editingComment = false;
+            commentVisible = true;
+        } catch {
+            commentError = 'Failed to save comment';
+        } finally {
+            commentSaving = false;
+        }
+    }
+
+    async function deleteComment() {
+        if (!loadedItemId) return;
+        commentSaving = true;
+        try {
+            const res = await apiFetch(`/api/comments/${loadedItemId}`, {
+                method: 'DELETE',
+                credentials: 'include',
+            });
+            if (res.status === 401) { goto('/'); return; }
+            if (!res.ok) throw new Error();
+            commentText = '';
+            commentVisible = false;
+            editingComment = false;
+            commentDeleteConfirm = false;
+        } catch {
+            commentError = 'Failed to delete comment';
+        } finally {
+            commentSaving = false;
+        }
+    }
+
+    function startEditComment() {
+        editingComment = true;
+        commentVisible = true;
+    }
+
+    function cancelEdit() {
+        if (!commentText) {
+            commentVisible = false;
+        }
+        editingComment = false;
+    }
+
+    function insertMarkdown(before: string, after: string) {
+        const ta = document.getElementById('comment-editor') as HTMLTextAreaElement | null;
+        if (!ta) return;
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        const selected = commentText.slice(start, end);
+        commentText = commentText.slice(0, start) + before + selected + after + commentText.slice(end);
+        requestAnimationFrame(() => {
+            ta.focus();
+            ta.selectionStart = start + before.length;
+            ta.selectionEnd = start + before.length + selected.length;
+        });
+    }
+
+    function insertWikilink() {
+        const ta = document.getElementById('comment-editor') as HTMLTextAreaElement | null;
+        if (!ta) return;
+        const url = prompt('Enter URL:');
+        if (!url) return;
+        const text = prompt('Enter link text (optional):') || url;
+        const snippet = `[[${text}^^${url}]]`;
+        const start = ta.selectionStart;
+        commentText = commentText.slice(0, start) + snippet + commentText.slice(ta.selectionEnd);
+        requestAnimationFrame(() => {
+            ta.focus();
+            const pos = start + snippet.length;
+            ta.selectionStart = pos;
+            ta.selectionEnd = pos;
+        });
     }
 
     // ── Highlights ───────────────────────────────────────────────────
@@ -898,6 +1014,85 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 		</div>
 	{/if}
 
+          <!-- ── Comment ────────────────────────────── -->
+                        <button
+                            class="resume-toggle"
+                            class:comment-active={commentText && !editingComment}
+                            onclick={toggleComment}
+                            disabled={commentSaving}
+                        >
+                            <MessageSquare size={14} />
+                            <span>{commentVisible && !editingComment && commentText ? $t('article.hideComment') : $t('article.comment')}</span>
+                        </button>
+
+                        {#if commentVisible}
+                            <div class="resume-box comment-box">
+                                {#if editingComment}
+                                    <!-- Toolbar -->
+                                    <div class="md-toolbar">
+                                        <button class="md-tb-btn" onclick={() => insertMarkdown('**', '**')} title="Bold"><Bold size={13} /></button>
+                                        <button class="md-tb-btn" onclick={() => insertMarkdown('*', '*')} title="Italic"><Italic size={13} /></button>
+                                        <button class="md-tb-btn" onclick={() => insertMarkdown('# ', '')} title="Heading"><Heading size={13} /></button>
+                                        <button class="md-tb-btn" onclick={() => { const u = prompt('URL:'); if (u) insertMarkdown('[', `](${u})`); }} title="Link"><Link2 size={13} /></button>
+                                        <button class="md-tb-btn" onclick={insertWikilink} title="Wikilink"><MessageSquare size={13} /></button>
+                                        <button class="md-tb-btn" onclick={() => insertMarkdown('- ', '')} title="List"><List size={13} /></button>
+                                        <button class="md-tb-btn" onclick={() => insertMarkdown('1. ', '')} title="Ordered list"><ListOrdered size={13} /></button>
+                                        <button class="md-tb-btn" onclick={() => insertMarkdown('> ', '')} title="Quote"><Quote size={13} /></button>
+                                        <button class="md-tb-btn" onclick={() => insertMarkdown('```\n', '\n```')} title="Code"><Code size={13} /></button>
+                                    </div>
+                                    <span class="md-hint">{$t('article.commentPlaceholder')}</span>
+                                    <textarea
+                                        id="comment-editor"
+                                        class="comment-textarea"
+                                        bind:value={commentText}
+                                        placeholder={$t('article.commentPlaceholder')}
+                                    ></textarea>
+                                    {#if commentError}
+                                        <p class="comment-error">{commentError}</p>
+                                    {/if}
+                                    <div class="comment-actions">
+                                        <button
+                                            class="comment-save-btn"
+                                            onclick={saveComment}
+                                            disabled={commentSaving}
+                                        >
+                                            {#if commentSaving}
+                                                <span class="loading loading-spinner loading-xs"></span>
+                                            {/if}
+                                            {$t('article.saveComment')}
+                                        </button>
+                                        <button
+                                            class="comment-cancel-btn"
+                                            onclick={cancelEdit}
+                                            disabled={commentSaving}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                {:else if commentText}
+                                    <div class="comment-rendered">
+                                        {@html renderMarkdown(commentText)}
+                                    </div>
+                                    <div class="comment-actions">
+                                        <button class="comment-edit-btn" onclick={startEditComment} disabled={commentSaving}>
+                                            {$t('article.editComment')}
+                                        </button>
+                                        {#if commentDeleteConfirm}
+                                            <span class="comment-delete-confirm">
+                                                <span>{$t('article.deleteCommentConfirm')}</span>
+                                                <button class="comment-del-yes" onclick={deleteComment} disabled={commentSaving}>Yes</button>
+                                                <button class="comment-del-no" onclick={() => commentDeleteConfirm = false}>No</button>
+                                            </span>
+                                        {:else}
+                                            <button class="comment-del-btn" onclick={() => commentDeleteConfirm = true} disabled={commentSaving}>
+                                                {$t('article.deleteComment')}
+                                            </button>
+                                        {/if}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/if}
+
           <!-- ── Caixa de resumo (AI) ─────────────────── -->
                         <button
                             class="resume-toggle"
@@ -1307,6 +1502,181 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     }
     @keyframes shimmer { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
     .resume-error-text { font-size: 14px; color: var(--color-error); margin: 0; }
+
+    /* ── Comment ──────────────────────────────────────────── */
+    .comment-box {
+        border-left-color: var(--color-info);
+    }
+    .comment-active {
+        color: var(--color-info) !important;
+    }
+    .comment-active:hover {
+        background: color-mix(in oklch, var(--color-info) 8%, transparent) !important;
+        border-color: var(--color-info) !important;
+    }
+    .md-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--color-base-300);
+    }
+    .md-tb-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 28px;
+        border: 1px solid var(--color-base-300);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-base-content);
+        cursor: pointer;
+        transition: background 100ms, border-color 100ms;
+    }
+    .md-tb-btn:hover {
+        background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+    }
+    .md-hint {
+        font-size: 11px;
+        color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+        display: block;
+        margin-bottom: 4px;
+    }
+    .comment-textarea {
+        width: 100%;
+        min-height: 120px;
+        padding: 10px 12px;
+        border: 1px solid var(--color-base-300);
+        border-radius: 6px;
+        background: var(--color-base-100);
+        color: var(--color-base-content);
+        font-family: var(--font-ui);
+        font-size: 14px;
+        line-height: 1.6;
+        resize: vertical;
+        outline: none;
+        transition: border-color 140ms;
+        box-sizing: border-box;
+    }
+    .comment-textarea:focus {
+        border-color: var(--color-info);
+    }
+    .comment-textarea::placeholder {
+        color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+    }
+    .comment-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .comment-save-btn, .comment-edit-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border: none;
+        border-radius: 6px;
+        background: var(--color-info);
+        color: var(--color-info-content);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 140ms;
+    }
+    .comment-save-btn:hover, .comment-edit-btn:hover { opacity: 0.85; }
+    .comment-save-btn:disabled, .comment-edit-btn:disabled { opacity: 0.5; cursor: default; }
+    .comment-cancel-btn {
+        padding: 6px 14px;
+        border: 1px solid var(--color-base-300);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--color-base-content);
+        font-size: 13px;
+        cursor: pointer;
+    }
+    .comment-cancel-btn:hover { background: var(--color-base-200); }
+    .comment-del-btn {
+        padding: 6px 14px;
+        border: 1px solid var(--color-error);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--color-error);
+        font-size: 13px;
+        cursor: pointer;
+        transition: background 100ms;
+    }
+    .comment-del-btn:hover { background: color-mix(in oklch, var(--color-error) 10%, transparent); }
+    .comment-del-btn:disabled { opacity: 0.5; cursor: default; }
+    .comment-delete-confirm {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--color-error);
+    }
+    .comment-delete-confirm button {
+        padding: 4px 10px;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .comment-del-yes { background: var(--color-error); color: #fff; }
+    .comment-del-no { background: var(--color-base-300); color: var(--color-base-content); }
+    .comment-error {
+        font-size: 13px;
+        color: var(--color-error);
+        margin: 6px 0 0;
+    }
+    .comment-rendered {
+        font-size: 0.95rem;
+        line-height: 1.7;
+        color: var(--color-base-content);
+    }
+    .comment-rendered :global(p) { margin: 0 0 0.75em; }
+    .comment-rendered :global(p:last-child) { margin-bottom: 0; }
+    .comment-rendered :global(a) { color: var(--color-info); text-decoration: underline; }
+    .comment-rendered :global(code) {
+        font-size: 0.85em;
+        padding: 2px 5px;
+        border-radius: 3px;
+        background: var(--color-base-300);
+    }
+    .comment-rendered :global(pre) {
+        background: var(--color-base-300);
+        border-radius: 6px;
+        padding: 12px;
+        overflow-x: auto;
+        font-size: 0.85em;
+        margin: 0.75em 0;
+    }
+    .comment-rendered :global(blockquote) {
+        border-left: 3px solid var(--color-info);
+        margin: 0.75em 0;
+        padding: 0.25em 1em;
+        font-style: italic;
+        color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+    }
+    .comment-rendered :global(img) { max-width: 100%; border-radius: 6px; }
+    .comment-rendered :global(ul), .comment-rendered :global(ol) { padding-left: 1.5em; margin: 0.5em 0; }
+    .comment-rendered :global(li) { margin-bottom: 0.25em; }
+    .comment-rendered :global(h1), .comment-rendered :global(h2), .comment-rendered :global(h3), .comment-rendered :global(h4) {
+        margin: 1em 0 0.5em; font-weight: 700; line-height: 1.3;
+    }
+    .comment-rendered :global(h1) { font-size: 1.3rem; }
+    .comment-rendered :global(h2) { font-size: 1.15rem; }
+    .comment-rendered :global(h3) { font-size: 1.05rem; }
+    .comment-rendered :global(h4) { font-size: 1rem; }
+    .comment-rendered :global(hr) { border: none; border-top: 1px solid var(--color-base-300); margin: 1em 0; }
+    .comment-rendered :global(table) { border-collapse: collapse; width: 100%; margin: 0.75em 0; font-size: 0.9em; }
+    .comment-rendered :global(th), .comment-rendered :global(td) { border: 1px solid var(--color-base-300); padding: 6px 10px; text-align: left; }
+    .comment-rendered :global(th) { background: var(--color-base-300); font-weight: 700; }
 
     /* ── Article Body ────────────────────────────────────────── */
 .article-body {

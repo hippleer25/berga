@@ -30,12 +30,14 @@ from intelligence.recents import get_recents
 from intelligence.saved import get_saved
 from intelligence.similar import get_similar_articles
 from intelligence.cluster import get_cached_events, compute_weekly_events, set_cached_events, CLUSTER_LIMIT, load_events_from_db
+from intelligence.cluster_store import build_reverse_index, set_cluster_index
 from intelligence.affinity import analyze_affinity, boost_affinity, remove_affinity_boost
 from search.item.search_item import search_articles_by_text
 from search.feed.search_feed_urls import feeds
 from search.feed import search_feed_online
 from post import load
 from post import highlights as hl
+from post import comments as cm
 from utils.opml import opml_import, opml_export
 from utils.regex_utils import validate_regex_pattern
 from feed.following_structure.structure import following_structure, StructureRequest, list_subscriptions, get_folder_info
@@ -283,6 +285,18 @@ async def parse_user_all(request: Request, user: dict = Depends(get_current_user
     return {"status": "accepted", "message": "Feed refresh started in background"}
 
 
+@app.post("/api/cluster/refresh")
+async def cluster_refresh(request: Request, user: dict = Depends(get_current_user)):
+    if request.app.state.arq:
+        await request.app.state.arq.enqueue_job("refresh_weekly_events")
+    else:
+        events = await asyncio.to_thread(compute_weekly_events)
+        if events:
+            reverse_index, summaries = build_reverse_index(events)
+            set_cluster_index(reverse_index, summaries)
+    return {"status": "accepted", "message": "Cluster refresh started"}
+
+
 @app.post("/api/load-text/{item_id}")
 def load_text(item_id: str, user=Depends(get_current_user)):
     return load.get(user["id"], item_id)
@@ -301,6 +315,26 @@ def create_highlight(item_id: str, body: HighlightRequest, user=Depends(get_curr
 @app.delete("/api/highlights/{highlight_id}")
 def delete_highlight(highlight_id: int, user=Depends(get_current_user)):
     return hl.delete_highlight(user["id"], highlight_id)
+
+
+@app.get("/api/comments/{item_id}")
+def get_comment(item_id: str, user=Depends(get_current_user)):
+    comment = cm.get_comment(user["id"], item_id)
+    return {"comment": comment}
+
+
+class CommentRequest(BaseModel):
+    content_md: str
+
+
+@app.post("/api/comments/{item_id}")
+def save_comment(item_id: str, body: CommentRequest, user=Depends(get_current_user)):
+    return cm.save_comment(user["id"], item_id, body.content_md)
+
+
+@app.delete("/api/comments/{item_id}")
+def delete_comment(item_id: str, user=Depends(get_current_user)):
+    return cm.delete_comment(user["id"], item_id)
 
 
 @app.post("/api/feed/{item_id}/like")

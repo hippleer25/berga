@@ -33,7 +33,8 @@ CACHE_TTL = int(os.getenv("CACHE_TTL", 60 * 60 * 6))
 CACHE_FRESHNESS_SECONDS = int(os.getenv("CACHE_FRESHNESS_SECONDS", 60 * 30))
 
 CLUSTER_EPS_OVERRIDE = os.getenv("CLUSTER_EPS") or None
-CLUSTER_EPS_PERCENTILE = int(os.getenv("CLUSTER_EPS_PERCENTILE", "10"))
+CLUSTER_EPS_PERCENTILE = int(os.getenv("CLUSTER_EPS_PERCENTILE", "15"))
+CLUSTER_EPS_MAX = float(os.getenv("CLUSTER_EPS_MAX", "0.35"))
 CLUSTER_MIN_CLUSTER_SIZE = int(os.getenv("CLUSTER_MIN_CLUSTER_SIZE", "3"))
 CLUSTER_MIN_UNIQUE_FEEDS = int(os.getenv("CLUSTER_MIN_UNIQUE_FEEDS", "2"))
 CLUSTER_DAYS = int(os.getenv("CLUSTER_DAYS", "7"))
@@ -298,20 +299,20 @@ def _count_unique_feeds(articles: list[dict]) -> int:
     return len(set(a.get("feed_sha256") for a in articles if a.get("feed_sha256")))
 
 
-def _compute_adaptive_eps(normalized: np.ndarray, min_cluster_size: int) -> float:
-    k = min_cluster_size
+def _compute_adaptive_eps(normalized: np.ndarray, k: int) -> float:
     n_samples = normalized.shape[0]
     effective_k = min(k, n_samples - 1) if n_samples > 1 else 1
 
-    nbrs = NearestNeighbors(n_neighbors=effective_k, metric="euclidean", n_jobs=2).fit(normalized)
+    nbrs = NearestNeighbors(n_neighbors=effective_k, metric="cosine", n_jobs=2).fit(normalized)
     distances, _ = nbrs.kneighbors(normalized)
     kth_distances = np.sort(distances[:, -1])
 
     eps = float(np.percentile(kth_distances, CLUSTER_EPS_PERCENTILE))
+    eps = min(eps, CLUSTER_EPS_MAX)
 
     logger.info(
-        f"[CLUSTER] Adaptive eps from k-NN (k={effective_k}, p={CLUSTER_EPS_PERCENTILE}): "
-        f"eps={eps:.4f} "
+        f"[CLUSTER] Adaptive eps from k-NN (k={effective_k}, p={CLUSTER_EPS_PERCENTILE}, metric=cosine): "
+        f"eps={eps:.4f} (capped at {CLUSTER_EPS_MAX:.2f}) "
         f"(p2={np.percentile(kth_distances, 2):.4f}, "
         f"p10={np.percentile(kth_distances, 10):.4f}, "
         f"p50={np.percentile(kth_distances, 50):.4f}, "
@@ -324,19 +325,21 @@ def _run_clustering(vectors: np.ndarray, min_cluster_size: int) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
     normalized = vectors / np.where(norms == 0, 1, norms)
 
+    dbscan_min_samples = max(min_cluster_size, 3)
+
     if CLUSTER_EPS_OVERRIDE is not None:
         eps = float(CLUSTER_EPS_OVERRIDE)
         logger.info(
             f"[CLUSTER] Using overridden eps={eps:.4f} "
-            f"(min_samples={min_cluster_size}, metric=euclidean)"
+            f"(min_samples={dbscan_min_samples}, metric=cosine)"
         )
     else:
-        eps = _compute_adaptive_eps(normalized, min_cluster_size)
+        eps = _compute_adaptive_eps(normalized, dbscan_min_samples)
 
     clusterer = DBSCAN(
         eps=eps,
-        min_samples=min_cluster_size,
-        metric="euclidean",
+        min_samples=dbscan_min_samples,
+        metric="cosine",
         n_jobs=2,
     )
     labels = clusterer.fit_predict(normalized)
@@ -500,18 +503,16 @@ def compute_weekly_events(
             f"— e.g.: \"{arts[0].get('title', 'no title')}\""
         )
 
-    valid = sorted(
-        [
-            v for v in clusters.values()
-            if len(v) >= min_cluster_size and _count_unique_feeds(v) >= min_unique_feeds
-        ],
-        key=len,
-        reverse=True
-    )[:limit]
+    total_raw = len(clusters)
+    passed_size = [v for v in clusters.values() if len(v) >= min_cluster_size]
+    passed_feeds = [v for v in passed_size if _count_unique_feeds(v) >= min_unique_feeds]
+    valid = sorted(passed_feeds, key=len, reverse=True)[:limit]
 
     logger.info(
-        f"[CLUSTER] {len(valid)} valid clusters "
-        f"(>= {min_cluster_size} articles and >= {min_unique_feeds} unique feeds) after filter"
+        f"[CLUSTER] {total_raw} raw DBSCAN clusters → "
+        f"{len(passed_size)} passed size filter (≥{min_cluster_size}) → "
+        f"{len(passed_feeds)} passed feed filter (≥{min_unique_feeds} feeds) → "
+        f"{len(valid)} kept (limit={limit})"
     )
 
     if not valid:

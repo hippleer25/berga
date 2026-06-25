@@ -8,10 +8,13 @@ this module just implements the math.
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import Optional
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 # ── Contrast score ─────────────────────────────────────────────────────────────
@@ -222,6 +225,10 @@ def blend_vectors(
     a = np.asarray(secondary, dtype=np.float32)
 
     if len(b) != len(a):
+        logger.warning(
+            "blend_vectors: dimension mismatch primary=%d secondary=%d — returning primary unchanged",
+            len(b), len(a),
+        )
         return list(primary)
 
     blended = (1.0 - weight) * b + weight * a

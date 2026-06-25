@@ -14,9 +14,11 @@ the loader falls back to the plain ONNX fp32 backend, logging a warning.
 
 from __future__ import annotations
 
+import html
 import hashlib
 import logging
 import os
+import re
 import threading
 from typing import Optional
 
@@ -71,12 +73,26 @@ _ONNX_CANDIDATES = (
 
 # ── Embedding text builder ────────────────────────────────────────────────────
 
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_ENTITY_RE = re.compile(r"&[a-zA-Z0-9#]+;")
+
+
+def strip_html(text: str) -> str:
+    text = _HTML_TAG_RE.sub(" ", text)
+    text = html.unescape(text)
+    text = _HTML_ENTITY_RE.sub(" ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def build_embedding_text(title: str, description: str = "") -> str:
     if not EMBEDDING_DESCRIPTION_CHARS or not description:
         return title
+    clean_description = strip_html(description)
+    if not clean_description:
+        return title
     if EMBEDDING_DESCRIPTION_CHARS > 0:
-        return f"{title}\n{description[:EMBEDDING_DESCRIPTION_CHARS]}"
-    return f"{title}\n{description}"
+        return f"{title}\n{clean_description[:EMBEDDING_DESCRIPTION_CHARS]}"
+    return f"{title}\n{clean_description}"
 
 
 # ── Model fingerprint ──────────────────────────────────────────────────────────

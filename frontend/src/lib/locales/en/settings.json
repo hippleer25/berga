@@ -23,6 +23,9 @@
 "fetching": "Fetching…",
 "done": "Done!",
 "fetchArticles": "Fetch articles",
+"refreshClusters": "Refresh clusters",
+"refreshClustersDesc": "Re-run event clustering to discover new topics and trends.",
+"refreshingClusters": "Refreshing clusters…",
 "account": "Account",
 "logOut": "Log out",
 "affinity": "Smart preferences",
@@ -36,5 +39,10 @@
 "resetCss": "Reset",
 "instanceLabel": "Instance URL",
 "instancePlaceholder": "e.g. bergamonta.net.br",
-"instanceDesc": "The server your app connects to. Changes take effect immediately."
+"instanceDesc": "The server your app connects to. Changes take effect immediately.",
+"showCoverImages": "Show cover images",
+"showCoverImagesDesc": "Display cover images in post cards when available.",
+"coverImagePosition": "Cover image position",
+"coverImagePositionRight": "Right",
+"coverImagePositionBottom": "Below"
 }

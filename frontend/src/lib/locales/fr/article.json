@@ -21,5 +21,12 @@
   "tagArticle": "Tagger l'article",
   "allTagsAssigned": "Tous les tags déjà attribués",
   "customColor": "Couleur personnalisée",
-  "removeHighlight": "Supprimer le surlignage"
+  "removeHighlight": "Supprimer le surlignage",
+  "comment": "Commenter",
+  "hideComment": "Masquer le commentaire",
+  "editComment": "Modifier",
+  "deleteComment": "Supprimer",
+  "deleteCommentConfirm": "Supprimer ce commentaire ?",
+  "saveComment": "Enregistrer",
+  "commentPlaceholder": "Écrivez votre commentaire en markdown..."
 }

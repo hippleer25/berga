@@ -21,5 +21,12 @@
   "tagArticle": "Marcar artigo",
   "allTagsAssigned": "Todas as tags já atribuídas",
   "customColor": "Cor personalizada",
-  "removeHighlight": "Remover destaque"
+  "removeHighlight": "Remover destaque",
+  "comment": "Comentar",
+  "hideComment": "Ocultar comentário",
+  "editComment": "Editar",
+  "deleteComment": "Excluir",
+  "deleteCommentConfirm": "Excluir este comentário?",
+  "saveComment": "Salvar",
+  "commentPlaceholder": "Escreva seu comentário em markdown..."
 }

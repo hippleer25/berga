@@ -37,6 +37,12 @@
     "@capacitor/android": "8.3.4",
     "@capacitor/core": "8.3.4",
     "@capacitor/splash-screen": "8.0.1",
-    "@capacitor/status-bar": "8.0.2"
+    "@capacitor/status-bar": "8.0.2",
+    "unified": "11.0.5",
+    "remark-parse": "11.0.0",
+    "remark-gfm": "4.0.0",
+    "remark-rehype": "11.1.1",
+    "rehype-sanitize": "6.0.0",
+    "rehype-stringify": "10.0.1"
   }
 }

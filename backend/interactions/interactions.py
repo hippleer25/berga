@@ -2,6 +2,7 @@ from database.init_db import get_db
 from interactions.profile_updater import interact as _interact
 from intelligence.recommendations import invalidate_cache, invalidate_interaction_cache
 from post.load import _cache_article
+import json
 
 
 def _fetch_and_cache(item_id: str) -> None:
@@ -70,6 +71,18 @@ def save_article(user_id: int, item_id: str):
 
 
 def unsave_article(user_id: int, item_id: str):
+    from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
+    from interactions.config import ACTION_WEIGHTS
+
+    client = get_qdrant_client()
+    result = client.retrieve(
+        collection_name=COLLECTION_NAME,
+        ids=[item_id],
+        with_payload=True,
+        with_vectors=False,
+    )
+    feed_sha256 = result[0].payload.get("feed_sha256") if result and result[0].payload else None
+
     with get_db() as conn:
         cursor = conn.cursor()
         try:
@@ -83,7 +96,25 @@ def unsave_article(user_id: int, item_id: str):
                 SET saved_count = GREATEST(saved_count - 1, 0)
                 WHERE item_id = %s
             """, (item_id,))
+
+            if feed_sha256:
+                cursor.execute(
+                    "SELECT publisher_likes FROM user_vectors WHERE user_id = %s",
+                    (user_id,),
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    pub_likes = json.loads(row[0])
+                    decrement = ACTION_WEIGHTS.get("saved", 0.5)
+                    pub_likes[feed_sha256] = max(pub_likes.get(feed_sha256, 0) - decrement, 0)
+                    cursor.execute(
+                        "UPDATE user_vectors SET publisher_likes = %s WHERE user_id = %s",
+                        (json.dumps(pub_likes), user_id),
+                    )
+
             conn.commit()
+            invalidate_cache(user_id)
+            invalidate_interaction_cache(user_id)
             return {"status": "success", "message": "Removed from saved"}
         except Exception as e:
             conn.rollback()

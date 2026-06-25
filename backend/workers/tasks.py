@@ -7,6 +7,7 @@ import aiohttp
 import json
 import logging
 import os
+import re as _re
 from database.init_db import get_db
 from rss.parser import parse_and_save_feed_async
 from intelligence.cluster import compute_weekly_events, set_cached_events, load_events_from_db
@@ -330,6 +331,64 @@ def _reembed_all_sync() -> dict:
 
 async def reembed_all(ctx):
     result = await asyncio.to_thread(_reembed_all_sync)
+    return result
+
+
+# ── Re-image job (patches image_url for articles that already have content) ─
+
+def _reimage_all_sync() -> dict:
+    """Scroll all Qdrant points and patch image_url by extracting from description HTML."""
+    from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
+
+    client = get_qdrant_client()
+
+    logger.info("[RE-IMAGE] Starting image URL backfill")
+
+    updated = 0
+    offset = None
+    while True:
+        points, next_offset = client.scroll(
+            collection_name=COLLECTION_NAME,
+            with_payload=True,
+            with_vectors=False,
+            limit=500,
+            offset=offset,
+        )
+
+        for point in points:
+            payload = point.payload or {}
+            if payload.get("image_url") is not None:
+                continue
+
+            description = payload.get("description", "")
+            if not description:
+                continue
+
+            match = _re.search(r'<img[^>]+src=["\']([^"\']+)["\']', description, _re.IGNORECASE)
+            if not match:
+                continue
+
+            url = match.group(1).strip()
+            if not url.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')):
+                continue
+
+            client.set_payload(
+                collection_name=COLLECTION_NAME,
+                payload={"image_url": url},
+                points=[str(point.id)],
+            )
+            updated += 1
+
+        if next_offset is None:
+            break
+        offset = next_offset
+
+    logger.info("[RE-IMAGE] Complete: %d updated", updated)
+    return {"updated": updated}
+
+
+async def reimage_all(ctx):
+    result = await asyncio.to_thread(_reimage_all_sync)
     return result
 
 
@@ -871,6 +930,7 @@ class WorkerSettings:
         refresh_all_publisher_freq,
         parse_feeds_for_user,
         reembed_all,
+        reimage_all,
         refresh_auto_tags,
         refresh_auto_tags_for_users,
     ]

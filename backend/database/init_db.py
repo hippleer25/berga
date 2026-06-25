@@ -398,6 +398,19 @@ def init_db():
                 INDEX idx_highlights_user_item (user_id, item_id)
         ) {_TABLE_OPTIONS}
         """)
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS article_comments (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                item_id VARCHAR(64) NOT NULL,
+                content_md MEDIUMTEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE KEY uq_comment_user_item (user_id, item_id),
+                INDEX idx_comments_item (item_id)
+            ) {_TABLE_OPTIONS}
+            """)
             _add_column_if_missing(cursor, "interactions", "archived", "TINYINT(1) DEFAULT 0")
             conn.commit()
             logger.info("Database initialised successfully")

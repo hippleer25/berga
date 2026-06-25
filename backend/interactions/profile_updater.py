@@ -1,6 +1,8 @@
 import json
 import logging
 import traceback
+
+import numpy as np
 from database.init_db import get_db
 from interactions.config import LEARNING_RATE, ACTION_WEIGHTS
 from database.qdrant_utils import get_article_point
@@ -35,7 +37,7 @@ def _update_user_profile(user_id: int, point, action: str, weight: float):
         try:
             cursor.execute(
                 """
-                SELECT pos_vector, neg_vector, publisher_likes
+                SELECT pos_vector, neg_vector, publisher_likes, publisher_dislikes
                 FROM user_vectors
                 WHERE user_id = %s
                 """,
@@ -46,8 +48,14 @@ def _update_user_profile(user_id: int, point, action: str, weight: float):
             pos_vector = json.loads(row["pos_vector"]) if row and row["pos_vector"] else None
             neg_vector = json.loads(row["neg_vector"]) if row and row["neg_vector"] else None
             pub_likes = json.loads(row["publisher_likes"]) if row and row["publisher_likes"] else {}
+            pub_dislikes = json.loads(row["publisher_dislikes"]) if row and row["publisher_dislikes"] else {}
 
             lambda_ = LEARNING_RATE
+
+            def _normalize(v: list[float]) -> list[float]:
+                arr = np.array(v, dtype=np.float32)
+                n = np.linalg.norm(arr)
+                return (arr / n).tolist() if n > 0 else v
 
             # ── Vetor positivo (like, saved, read) ────────────────────────────────
             if action in ("like", "saved", "read"):
@@ -58,15 +66,13 @@ def _update_user_profile(user_id: int, point, action: str, weight: float):
                         (1 - lambda_) * pos_vector[i] + lambda_ * artigo_vetor[i] * weight
                         for i in range(len(artigo_vetor))
                     ]
+                pos_vector = _normalize(pos_vector)
 
                 # Increment positive affinity with the publisher
                 if feed_sha256:
                     pub_likes[feed_sha256] = pub_likes.get(feed_sha256, 0) + weight
 
             # ── Vetor negativo (dislike) ───────────────────────────────────────────
-            # publisher_dislikes is updated in interactions.py — not here —
-            # because interactions.py has context to detect if there was a previous
-            # like and decrement publisher_likes consistently.
             if action == "dislike":
                 if neg_vector is None:
                     neg_vector = [v * weight for v in artigo_vetor]
@@ -75,22 +81,28 @@ def _update_user_profile(user_id: int, point, action: str, weight: float):
                         (1 - lambda_) * neg_vector[i] + lambda_ * artigo_vetor[i] * weight
                         for i in range(len(artigo_vetor))
                     ]
+                neg_vector = _normalize(neg_vector)
+
+                if feed_sha256:
+                    pub_dislikes[feed_sha256] = pub_dislikes.get(feed_sha256, 0) + weight
 
             # ── Persistir perfil ──────────────────────────────────────────────────
             cursor.execute(
                 """
-                INSERT INTO user_vectors (user_id, pos_vector, neg_vector, publisher_likes)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO user_vectors (user_id, pos_vector, neg_vector, publisher_likes, publisher_dislikes)
+                VALUES (%s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                 pos_vector = VALUES(pos_vector),
                 neg_vector = VALUES(neg_vector),
-                publisher_likes = VALUES(publisher_likes)
+                publisher_likes = VALUES(publisher_likes),
+                publisher_dislikes = VALUES(publisher_dislikes)
                 """,
                 (
                     user_id,
                     json.dumps(pos_vector) if pos_vector is not None else None,
                     json.dumps(neg_vector) if neg_vector is not None else None,
                     json.dumps(pub_likes),
+                    json.dumps(pub_dislikes),
                 ),
             )
             conn.commit()

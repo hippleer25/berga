@@ -21,5 +21,12 @@
   "tagArticle": "Tag article",
   "allTagsAssigned": "All tags assigned",
   "customColor": "Custom color",
-  "removeHighlight": "Remove highlight"
+  "removeHighlight": "Remove highlight",
+  "comment": "Comment",
+  "hideComment": "Hide comment",
+  "editComment": "Edit",
+  "deleteComment": "Delete",
+  "deleteCommentConfirm": "Delete this comment?",
+  "saveComment": "Save",
+  "commentPlaceholder": "Write your comment in markdown..."
 }
