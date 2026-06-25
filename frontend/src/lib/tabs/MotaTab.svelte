@@ -45,6 +45,8 @@
   let messagesEnd: HTMLDivElement;
   let dropdownRef: HTMLElement;
 
+  let chatAbort: AbortController | null = null;
+
   let showScrollBtn = $state(false);
 
   let hasStarted = $derived(messages.some(m => m.role === 'user'));
@@ -74,7 +76,21 @@
       }
     }
     document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+
+    // bfcache eligibility: abort in-flight chat stream when the page is hidden.
+    const onVisibilityHidden = () => {
+      if (document.visibilityState === 'hidden') abortChat();
+    };
+    const onPageHide = () => abortChat();
+    document.addEventListener('visibilitychange', onVisibilityHidden);
+    window.addEventListener('pagehide', onPageHide);
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('visibilitychange', onVisibilityHidden);
+      window.removeEventListener('pagehide', onPageHide);
+      abortChat();
+    };
   });
 
   $effect(() => {
@@ -164,6 +180,8 @@
     const assistantId = idCounter++;
     messages = [...messages, { role: 'assistant', content: '', id: assistantId }];
 
+    chatAbort = new AbortController();
+
     try {
       const articles = (posts || []).map((p: any) => ({
         item_id: p.item_id || '',
@@ -184,6 +202,7 @@
           deep_reading: deepReading,
           articles,
         }),
+        signal: chatAbort.signal,
       });
 
       if (!res.ok) {
@@ -224,16 +243,26 @@
         }
       }
     } catch (e: any) {
-      error = e.message || String(e);
+      if (e?.name !== 'AbortError') {
+        error = e.message || String(e);
+      }
     } finally {
       loading = false;
       streaming = false;
       waitingPhase = null;
+      chatAbort = null;
 
       const lastMsg = messages[messages.length - 1];
       if (lastMsg?.role === 'assistant' && !lastMsg.content.trim()) {
         messages = messages.filter((m: Message) => m.id !== assistantId);
       }
+    }
+  }
+
+  function abortChat() {
+    if (chatAbort) {
+      chatAbort.abort();
+      chatAbort = null;
     }
   }
 

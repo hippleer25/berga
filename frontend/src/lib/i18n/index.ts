@@ -9,7 +9,7 @@ const NAMESPACES = [
 	'navbar', 'hometab', 'eventstab', 'motatab',
 	'settings', 'signup', 'signin', 'welcome', 'followerstab', 'affinity',
 	'search', 'feed', 'article', 'eventscard', 'followfeedmodal', 'leftpanel',
-	'postcard', 'topbar', 'folder', 'searchtab', 'tags'
+	'postcard', 'topbar', 'folder', 'searchtab', 'tags', 'pwa'
 ] as const;
 
 const localeFiles = import.meta.glob('../locales/**/*.json');

@@ -113,33 +113,114 @@ let highlightLoading = $state(false);
 let suppressOutsideClick = false;
 let selectionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let articleBodyEl: HTMLDivElement | undefined = $state();
+    let readerScrollEl: HTMLElement | undefined = $state();
+
+    // ── Resume state preservation (bfcache-miss fast restore) ───────────
+    const READER_CACHE_PREFIX = 'berga:reader:';
+    const READER_SCROLL_PREFIX = 'berga:reader:scroll:';
+    let lastScrollTop = 0;
+    let resumeAbort: AbortController | null = null;
+
+    type CachedReader = { data: ReaderData; ts: number };
+
+    function cacheReader(id: string, data: ReaderData) {
+        try {
+            sessionStorage.setItem(READER_CACHE_PREFIX + id, JSON.stringify({ data, ts: Date.now() } satisfies CachedReader));
+        } catch { /* quota / disabled */ }
+    }
+    function getCachedReader(id: string): ReaderData | null {
+        try {
+            const raw = sessionStorage.getItem(READER_CACHE_PREFIX + id);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw) as CachedReader;
+            // Evict stale cache after 6h.
+            if (Date.now() - parsed.ts > 6 * 60 * 60 * 1000) {
+                sessionStorage.removeItem(READER_CACHE_PREFIX + id);
+                return null;
+            }
+            return parsed.data;
+        } catch { return null; }
+    }
+    function persistScroll() {
+        if (!loadedItemId) return;
+        try {
+            sessionStorage.setItem(READER_SCROLL_PREFIX + loadedItemId, String(lastScrollTop));
+        } catch { /* ignore */ }
+    }
+    function getSavedScroll(id: string): number {
+        try {
+            const raw = sessionStorage.getItem(READER_SCROLL_PREFIX + id);
+            return raw ? parseInt(raw, 10) || 0 : 0;
+        } catch { return 0; }
+    }
+
+    function buildMeta(id: string, data: ReaderData): ItemMeta {
+        const feedTitleFallback = (() => {
+            try { return new URL(data.url).hostname.replace('www.', ''); }
+            catch { return ''; }
+        })();
+        return {
+            item_id: id,
+            title: data.title ?? '',
+            link: data.url ?? '',
+            feed_title: data.feed_title ?? feedTitleFallback,
+            feed_icon: data.feed_icon,
+            feed_sha256: data.feed_sha256,
+            author: data.author,
+            pub_date: data.pub_date,
+            liked: data.liked,
+            disliked: data.disliked,
+            saved: data.saved,
+        };
+    }
 
     async function loadArticle(id: string) {
         if (!id || id === loadedItemId) return;
 
-        loadedItemId = id;
-        loading = true;
-        error = '';
-        meta = null;
-        readerData = null;
+        const cached = getCachedReader(id);
 
-        liked = false;
-        disliked = false;
-        saved = false;
-        likeLoading = false;
-        dislikeLoading = false;
-        saveLoading = false;
+        loadedItemId = id;
+        error = '';
+
+        if (cached) {
+            // Instant paint from cache — no blank flash on renderer-eviction resume.
+            readerData = cached;
+            meta = buildMeta(id, cached);
+            liked = cached.liked ?? false;
+            disliked = cached.disliked ?? false;
+            saved = cached.saved ?? false;
+            highlights = (cached as any).highlights ?? [];
+            commentText = (cached as any).comment ?? '';
+            loading = false;
+            if (cached.title) document.title = `${cached.title} — Berga`;
+
+            requestAnimationFrame(() => {
+                if (readerScrollEl) readerScrollEl.scrollTop = getSavedScroll(id);
+                requestAnimationFrame(renderHighlights);
+            });
+        } else {
+            loading = true;
+            meta = null;
+            readerData = null;
+            commentText = '';
+
+            liked = false;
+            disliked = false;
+            saved = false;
+            likeLoading = false;
+            dislikeLoading = false;
+            saveLoading = false;
+        }
 
         resumeVisible = false;
         resumeText = '';
         resumeLoading = false;
         resumeError = '';
 
-        commentText = '';
+        commentError = '';
         commentVisible = false;
         editingComment = false;
         commentSaving = false;
-        commentError = '';
         commentDeleteConfirm = false;
 
         webView = false;
@@ -161,30 +242,14 @@ const res = await apiFetch(`/api/load-text/${id}`, {
 
             const data: ReaderData = await res.json();
             readerData = data;
+            cacheReader(id, data);
 
             apiFetch(`/api/feed/${id}/read`, {
                 method: 'POST',
                 credentials: 'include',
             }).catch(() => {});
 
-            const feedTitleFallback = (() => {
-                try { return new URL(data.url).hostname.replace('www.', ''); }
-                catch { return ''; }
-            })();
-
-      meta = {
-        item_id: id,
-        title: data.title ?? '',
-        link: data.url ?? '',
-        feed_title: data.feed_title ?? feedTitleFallback,
-        feed_icon: data.feed_icon,
-        feed_sha256: data.feed_sha256,
-        author: data.author,
-        pub_date: data.pub_date,
-        liked: data.liked,
-        disliked: data.disliked,
-        saved: data.saved,
-      };
+      meta = buildMeta(id, data);
 
         liked = data.liked ?? false;
         disliked = data.disliked ?? false;
@@ -196,12 +261,11 @@ const res = await apiFetch(`/api/load-text/${id}`, {
         loadArticleTags(id);
 
         requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                renderHighlights();
-            });
+            if (!cached && readerScrollEl) readerScrollEl.scrollTop = 0;
+            requestAnimationFrame(renderHighlights);
         });
 	} catch (err: any) {
-            error = err.message || get(t)('article.loadError');
+            if (!cached) error = err.message || get(t)('article.loadError');
 	} finally {
 		loading = false;
 	}
@@ -284,12 +348,38 @@ function toggleTagDropdown() {
 
     document.addEventListener('selectionchange', onSelectionChange);
 
+    // bfcache eligibility: abort in-flight resume stream + persist scroll on hide.
+    const onVisibilityHidden = () => {
+        if (document.visibilityState === 'hidden') {
+            abortResume();
+            persistScroll();
+        }
+    };
+    const onPageHide = () => {
+        abortResume();
+        persistScroll();
+    };
+    const onPageShow = (ev: PageTransitionEvent) => {
+        // bfcache restore: scroll is auto-restored by the browser; nothing to do.
+        // If the page was reloaded (not persisted), the cached paint path handles it.
+        if (!ev.persisted && readerScrollEl) {
+            lastScrollTop = readerScrollEl.scrollTop;
+        }
+    };
+    document.addEventListener('visibilitychange', onVisibilityHidden);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+
 	beforeNavigate(() => {
 		flushPending();
 	});
 
     return () => {
         document.removeEventListener('selectionchange', onSelectionChange);
+        document.removeEventListener('visibilitychange', onVisibilityHidden);
+        window.removeEventListener('pagehide', onPageHide);
+        window.removeEventListener('pageshow', onPageShow);
+        abortResume();
         if (selectionDebounceTimer) clearTimeout(selectionDebounceTimer);
     };
 });
@@ -358,10 +448,13 @@ function formatDate(dateStr?: string) {
         resumeError   = '';
         resumeText    = '';
 
+        resumeAbort = new AbortController();
+
         try {
 const res = await apiFetch(`/api/mota/resume/${loadedItemId}`, {
         method: 'POST',
         credentials: 'include',
+        signal: resumeAbort.signal,
       });
 
             if (res.status === 401) { goto('/'); return; }
@@ -388,9 +481,22 @@ const res = await apiFetch(`/api/mota/resume/${loadedItemId}`, {
                 }
             }
         } catch (err: any) {
-            resumeError = err.message || get(t)('article.resumeError');
+            if (err?.name === 'AbortError') {
+                // Aborted on pagehide to keep bfcache eligible — silent.
+                if (!resumeText) resumeVisible = false;
+            } else {
+                resumeError = err.message || get(t)('article.resumeError');
+            }
         } finally {
             resumeLoading = false;
+            resumeAbort = null;
+        }
+    }
+
+    function abortResume() {
+        if (resumeAbort) {
+            resumeAbort.abort();
+            resumeAbort = null;
         }
     }
 
@@ -950,7 +1056,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 
     <!-- ── Reader view ────────────────────────────────────────── -->
     {:else}
-        <main class="reader-scroll">
+        <main class="reader-scroll" bind:this={readerScrollEl} onscroll={() => { lastScrollTop = readerScrollEl?.scrollTop ?? 0; }}>
             <div class="reader-content">
 
                 {#if loading}
