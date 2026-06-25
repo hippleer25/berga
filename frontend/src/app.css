@@ -141,6 +141,15 @@ body {
 font-family: var(--font-ui);
 }
 
+html {
+	scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+	display: none;
+}
+
 ::selection {
   background-color: #dec83b;
   color: oklch(20% 0 0);

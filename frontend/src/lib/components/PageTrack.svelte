@@ -299,10 +299,16 @@ function onTouchMove(e: TouchEvent) {
         height: 100%;
         overflow-y: auto;
         overflow-x: hidden;
+        scrollbar-width: none;
         will-change: transform;
         background: var(--color-base-100);
         -webkit-overflow-scrolling: touch;
         overscroll-behavior-y: contain;
+    }
+    .panel::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+        display: none;
     }
 
     @media (min-width: 768px) {
