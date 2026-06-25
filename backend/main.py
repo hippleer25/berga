@@ -25,7 +25,7 @@ from auth.token import get_current_user
 from rss import parser, schedule
 from feed import add, remove, info, check_subscription
 from interactions.interactions import like_article, dislike_article, view_article, read_article, bulk_view_articles, save_article, unsave_article
-from intelligence.recommendations import get_recommendations, get_interacted_ids_except_view, _resolve_feed_filter as _resolve_rec_feed_filter
+from intelligence.recommendations import get_recommendations, get_interacted_ids_except_view, invalidate_cache as invalidate_ranking_cache, invalidate_interaction_cache, _resolve_feed_filter as _resolve_rec_feed_filter
 from intelligence.recents import get_recents
 from intelligence.saved import get_saved
 from intelligence.similar import get_similar_articles
@@ -516,6 +516,7 @@ def saved(request: Request, response: Response, user=Depends(get_current_user), 
 def recommend(
     request: Request, response: Response,
     user=Depends(get_current_user), limit: int = 20, folder_id: Optional[str] = None, feed_sha256: Optional[str] = None, page: int = 0, tag_id: Optional[int] = None,
+    exclude_ids: Optional[str] = None, refresh: int = 0,
 ):
     tag_item_ids = _item_ids_for_tag(user["id"], tag_id)
     if tag_item_ids is not None:
@@ -526,8 +527,17 @@ def recommend(
             data = _get_tagged_items(list(tag_item_ids), page=page, limit=limit, feed_filter=feed_filter)
         data = _enrich_with_tags(data, user["id"])
     else:
+        # On explicit reload, drop the ranking + interaction caches so the
+        # algorithm recomputes from scratch with the latest affinities/views.
+        if refresh:
+            invalidate_ranking_cache(user["id"])
+            invalidate_interaction_cache(user["id"])
+        parsed_exclude: Optional[list[str]] = None
+        if exclude_ids:
+            parsed_exclude = [eid.strip() for eid in exclude_ids.split(",") if eid.strip()]
         data = get_recommendations(
             user["id"], page=page, limit=limit, folder_id=folder_id, feed_sha256=feed_sha256,
+            exclude_ids=parsed_exclude,
         )
         data = _enrich_with_tags(data, user["id"])
     etag = _etag_for(data)

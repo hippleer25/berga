@@ -46,20 +46,20 @@ function trimSentViews() {
 	}
 }
 
-function flush() {
-	if (pendingViews.size === 0) return;
+function flush(): Promise<void> {
+	if (pendingViews.size === 0) return Promise.resolve();
 
 	const ids = [...pendingViews];
 	pendingViews.clear();
 	for (const id of ids) sentViews.add(id);
 	trimSentViews();
 
-	apiFetch('/api/articles/views', {
+	return apiFetch('/api/articles/views', {
 		method: 'POST',
 		credentials: 'include',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ item_ids: ids }),
-	}).catch(() => {});
+	}).then(() => {}).catch(() => {});
 }
 
 function flushOnUnload() {
@@ -92,8 +92,8 @@ export function onViewed(item_id: string) {
 	}
 }
 
-export function flushPending() {
-	flush();
+export function flushPending(): Promise<void> {
+	return flush();
 }
 
 export function destroyViewTracker() {

@@ -16,7 +16,7 @@ import { onMount } from 'svelte';
  import { onViewed, flushPending, destroyViewTracker } from '$lib/stores/viewTracker';
 import {
 		Rss, FolderOpen, ChevronDown,
-		X, Check, Settings, Share2, Sparkles, Bookmark, Tag,
+		X, Check, Settings, Share2, Sparkles, Bookmark, Tag, RotateCw,
 	} from '@lucide/svelte';
 import LoaderCircle from '@lucide/svelte/icons/loader-circle';
  import { t } from 'svelte-i18n';
@@ -91,8 +91,13 @@ let pullOffset = $state(0);
 let pulling = $state(false);
 let pullStartY = 0;
 let scrollContainer: HTMLElement | null = null;
+let ptrWheelAccum = 0;
+let ptrWheelTimer: ReturnType<typeof setTimeout> | null = null;
+let ptrSource: 'touch' | 'wheel' | null = null;
 const PULL_THRESHOLD = 60;
 const PULL_RESISTANCE = 0.4;
+const MAX_EXCLUDE_IDS = 80;
+const PTR_WHEEL_IDLE_MS = 160;
 
     // Derived lists
     let folders = $derived.by(() => {
@@ -168,6 +173,12 @@ const PULL_RESISTANCE = 0.4;
 		}
 	}
 
+	// Desktop / trackpad overscroll pull-to-refresh: listen for wheel events
+	// on the scroll container (panel on mobile) or the window (desktop, where
+	// panels are overflow:visible and the window scrolls).
+	const wheelTarget: EventTarget = scrollContainer ?? window;
+	wheelTarget.addEventListener('wheel', onWheelPull as EventListener, { passive: true });
+
 	loadSubscriptions();
 		loadFeed(true);
 		applyTagFromUrl();
@@ -196,6 +207,8 @@ const PULL_RESISTANCE = 0.4;
 
 	return () => {
 		observer?.disconnect();
+		wheelTarget.removeEventListener('wheel', onWheelPull as EventListener);
+		if (ptrWheelTimer) clearTimeout(ptrWheelTimer);
 		unsub();
 		navCleanup?.destroy();
 		destroyViewTracker();
@@ -234,13 +247,21 @@ $effect(() => {
 		} catch { /* non-critical */ }
 	}
 
-	function buildUrl(pageNum: number, limit: number = 20): string {
+	function buildUrl(
+		pageNum: number,
+		limit: number = 20,
+		opts?: { refresh?: boolean; excludeIds?: string[] },
+	): string {
 		const p = new URLSearchParams({ limit: String(limit) });
 		if (selectedFolderId) p.set('folder_id', selectedFolderId);
 		if (selectedFeedSha) p.set('feed_sha256', selectedFeedSha);
 		if (selectedTagId) p.set('tag_id', String(selectedTagId));
 		if (mode === 'recommendations') {
 			p.set('page', String(pageNum));
+			if (opts?.refresh) p.set('refresh', '1');
+			if (opts?.excludeIds && opts.excludeIds.length > 0) {
+				p.set('exclude_ids', opts.excludeIds.slice(-MAX_EXCLUDE_IDS).join(','));
+			}
 			return `/api/feed/recommendations?${p}`;
 		}
 		if (mode === 'saved') {
@@ -249,6 +270,10 @@ $effect(() => {
 		}
 		p.set('max_days', '10');
 		return `/api/feed/recents?${p}`;
+	}
+
+	function loadedItemIds(): string[] {
+		return feed.map((x: any) => x.item_id).filter(Boolean);
 	}
 
 	function fetchCacheOpt(): RequestInit {
@@ -305,6 +330,37 @@ $effect(() => {
 		loading = false;
 	}
 
+	// Pull-to-refresh / reload entry point. Forces a backend recompute
+	// (refresh=1 invalidates the ranking + interaction caches) and, in
+	// recommendations mode, asks for a fresh batch that excludes every
+	// article currently loaded so scrolled/shown content doesn't resurface.
+	async function reloadFeed() {
+		if (loading) return;
+		refreshing = true;
+		error = '';
+		pageNum = 0;
+		hasMore = true;
+		try {
+			await flushPending();
+			const url = mode === 'recommendations'
+				? buildUrl(0, 20, { refresh: true, excludeIds: loadedItemIds() })
+				: buildUrl(0);
+			const res = await apiFetch(url, fetchCacheOpt());
+			if (res.status === 401) { window.location.replace('/login'); return; }
+			if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
+			const data: any[] = await res.json();
+			feed = data;
+			hasMore = data.length > 0;
+			loading = false;
+			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
+			saveFeedCache(cacheKey, data);
+		} catch (e: any) {
+			error = (e as Error).message || get(t)('hometab.loadError');
+		} finally {
+			refreshing = false;
+		}
+	}
+
 	async function loadMore() {
 	if (loadingMore || !hasMore || loading || refreshing) return;
     loadingMore = true;
@@ -312,7 +368,23 @@ $effect(() => {
     try {
       let newItems: any[];
 
-      if (mode === 'recommendations' || mode === 'saved') {
+      if (mode === 'recommendations') {
+        // Cursor mode: send already-loaded ids so the backend returns the
+        // next unseen batch (no skips/duplicates when articles get excluded
+        // between pages). Flush pending views first so the DB is current.
+        await flushPending();
+        const res = await apiFetch(
+          buildUrl(0, 20, { excludeIds: loadedItemIds() }),
+          { credentials: 'include' },
+        );
+        if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
+        const data: any[] = await res.json();
+        if (data.length === 0) { hasMore = false; loadingMore = false; return; }
+        const seen = new Set(feed.map((x: any) => x.item_id));
+        newItems = data.filter((x: any) => !seen.has(x.item_id));
+        if (newItems.length === 0) { hasMore = false; loadingMore = false; return; }
+        hasMore = true;
+      } else if (mode === 'saved') {
         const nextPage = pageNum + 1;
         const res = await apiFetch(buildUrl(nextPage), { credentials: 'include' });
         if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
@@ -554,6 +626,7 @@ if (res.ok) {
         if (scrollContainer && scrollContainer.scrollTop > 4) return;
         pullStartY = e.touches[0].clientY;
         pulling = false;
+        ptrSource = 'touch';
         pullOffset = 0;
     }
 
@@ -563,6 +636,7 @@ if (res.ok) {
         const dy = e.touches[0].clientY - pullStartY;
         if (dy > 0) {
             pulling = true;
+            ptrSource = 'touch';
             pullOffset = Math.min(dy * PULL_RESISTANCE, 120);
             if (ptrContentEl) {
                 ptrContentEl.style.transition = 'none';
@@ -570,6 +644,7 @@ if (res.ok) {
             }
         } else if (pulling) {
             pulling = false;
+            ptrSource = null;
             pullOffset = 0;
             snapPtrBack();
         }
@@ -578,27 +653,75 @@ if (res.ok) {
     function onPullEnd(_e: TouchEvent) {
         if (!pulling) return;
         pulling = false;
-        if (pullOffset > PULL_THRESHOLD && !refreshing) {
+        ptrSource = null;
+        if (pullOffset > PULL_THRESHOLD && !refreshing && !loading) {
             if (ptrContentEl) {
                 ptrContentEl.style.transition = 'transform 0.25s ease';
                 ptrContentEl.style.transform = 'translateY(55px)';
             }
             pullOffset = 55;
-            refreshing = true;
-            loadFeed(true);
+            reloadFeed();
         } else {
             snapPtrBack();
         }
     }
 
+    // Desktop / trackpad overscroll-at-top: accumulate upward wheel deltas
+    // into a pull, then commit (reload) or snap back when the wheel goes idle.
+    function onWheelPull(e: WheelEvent) {
+        if (loading || refreshing) return;
+        if (ptrSource === 'touch') return;
+        const atTop = scrollContainer
+            ? scrollContainer.scrollTop <= 0
+            : (typeof window !== 'undefined' && window.scrollY <= 0);
+        if (!atTop) {
+            if (ptrSource === 'wheel') { ptrSource = null; ptrWheelAccum = 0; snapPtrBack(); }
+            return;
+        }
+        // deltaY < 0 => scrolling up towards the top => overscroll pull
+        if (e.deltaY >= 0) {
+            if (ptrSource === 'wheel') { ptrSource = null; ptrWheelAccum = 0; snapPtrBack(); }
+            return;
+        }
+        ptrSource = 'wheel';
+        pulling = true;
+        ptrWheelAccum += -e.deltaY * PULL_RESISTANCE;
+        pullOffset = Math.min(ptrWheelAccum, 120);
+        if (ptrContentEl) {
+            ptrContentEl.style.transition = 'none';
+            ptrContentEl.style.transform = `translateY(${pullOffset}px)`;
+        }
+        if (ptrWheelTimer) clearTimeout(ptrWheelTimer);
+        ptrWheelTimer = setTimeout(() => {
+            ptrWheelTimer = null;
+            if (ptrSource !== 'wheel') return;
+            pulling = false;
+            if (pullOffset > PULL_THRESHOLD && !refreshing && !loading) {
+                if (ptrContentEl) {
+                    ptrContentEl.style.transition = 'transform 0.25s ease';
+                    ptrContentEl.style.transform = 'translateY(55px)';
+                }
+                pullOffset = 55;
+                ptrSource = null;
+                ptrWheelAccum = 0;
+                reloadFeed();
+            } else {
+                ptrSource = null;
+                ptrWheelAccum = 0;
+                snapPtrBack();
+            }
+        }, PTR_WHEEL_IDLE_MS);
+    }
+
     $effect(() => {
-        if (!refreshing && pullOffset > 0) {
+        if (!refreshing && pullOffset > 0 && !pulling) {
             snapPtrBack();
         }
     });
 
     function snapPtrBack() {
         pullOffset = 0;
+        ptrWheelAccum = 0;
         if (ptrContentEl) {
             ptrContentEl.style.transition = 'transform 0.3s ease';
             ptrContentEl.style.transform = 'translateY(0)';
@@ -638,8 +761,10 @@ if (res.ok) {
         {#if refreshing}
             <LoaderCircle size={20} class="spin" />
         {:else if pullOffset > PULL_THRESHOLD}
+            <RotateCw size={18} class="ptr-icon-active" />
             <span class="ptr-text">{$t('hometab.releaseToRefresh')}</span>
         {:else}
+            <RotateCw size={18} class="ptr-icon" />
             <span class="ptr-text">{$t('hometab.pullToRefresh')}</span>
         {/if}
     </div>
@@ -1017,6 +1142,12 @@ if (res.ok) {
         font-size: 13px;
         font-weight: 500;
         color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+    }
+    .ptr-icon {
+        color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+    }
+    .ptr-icon-active {
+        color: var(--color-accent);
     }
     .spin {
         animation: rot 0.8s linear infinite;

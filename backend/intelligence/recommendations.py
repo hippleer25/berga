@@ -203,7 +203,7 @@ def _get_interacted_ids(user_id: int) -> set[str]:
     with _get_cursor() as cursor:
         cursor.execute(
             "SELECT DISTINCT item_id FROM interactions "
-            "WHERE user_id = %s AND action NOT IN ('view', 'saved')",
+            "WHERE user_id = %s AND action NOT IN ('saved')",
             (user_id,),
         )
         ids: set[str] = {str(row["item_id"]) for row in cursor.fetchall()}
@@ -804,14 +804,23 @@ def get_recommendations(
     max_days:   int           = 30,
     folder_id:  Optional[str] = None,
     feed_sha256: Optional[str] = None,
+    exclude_ids: Optional[list[str]] = None,
 ) -> list[dict]:
     """
     Return one page of ranked articles for *user_id*.
 
-    Pages are 0-indexed (page=0 → items 0–19, page=1 → 20–39, …).
-    All scoring and normalisation happen once per cache TTL; pagination
-    is a simple slice over the cached list, so it is O(1) after the
-    first call.
+    Two paging modes:
+      • Cursor mode (exclude_ids is non-empty) — returns the top *limit*
+        items the caller has not already seen. The client supplies the
+        item_ids it has loaded; this guarantees infinite scroll never
+        skips or duplicates, even when articles get excluded between
+        pages. ``page`` is ignored in this mode.
+      • Page mode (exclude_ids is None/empty) — 0-indexed slice over the
+        cached ranked list (page=0 → items 0–19, …). Kept for callers
+        that don't track loaded ids (/f/, /c/, …).
+
+    All scoring and normalisation happen once per cache TTL; the slice is
+    O(1) after the first call.
     """
     # 1. Resolve optional feed/folder filter
     feed_filter = _resolve_feed_filter(user_id, folder_id, feed_sha256)
@@ -821,18 +830,25 @@ def get_recommendations(
     # 2. Retrieve (or build) the fully processed, globally normalised list
     full_list = _build_full_processed_list(user_id, max_days, feed_filter)
 
-    # 3. Exclude already-interacted articles (dynamic, not cached)
+    # 3. Exclude already-interacted articles (dynamic, not cached).
+    #    In cursor mode, also exclude the ids the caller has already loaded.
     interacted_ids = _get_interacted_ids(user_id)
+    if exclude_ids:
+        interacted_ids = interacted_ids | {str(i) for i in exclude_ids if i}
     visible_items  = [
         item for item in full_list
         if item.get("item_id") not in interacted_ids
     ]
 
     # 4. Page slice
-    page       = max(0, page)
-    start      = page * limit
-    end        = start + limit
-    page_items = visible_items[start:end]
+    if exclude_ids:
+        # Cursor mode — always the top `limit` unseen items.
+        page_items = visible_items[:limit]
+    else:
+        page       = max(0, page)
+        start      = page * limit
+        end        = start + limit
+        page_items = visible_items[start:end]
 
     # 5. Fill missing feed metadata (only when Qdrant payload is incomplete)
     _fill_missing_feed_metadata(page_items)
