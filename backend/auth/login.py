@@ -7,19 +7,21 @@ logger = logging.getLogger(__name__)
 
 
 def user_login(x_user_data):
-    logger.info("Login attempt for user: %s", x_user_data.username or x_user_data.email)
+    username = (x_user_data.username or "").strip()
+    email = (x_user_data.email or "").strip()
+    logger.info("Login attempt for user: %s", username or email)
 
-    if not x_user_data.username and not x_user_data.email:
+    if not username and not email:
         return {"status": "fail", "message": "Failed credentials"}
 
     try:
         with get_db() as conn:
             cursor = conn.cursor(dictionary=True)
             try:
-                if x_user_data.username:
-                    cursor.execute("SELECT id, username, email, full_name, password_hash FROM users WHERE username = %s", (x_user_data.username,))
+                if username:
+                    cursor.execute("SELECT id, username, email, full_name, password_hash FROM users WHERE username = %s", (username,))
                 else:
-                    cursor.execute("SELECT id, username, email, full_name, password_hash FROM users WHERE email = %s", (x_user_data.email,))
+                    cursor.execute("SELECT id, username, email, full_name, password_hash FROM users WHERE email = %s ORDER BY id LIMIT 1", (email,))
                 user = cursor.fetchone()
             finally:
                 cursor.close()

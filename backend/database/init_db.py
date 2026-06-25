@@ -157,6 +157,35 @@ def _column_exists(cursor, table: str, column: str) -> bool:
     return cursor.fetchone()[0] > 0
 
 
+def _index_exists(cursor, table: str, index_name: str) -> bool:
+    cursor.execute(
+        """
+        SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = %s
+        AND INDEX_NAME = %s
+        """,
+        (table, index_name),
+    )
+    return cursor.fetchone()[0] > 0
+
+
+def _ensure_unique_index(cursor, table: str, index_name: str, column: str) -> None:
+    if not re.match(r'^\w+$', table) or not re.match(r'^\w+$', index_name) or not re.match(r'^\w+$', column):
+        raise ValueError(f"Invalid identifier for unique index: {table}.{column} as {index_name}")
+    if _index_exists(cursor, table, index_name):
+        return
+    try:
+        cursor.execute(f"CREATE UNIQUE INDEX `{index_name}` ON `{table}` (`{column}`)")
+        logger.info("Unique index added: %s(%s) as %s", table, column, index_name)
+    except MySQLError as exc:
+        logger.warning(
+            "Could not create UNIQUE index %s on %s(%s): %s. "
+            "Existing duplicate rows block it — clean up duplicates to enforce uniqueness.",
+            index_name, table, column, exc,
+        )
+
+
 def _add_column_if_missing(cursor, table: str, column: str, definition: str) -> None:
     if not re.match(r'^\w+$', table) or not re.match(r'^\w+$', column):
         raise ValueError(f"Invalid table/column name: {table}.{column}")
@@ -205,9 +234,11 @@ def init_db():
                 username VARCHAR(255) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
                 email VARCHAR(255),
-                full_name VARCHAR(255)
+                full_name VARCHAR(255),
+                UNIQUE KEY uq_users_email (email)
             ) {_TABLE_OPTIONS}
             """)
+            _ensure_unique_index(cursor, "users", "uq_users_email", "email")
             cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS feeds (
                 feed_sha256 VARCHAR(64) PRIMARY KEY,

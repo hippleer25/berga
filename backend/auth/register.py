@@ -14,6 +14,8 @@ def user_register(x_user_data):
         return {"status": "error", "message": "Username must be between 2 and 50 characters"}
     if not x_user_data.password or len(x_user_data.password) < 6:
         return {"status": "error", "message": "Password must be at least 6 characters"}
+    email = (x_user_data.email or "").strip() or None
+    full_name = (x_user_data.full_name or "").strip() or None
     logger.info("Registering user: %s", username)
     try:
         password_hash = bcrypt.hashpw(
@@ -24,7 +26,7 @@ def user_register(x_user_data):
             cursor = conn.cursor()
             try:
                 sql = "INSERT INTO users (username, password_hash, email, full_name) VALUES (%s, %s, %s, %s)"
-                val = (x_user_data.username, password_hash, x_user_data.email, x_user_data.full_name)
+                val = (username, password_hash, email, full_name)
                 cursor.execute(sql, val)
                 conn.commit()
                 count = cursor.rowcount
