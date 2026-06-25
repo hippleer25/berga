@@ -23,12 +23,7 @@ import { goto } from '$app/navigation';
 
   let passwordInput: HTMLInputElement;
 
-	let isEmail = $derived(identifier.includes("@"));
-
-	let showInstanceField = $derived(
-		typeof window !== 'undefined' &&
-		(!!(window as any).Capacitor?.isNativePlatform?.() || window.location.origin !== `https://${get(instance)}`)
-	);
+  let isEmail = $derived(identifier.includes("@"));
 
 	let instanceTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -87,25 +82,23 @@ if (data.status === "success") {
   <!-- Form -->
   <div class="form-wrap">
 
- <!-- Instance URL -->
- {#if showInstanceField}
- <div class="form-group">
-   <label for="instance" class="setting-label">{$t('signin.instanceLabel')}</label>
-   <div class="input-icon-wrap">
-     <span class="input-icon">
-       <Globe size={18} />
-     </span>
-     <input
-       id="instance"
-       type="text"
-       class="custom-input has-icon-left"
-       placeholder={$t('signin.instancePlaceholder')}
-       bind:value={instanceUrl}
-       onkeydown={(e) => e.key === 'Enter' && document.getElementById('identifier')?.focus()}
-     />
-   </div>
- </div>
- {/if}
+  <!-- Instance URL -->
+  <div class="form-group">
+    <label for="instance" class="setting-label">{$t('signin.instanceLabel')}</label>
+    <div class="input-icon-wrap">
+      <span class="input-icon">
+        <Globe size={18} />
+      </span>
+      <input
+        id="instance"
+        type="text"
+        class="custom-input has-icon-left"
+        placeholder={$t('signin.instancePlaceholder')}
+        bind:value={instanceUrl}
+        onkeydown={(e) => e.key === 'Enter' && document.getElementById('identifier')?.focus()}
+      />
+    </div>
+  </div>
 
   <!-- Identifier -->
                 <div class="form-group">

@@ -20,13 +20,8 @@
   let email = $state("");
   let showPassword = $state(false);
 
- let message = $state("");
- let loading = $state(false);
-
-	let showInstanceField = $derived(
-		typeof window !== 'undefined' &&
-		(!!(window as any).Capacitor?.isNativePlatform?.() || window.location.origin !== `https://${get(instance)}`)
-	);
+  let message = $state("");
+  let loading = $state(false);
 
 	let usernameRef: HTMLInputElement;
 	let fullNameRef: HTMLInputElement;
@@ -92,25 +87,23 @@
   <!-- Form -->
   <div class="form-wrap">
 
- <!-- Instance URL -->
- {#if showInstanceField}
- <div class="form-group">
-   <label for="instance" class="setting-label">{$t('signup.instanceLabel')}</label>
-   <div class="input-icon-wrap">
-     <span class="input-icon">
-       <Globe size={18} />
-     </span>
-     <input
-       id="instance"
-       type="text"
-       class="custom-input has-icon-left"
-       placeholder={$t('signup.instancePlaceholder')}
-       bind:value={instanceUrl}
-       onkeydown={(e) => e.key === 'Enter' && focusNext(usernameRef)}
-     />
-   </div>
- </div>
- {/if}
+  <!-- Instance URL -->
+  <div class="form-group">
+    <label for="instance" class="setting-label">{$t('signup.instanceLabel')}</label>
+    <div class="input-icon-wrap">
+      <span class="input-icon">
+        <Globe size={18} />
+      </span>
+      <input
+        id="instance"
+        type="text"
+        class="custom-input has-icon-left"
+        placeholder={$t('signup.instancePlaceholder')}
+        bind:value={instanceUrl}
+        onkeydown={(e) => e.key === 'Enter' && focusNext(usernameRef)}
+      />
+    </div>
+  </div>
 
   <!-- Username -->
                 <div class="form-group">
