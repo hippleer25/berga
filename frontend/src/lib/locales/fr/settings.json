@@ -44,5 +44,11 @@
 "showCoverImagesDesc": "Afficher les images de couverture dans les cartes de publication lorsqu'elles sont disponibles.",
 "coverImagePosition": "Position de l'image de couverture",
 "coverImagePositionRight": "À droite",
-"coverImagePositionBottom": "En dessous"
+"coverImagePositionBottom": "En dessous",
+"titleTextPosition": "Position du titre",
+"bodyTextPosition": "Position du texte",
+"textAlignLeft": "Gauche",
+"textAlignJustified": "Justifié",
+"textAlignCenter": "Centré",
+"textAlignRight": "Droite"
 }

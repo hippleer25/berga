@@ -19,7 +19,7 @@
   import { get } from 'svelte/store';
   import { ripple } from '$lib/actions/ripple';
   import Portal from '$lib/components/Portal.svelte';
-  import { showCoverImages, coverImagePosition, type CoverPosition } from '$lib/stores/preferences';
+  import { showCoverImages, coverImagePosition, titleTextAlign, bodyTextAlign, type CoverPosition, type TextAlign } from '$lib/stores/preferences';
 
   const LOCALE_LABELS: Record<SupportedLocale, string> = {
     pt: 'Português',
@@ -56,6 +56,14 @@
   let coverDropdownOpen = $state(false);
   let coverBtnEl: HTMLButtonElement | null = $state(null);
   let coverDropStyle = $state('');
+  let titleDropdownOpen = $state(false);
+  let titleBtnEl: HTMLButtonElement | null = $state(null);
+  let titleDropStyle = $state('');
+  let titlePos = $state<TextAlign>('left');
+  let bodyDropdownOpen = $state(false);
+  let bodyBtnEl: HTMLButtonElement | null = $state(null);
+  let bodyDropStyle = $state('');
+  let bodyPos = $state<TextAlign>('left');
 
   $effect(() => {
     console.log('[settings] $locale changed to:', $locale);
@@ -71,6 +79,8 @@
     customCss = localStorage.getItem('custom-css') || '';
     showCover = get(showCoverImages);
     coverPos = get(coverImagePosition);
+    titlePos = get(titleTextAlign);
+    bodyPos = get(bodyTextAlign);
 
     if (customCss.trim()) {
       const converted = convertDaisyuiPluginToDataTheme(customCss);
@@ -107,6 +117,22 @@
           }
         }
       }
+      if (titleDropdownOpen) {
+        if (!titleBtnEl || !titleBtnEl.contains(target)) {
+          const dropdown = document.querySelector('.title-align-dropdown');
+          if (!dropdown || !dropdown.contains(target)) {
+            titleDropdownOpen = false;
+          }
+        }
+      }
+      if (bodyDropdownOpen) {
+        if (!bodyBtnEl || !bodyBtnEl.contains(target)) {
+          const dropdown = document.querySelector('.body-align-dropdown');
+          if (!dropdown || !dropdown.contains(target)) {
+            bodyDropdownOpen = false;
+          }
+        }
+      }
     }
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
@@ -130,6 +156,36 @@
     coverPos = pos;
     coverImagePosition.setPosition(pos);
     coverDropdownOpen = false;
+  }
+
+  function toggleTitleDropdown() {
+    titleDropdownOpen = !titleDropdownOpen;
+    if (titleDropdownOpen && titleBtnEl) {
+      const r = titleBtnEl.getBoundingClientRect();
+      const maxH = window.innerHeight - r.bottom - 12;
+      titleDropStyle = `top:${r.bottom + 6}px;left:${r.left}px;min-width:${r.width}px;max-height:${Math.max(maxH, 120)}px;overflow-y:auto`;
+    }
+  }
+
+  function selectTitleAlign(pos: TextAlign) {
+    titlePos = pos;
+    titleTextAlign.setPosition(pos);
+    titleDropdownOpen = false;
+  }
+
+  function toggleBodyDropdown() {
+    bodyDropdownOpen = !bodyDropdownOpen;
+    if (bodyDropdownOpen && bodyBtnEl) {
+      const r = bodyBtnEl.getBoundingClientRect();
+      const maxH = window.innerHeight - r.bottom - 12;
+      bodyDropStyle = `top:${r.bottom + 6}px;left:${r.left}px;min-width:${r.width}px;max-height:${Math.max(maxH, 120)}px;overflow-y:auto`;
+    }
+  }
+
+  function selectBodyAlign(pos: TextAlign) {
+    bodyPos = pos;
+    bodyTextAlign.setPosition(pos);
+    bodyDropdownOpen = false;
   }
 
   function selectFont(category: FontCategory, fontName: string) {
@@ -277,6 +333,54 @@
   </Portal>
 {/if}
 
+{#if titleDropdownOpen}
+  <Portal>
+    <div class="picker-backdrop" onclick={() => titleDropdownOpen = false} aria-hidden="true"></div>
+    <div class="picker-dropdown title-align-dropdown" style={titleDropStyle} role="listbox">
+      <button class="picker-item" class:picker-selected={titlePos === 'left'} role="option" aria-selected={titlePos === 'left'} onclick={() => selectTitleAlign('left')}>
+        <span class="picker-item-text">{$t('settings.textAlignLeft')}</span>
+        {#if titlePos === 'left'}<Check size={12} class="picker-check" />{/if}
+      </button>
+      <button class="picker-item" class:picker-selected={titlePos === 'justify'} role="option" aria-selected={titlePos === 'justify'} onclick={() => selectTitleAlign('justify')}>
+        <span class="picker-item-text">{$t('settings.textAlignJustified')}</span>
+        {#if titlePos === 'justify'}<Check size={12} class="picker-check" />{/if}
+      </button>
+      <button class="picker-item" class:picker-selected={titlePos === 'center'} role="option" aria-selected={titlePos === 'center'} onclick={() => selectTitleAlign('center')}>
+        <span class="picker-item-text">{$t('settings.textAlignCenter')}</span>
+        {#if titlePos === 'center'}<Check size={12} class="picker-check" />{/if}
+      </button>
+      <button class="picker-item" class:picker-selected={titlePos === 'right'} role="option" aria-selected={titlePos === 'right'} onclick={() => selectTitleAlign('right')}>
+        <span class="picker-item-text">{$t('settings.textAlignRight')}</span>
+        {#if titlePos === 'right'}<Check size={12} class="picker-check" />{/if}
+      </button>
+    </div>
+  </Portal>
+{/if}
+
+{#if bodyDropdownOpen}
+  <Portal>
+    <div class="picker-backdrop" onclick={() => bodyDropdownOpen = false} aria-hidden="true"></div>
+    <div class="picker-dropdown body-align-dropdown" style={bodyDropStyle} role="listbox">
+      <button class="picker-item" class:picker-selected={bodyPos === 'left'} role="option" aria-selected={bodyPos === 'left'} onclick={() => selectBodyAlign('left')}>
+        <span class="picker-item-text">{$t('settings.textAlignLeft')}</span>
+        {#if bodyPos === 'left'}<Check size={12} class="picker-check" />{/if}
+      </button>
+      <button class="picker-item" class:picker-selected={bodyPos === 'justify'} role="option" aria-selected={bodyPos === 'justify'} onclick={() => selectBodyAlign('justify')}>
+        <span class="picker-item-text">{$t('settings.textAlignJustified')}</span>
+        {#if bodyPos === 'justify'}<Check size={12} class="picker-check" />{/if}
+      </button>
+      <button class="picker-item" class:picker-selected={bodyPos === 'center'} role="option" aria-selected={bodyPos === 'center'} onclick={() => selectBodyAlign('center')}>
+        <span class="picker-item-text">{$t('settings.textAlignCenter')}</span>
+        {#if bodyPos === 'center'}<Check size={12} class="picker-check" />{/if}
+      </button>
+      <button class="picker-item" class:picker-selected={bodyPos === 'right'} role="option" aria-selected={bodyPos === 'right'} onclick={() => selectBodyAlign('right')}>
+        <span class="picker-item-text">{$t('settings.textAlignRight')}</span>
+        {#if bodyPos === 'right'}<Check size={12} class="picker-check" />{/if}
+      </button>
+    </div>
+  </Portal>
+{/if}
+
 <div class="tab-panel">
   <h2 class="section-title">{$t('settings.appearance')}</h2>
 
@@ -351,6 +455,40 @@
       </div>
     </div>
   {/each}
+
+  <div class="setting-row">
+    <span class="setting-label">{$t('settings.titleTextPosition')}</span>
+    <div class="picker-wrap">
+      <button bind:this={titleBtnEl} class="setting-btn" use:ripple onclick={toggleTitleDropdown}>
+        <span>
+          {titlePos === 'left' ? $t('settings.textAlignLeft') :
+           titlePos === 'justify' ? $t('settings.textAlignJustified') :
+           titlePos === 'center' ? $t('settings.textAlignCenter') :
+           $t('settings.textAlignRight')}
+        </span>
+        <span class="chevron-icon" class:rotated={titleDropdownOpen}>
+          <ChevronDown size={14} />
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <div class="setting-row">
+    <span class="setting-label">{$t('settings.bodyTextPosition')}</span>
+    <div class="picker-wrap">
+      <button bind:this={bodyBtnEl} class="setting-btn" use:ripple onclick={toggleBodyDropdown}>
+        <span>
+          {bodyPos === 'left' ? $t('settings.textAlignLeft') :
+           bodyPos === 'justify' ? $t('settings.textAlignJustified') :
+           bodyPos === 'center' ? $t('settings.textAlignCenter') :
+           $t('settings.textAlignRight')}
+        </span>
+        <span class="chevron-icon" class:rotated={bodyDropdownOpen}>
+          <ChevronDown size={14} />
+        </span>
+      </button>
+    </div>
+  </div>
 
   <div class="setting-block">
     <span class="setting-label">{$t('settings.customCss')}</span>

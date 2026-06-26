@@ -44,5 +44,11 @@
 "showCoverImagesDesc": "Titelbilder in Beitragskarten anzeigen, wenn verfügbar.",
 "coverImagePosition": "Position des Titelbildes",
 "coverImagePositionRight": "Rechts",
-"coverImagePositionBottom": "Unten"
+"coverImagePositionBottom": "Unten",
+"titleTextPosition": "Titelposition",
+"bodyTextPosition": "Textposition",
+"textAlignLeft": "Links",
+"textAlignJustified": "Blocksatz",
+"textAlignCenter": "Zentriert",
+"textAlignRight": "Rechts"
 }

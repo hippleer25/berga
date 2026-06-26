@@ -10,6 +10,7 @@ import { apiFetch } from '$lib/api';
 import { renderMarkdown } from '$lib/utils/markdown';
 import { flushPending } from '$lib/stores/viewTracker';
 	import { clearFeedCache } from '$lib/stores/feedCache';
+import { titleTextAlign, bodyTextAlign } from '$lib/stores/preferences';
 
 type ItemMeta = {
   item_id: string;
@@ -62,6 +63,8 @@ type Highlight = {
 const HIGHLIGHT_PRESETS = ['#FFEB3B', '#66BB6A', '#42A5F5', '#F48FB1'] as const;
 
     let loadedItemId = $state<string | null>(null);
+    let titleAlign = $derived($titleTextAlign);
+    let bodyAlign = $derived($bodyTextAlign);
 
     let meta       = $state<ItemMeta | null>(null);
     let readerData = $state<ReaderData | null>(null);
@@ -1096,7 +1099,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
             {/if}
           </div>
 
-	<h1 class="article-title">{readerData.title}</h1>
+	<h1 class="article-title" class:align-justify={titleAlign === 'justify'} class:align-center={titleAlign === 'center'} class:align-right={titleAlign === 'right'}>{readerData.title}</h1>
 
 		{#if articleTags.length > 0}
 		<div class="article-tag-chips">
@@ -1235,7 +1238,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 
                     </article>
 
-                <div class="article-body" bind:this={articleBodyEl} onmouseup={onArticleBodyMouseup} onclick={onArticleBodyClick} onkeydown={() => {}} role="application">
+                <div class="article-body" class:align-justify={bodyAlign === 'justify'} class:align-center={bodyAlign === 'center'} class:align-right={bodyAlign === 'right'} bind:this={articleBodyEl} onmouseup={onArticleBodyMouseup} onclick={onArticleBodyClick} onkeydown={() => {}} role="application">
                     {@html readerData.content_html}
                 </div>
 
@@ -1477,6 +1480,9 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
   color: var(--color-base-content);
   margin: 0 0 12px;
 }
+.article-title.align-justify { text-align: justify; }
+.article-title.align-center  { text-align: center; }
+.article-title.align-right   { text-align: right; }
 
 .tag-assign-wrap { position: relative; display: inline-flex; }
 .tag-dropdown {
@@ -1802,7 +1808,7 @@ font-family: var(--font-post-title);
     .article-body :global(a) {
         color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px;
     }
-    .article-body :global(img) { max-width: 100%; height: auto; border-radius: 8px; margin: 2em 0; display: block; }
+    .article-body :global(img) { max-width: 100%; height: auto; border-radius: 8px; margin: 2em auto; display: block; }
     .article-body :global(blockquote) {
         border-left: 3px solid var(--color-accent);
         margin: 1.5em 0; padding: 0.25em 1em; font-style: italic;
@@ -1810,6 +1816,9 @@ font-family: var(--font-post-title);
     }
     .article-body :global(pre) { background: var(--color-base-200); border-radius: 6px; padding: 1em; overflow-x: auto; font-size: 0.9em; margin: 1.5em 0; }
     .article-body :global(hr) { border: none; border-top: 1px solid var(--color-base-300); margin: 3em 0; }
+.article-body.align-justify { text-align: justify; }
+.article-body.align-center  { text-align: center; }
+.article-body.align-right   { text-align: right; }
 
     /* ── Highlights ────────────────────────────────────────── */
     .article-body :global(mark.bergahl) {

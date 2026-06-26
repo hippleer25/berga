@@ -48,3 +48,31 @@ function createCoverPositionStore() {
 }
 
 export const coverImagePosition = createCoverPositionStore();
+
+export type TextAlign = 'left' | 'justify' | 'center' | 'right';
+
+function createTextAlignStore(key: string, defaultValue: TextAlign) {
+  const saved = browser ? (localStorage.getItem(key) as TextAlign | null) : null;
+  const initial: TextAlign = ['left', 'justify', 'center', 'right'].includes(saved ?? '')
+    ? (saved as TextAlign)
+    : defaultValue;
+  const { subscribe, set } = writable<TextAlign>(initial);
+
+  return {
+    subscribe,
+    setPosition: (position: TextAlign) => {
+      if (browser) {
+        localStorage.setItem(key, position);
+      }
+      set(position);
+    },
+    getPosition: (): TextAlign => {
+      let val: TextAlign = defaultValue;
+      subscribe(v => val = v)();
+      return val;
+    },
+  };
+}
+
+export const titleTextAlign = createTextAlignStore('title-text-align', 'left');
+export const bodyTextAlign = createTextAlignStore('body-text-align', 'left');

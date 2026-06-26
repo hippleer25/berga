@@ -44,5 +44,11 @@
 "showCoverImagesDesc": "Exibir imagens de capa nos cards de post quando disponíveis.",
 "coverImagePosition": "Posição da imagem de capa",
 "coverImagePositionRight": "À direita",
-"coverImagePositionBottom": "Abaixo"
+"coverImagePositionBottom": "Abaixo",
+"titleTextPosition": "Posição do título",
+"bodyTextPosition": "Posição do texto",
+"textAlignLeft": "Esquerda",
+"textAlignJustified": "Justificado",
+"textAlignCenter": "Centralizado",
+"textAlignRight": "Direita"
 }

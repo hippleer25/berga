@@ -44,5 +44,11 @@
 "showCoverImagesDesc": "Display cover images in post cards when available.",
 "coverImagePosition": "Cover image position",
 "coverImagePositionRight": "Right",
-"coverImagePositionBottom": "Below"
+"coverImagePositionBottom": "Below",
+"titleTextPosition": "Title text position",
+"bodyTextPosition": "Body text position",
+"textAlignLeft": "Left",
+"textAlignJustified": "Justified",
+"textAlignCenter": "Centered",
+"textAlignRight": "Right"
 }
