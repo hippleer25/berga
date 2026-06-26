@@ -53,6 +53,9 @@
   let cssSaveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
   let showCover = $state(false);
   let coverPos = $state<CoverPosition>('right');
+  let coverDropdownOpen = $state(false);
+  let coverBtnEl: HTMLButtonElement | null = $state(null);
+  let coverDropStyle = $state('');
 
   $effect(() => {
     console.log('[settings] $locale changed to:', $locale);
@@ -96,6 +99,14 @@
           }
         }
       }
+      if (coverDropdownOpen) {
+        if (!coverBtnEl || !coverBtnEl.contains(target)) {
+          const dropdown = document.querySelector('.cover-dropdown');
+          if (!dropdown || !dropdown.contains(target)) {
+            coverDropdownOpen = false;
+          }
+        }
+      }
     }
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
@@ -106,10 +117,19 @@
     showCoverImages.setEnabled(showCover);
   }
 
-  function toggleCoverPos() {
-    const next: CoverPosition = coverPos === 'right' ? 'bottom' : 'right';
-    coverPos = next;
-    coverImagePosition.setPosition(next);
+  function toggleCoverDropdown() {
+    coverDropdownOpen = !coverDropdownOpen;
+    if (coverDropdownOpen && coverBtnEl) {
+      const r = coverBtnEl.getBoundingClientRect();
+      const maxH = window.innerHeight - r.bottom - 12;
+      coverDropStyle = `top:${r.bottom + 6}px;left:${r.left}px;min-width:${r.width}px;max-height:${Math.max(maxH, 120)}px;overflow-y:auto`;
+    }
+  }
+
+  function selectCoverPos(pos: CoverPosition) {
+    coverPos = pos;
+    coverImagePosition.setPosition(pos);
+    coverDropdownOpen = false;
   }
 
   function selectFont(category: FontCategory, fontName: string) {
@@ -229,6 +249,34 @@
   </Portal>
 {/if}
 
+{#if coverDropdownOpen}
+  <Portal>
+    <div class="picker-backdrop" onclick={() => coverDropdownOpen = false} aria-hidden="true"></div>
+    <div class="picker-dropdown cover-dropdown" style={coverDropStyle} role="listbox">
+      <button
+        class="picker-item"
+        class:picker-selected={coverPos === 'right'}
+        role="option"
+        aria-selected={coverPos === 'right'}
+        onclick={() => selectCoverPos('right')}
+      >
+        <span class="picker-item-text">{$t('settings.coverImagePositionRight')}</span>
+        {#if coverPos === 'right'}<Check size={12} class="picker-check" />{/if}
+      </button>
+      <button
+        class="picker-item"
+        class:picker-selected={coverPos === 'bottom'}
+        role="option"
+        aria-selected={coverPos === 'bottom'}
+        onclick={() => selectCoverPos('bottom')}
+      >
+        <span class="picker-item-text">{$t('settings.coverImagePositionBottom')}</span>
+        {#if coverPos === 'bottom'}<Check size={12} class="picker-check" />{/if}
+      </button>
+    </div>
+  </Portal>
+{/if}
+
 <div class="tab-panel">
   <h2 class="section-title">{$t('settings.appearance')}</h2>
 
@@ -264,15 +312,23 @@
 
   {#if showCover}
     <div class="setting-row">
-    <span class="setting-label">{$t('settings.coverImagePosition')}</span>
-    <div class="position-wrap">
-      <span class="position-label" class:active={coverPos === 'right'}>{$t('settings.coverImagePositionRight')}</span>
-      <button class="pill-toggle mini" class:on={coverPos === 'bottom'} use:ripple onclick={toggleCoverPos}>
-        <div class="pill-thumb"></div>
-      </button>
-      <span class="position-label" class:active={coverPos === 'bottom'}>{$t('settings.coverImagePositionBottom')}</span>
+      <span class="setting-label">{$t('settings.coverImagePosition')}</span>
+      <div class="picker-wrap">
+        <button
+          bind:this={coverBtnEl}
+          class="setting-btn"
+          use:ripple
+          onclick={toggleCoverDropdown}
+        >
+          <span>
+            {coverPos === 'right' ? $t('settings.coverImagePositionRight') : $t('settings.coverImagePositionBottom')}
+          </span>
+          <span class="chevron-icon" class:rotated={coverDropdownOpen}>
+            <ChevronDown size={14} />
+          </span>
+        </button>
+      </div>
     </div>
-  </div>
   {/if}
 
   {#each fontCategories as cat}
@@ -383,32 +439,7 @@
   }
   .pill-toggle.on .pill-thumb { transform: translateX(20px); }
 
-  .position-wrap {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .position-label {
-    font-size: 12px;
-    color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
-    transition: color 150ms;
-    white-space: nowrap;
-  }
-  .position-label.active {
-    color: var(--color-accent);
-    font-weight: 600;
-  }
-  .pill-toggle.mini {
-    width: 36px;
-    height: 20px;
-  }
-  .pill-toggle.mini .pill-thumb {
-    width: 14px;
-    height: 14px;
-    top: 3px;
-    left: 3px;
-  }
-  .pill-toggle.mini.on .pill-thumb { transform: translateX(16px); }
+
 
   .css-editor {
     width: 100%; padding: 12px; border-radius: 10px;
