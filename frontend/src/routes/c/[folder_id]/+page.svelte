@@ -21,7 +21,6 @@ type Mode = 'recommendations' | 'recents';
 
     // ── Pull-to-refresh ─────────────────────────────────
     let pageRootEl: HTMLElement | null = $state(null);
-    let ptrContentEl: HTMLElement | null = $state(null);
     let pullOffset = $state(0);
     let pulling = $state(false);
     let pullStartY = 0;
@@ -287,9 +286,9 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
         if (dy > 0) {
             pulling = true;
             pullOffset = Math.min(dy * PULL_RESISTANCE, 120);
-            if (ptrContentEl) {
-                ptrContentEl.style.transition = 'none';
-                ptrContentEl.style.transform = `translateY(${pullOffset}px)`;
+            if (pageRootEl) {
+                pageRootEl.style.transition = 'none';
+                pageRootEl.style.transform = `translateY(${pullOffset}px)`;
             }
         } else if (pulling) {
             pulling = false;
@@ -302,9 +301,9 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
         if (!pulling) return;
         pulling = false;
         if (pullOffset > PULL_THRESHOLD && !refreshing) {
-            if (ptrContentEl) {
-                ptrContentEl.style.transition = 'transform 0.25s ease';
-                ptrContentEl.style.transform = 'translateY(55px)';
+            if (pageRootEl) {
+                pageRootEl.style.transition = 'transform 0.25s ease';
+                pageRootEl.style.transform = 'translateY(55px)';
             }
             pullOffset = 55;
             refreshing = true;
@@ -322,9 +321,9 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
 
     function snapPtrBack() {
         pullOffset = 0;
-        if (ptrContentEl) {
-            ptrContentEl.style.transition = 'transform 0.3s ease';
-            ptrContentEl.style.transform = 'translateY(0)';
+        if (pageRootEl) {
+            pageRootEl.style.transition = 'transform 0.3s ease';
+            pageRootEl.style.transform = 'translateY(0)';
         }
     }
 </script>
@@ -382,7 +381,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
         {/if}
     </div>
 
-    <div class="main-content" bind:this={ptrContentEl}>
+    <div class="main-content">
 
         <!-- Back navigation -->
         <header class="top-header">

@@ -86,7 +86,6 @@ let bulkTagLoading = $state<boolean>(false);
 
 // Pull-to-refresh
 let pageRootEl: HTMLElement | null = $state(null);
-let ptrContentEl: HTMLElement | null = $state(null);
 let pullOffset = $state(0);
 let pulling = $state(false);
 let pullStartY = 0;
@@ -638,9 +637,9 @@ if (res.ok) {
             pulling = true;
             ptrSource = 'touch';
             pullOffset = Math.min(dy * PULL_RESISTANCE, 120);
-            if (ptrContentEl) {
-                ptrContentEl.style.transition = 'none';
-                ptrContentEl.style.transform = `translateY(${pullOffset}px)`;
+            if (pageRootEl) {
+                pageRootEl.style.transition = 'none';
+                pageRootEl.style.transform = `translateY(${pullOffset}px)`;
             }
         } else if (pulling) {
             pulling = false;
@@ -655,9 +654,9 @@ if (res.ok) {
         pulling = false;
         ptrSource = null;
         if (pullOffset > PULL_THRESHOLD && !refreshing && !loading) {
-            if (ptrContentEl) {
-                ptrContentEl.style.transition = 'transform 0.25s ease';
-                ptrContentEl.style.transform = 'translateY(55px)';
+            if (pageRootEl) {
+                pageRootEl.style.transition = 'transform 0.25s ease';
+                pageRootEl.style.transform = 'translateY(55px)';
             }
             pullOffset = 55;
             reloadFeed();
@@ -687,9 +686,9 @@ if (res.ok) {
         pulling = true;
         ptrWheelAccum += -e.deltaY * PULL_RESISTANCE;
         pullOffset = Math.min(ptrWheelAccum, 120);
-        if (ptrContentEl) {
-            ptrContentEl.style.transition = 'none';
-            ptrContentEl.style.transform = `translateY(${pullOffset}px)`;
+        if (pageRootEl) {
+            pageRootEl.style.transition = 'none';
+            pageRootEl.style.transform = `translateY(${pullOffset}px)`;
         }
         if (ptrWheelTimer) clearTimeout(ptrWheelTimer);
         ptrWheelTimer = setTimeout(() => {
@@ -697,9 +696,9 @@ if (res.ok) {
             if (ptrSource !== 'wheel') return;
             pulling = false;
             if (pullOffset > PULL_THRESHOLD && !refreshing && !loading) {
-                if (ptrContentEl) {
-                    ptrContentEl.style.transition = 'transform 0.25s ease';
-                    ptrContentEl.style.transform = 'translateY(55px)';
+                if (pageRootEl) {
+                    pageRootEl.style.transition = 'transform 0.25s ease';
+                    pageRootEl.style.transform = 'translateY(55px)';
                 }
                 pullOffset = 55;
                 ptrSource = null;
@@ -722,9 +721,9 @@ if (res.ok) {
     function snapPtrBack() {
         pullOffset = 0;
         ptrWheelAccum = 0;
-        if (ptrContentEl) {
-            ptrContentEl.style.transition = 'transform 0.3s ease';
-            ptrContentEl.style.transform = 'translateY(0)';
+        if (pageRootEl) {
+            pageRootEl.style.transition = 'transform 0.3s ease';
+            pageRootEl.style.transform = 'translateY(0)';
         }
     }
 </script>
@@ -770,7 +769,7 @@ if (res.ok) {
     </div>
 
     <!-- Contêiner Centralizador -->
-    <div class="main-content" bind:this={ptrContentEl}>
+    <div class="main-content">
         
         <!-- Top Header (Settings only) -->
         <header class="top-header">
