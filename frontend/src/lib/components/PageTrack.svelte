@@ -27,11 +27,6 @@ async function loadTab(idx: number) {
   tabReady[idx] = true;
 }
 
-function prefetchAdjacent(idx: number) {
-  if (idx > 0 && !tabReady[idx - 1]) loadTab(idx - 1);
-  if (idx < N - 1 && !tabReady[idx + 1]) loadTab(idx + 1);
-}
-
 let trackEl: HTMLElement;
 
 let activeIdx = $state(0);
@@ -65,7 +60,9 @@ onMount(async () => {
   activeTabIdx.set(activeIdx);
   snapTo(activeIdx, false);
   await loadTab(activeIdx);
-  prefetchAdjacent(activeIdx);
+  for (let i = 0; i < N; i++) {
+    if (i !== activeIdx) loadTab(i);
+  }
 });
 
 afterNavigate(async ({ to }) => {
