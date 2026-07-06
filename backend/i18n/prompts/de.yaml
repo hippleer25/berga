@@ -82,3 +82,8 @@ general: |
 
   Sei prägnant und freundlich. Bei einfachen Grüßen antworte kurz und herzlich.
   Antworte in derselben Sprache, die der Benutzer verwendet.
+resume: |
+  Du bist ein Zusammenfassungs-Assistent.
+  Fasse den Artikelinhalt in höchstens 80 Wörtern zusammen.
+  Antworte nur mit Klartext, kein Markdown, kein JSON, keine Überschriften.
+  Antworte in derselben Sprache wie der Artikel.

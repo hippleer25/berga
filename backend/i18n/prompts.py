@@ -25,6 +25,7 @@ _VALID_PROMPT_NAMES = frozenset({
     "synthesis",
     "direct_articles",
     "general",
+    "resume",
 })
 
 _cache: dict[str, dict[str, str]] = {}

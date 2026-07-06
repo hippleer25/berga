@@ -26,6 +26,7 @@
   };
 
   type SourceMode = 'local' | 'online' | 'mixed';
+  type Scope = 'mine' | 'all';
   type WaitingPhase = 'thinking' | 'searching' | 'reading' | 'synthesizing' | null;
 
   let messages = $state<Message[]>([]);
@@ -38,6 +39,7 @@
 
   let deepReading = $state(true);
   let sourceMode = $state<SourceMode>('mixed');
+  let scope = $state<Scope>('mine');
   let dropdownOpen = $state(false);
 
   let textareaRef: HTMLTextAreaElement;
@@ -69,7 +71,31 @@
     return opt ? opt.label : get(t)('motatab.sourceMixed');
   });
 
+  const STORAGE_KEY = 'mota:messages';
+
+  function saveMessages() {
+    try {
+      const trimmed = messages.slice(-30);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+    } catch {}
+  }
+
+  function loadMessages() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          messages = parsed;
+          idCounter = Math.max(...parsed.map((m: Message) => m.id)) + 1;
+        }
+      }
+    } catch {}
+  }
+
   onMount(() => {
+    loadMessages();
+
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
         dropdownOpen = false;
@@ -150,6 +176,7 @@
     if (textareaRef) textareaRef.style.height = 'auto';
 
     messages = [...messages, { role: 'user', content: text, id: idCounter++ }];
+    saveMessages();
     await scrollToBottom(true);
 
     await streamResponse(text);
@@ -164,6 +191,8 @@
     error = '';
     idCounter = 0;
     waitingPhase = null;
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    apiFetch('/api/chat/clear', { method: 'POST' }).catch(() => {});
   }
 
   function toggleDropdown(e: MouseEvent) {
@@ -200,6 +229,7 @@
           message: text,
           source_mode: sourceMode,
           deep_reading: deepReading,
+          scope,
           articles,
         }),
         signal: chatAbort.signal,
@@ -256,6 +286,7 @@
       if (lastMsg?.role === 'assistant' && !lastMsg.content.trim()) {
         messages = messages.filter((m: Message) => m.id !== assistantId);
       }
+      saveMessages();
     }
   }
 
@@ -486,6 +517,34 @@
             {deepReading ? $t('motatab.on') : $t('motatab.off')}
           </span>
         </button>
+
+        <div class="dropdown-divider"></div>
+
+        <div class="dropdown-section">
+          <p class="dropdown-section-title">{$t('motatab.scope')}</p>
+          <button
+            class="dropdown-item"
+            class:dropdown-item--active={scope === 'mine'}
+            onclick={() => { scope = 'mine'; }}
+          >
+            <Database size={15} />
+            <span class="dropdown-item-label">{$t('motatab.scopeMine')}</span>
+            {#if scope === 'mine'}
+            <Check size={14} class="dropdown-check" />
+            {/if}
+          </button>
+          <button
+            class="dropdown-item"
+            class:dropdown-item--active={scope === 'all'}
+            onclick={() => { scope = 'all'; }}
+          >
+            <Globe size={15} />
+            <span class="dropdown-item-label">{$t('motatab.scopeAll')}</span>
+            {#if scope === 'all'}
+            <Check size={14} class="dropdown-check" />
+            {/if}
+          </button>
+        </div>
       </div>
       {/if}
 

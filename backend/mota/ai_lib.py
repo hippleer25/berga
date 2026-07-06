@@ -28,7 +28,18 @@ litellm.drop_params = True
 
 DEFAULT_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "120"))
 
-LLMUsage = Literal["cluster", "chatbot"]
+LLMUsage = Literal["cluster", "chatbot", "routing", "summarize", "synthesis"]
+
+# Fallback chain for optional tiers. If a tier's own env vars are not set,
+# we fall back to the next tier in the chain. "cluster" and "chatbot" are
+# the base tiers and remain required (no fallback).
+_TIER_FALLBACK: dict[str, str | None] = {
+    "cluster": None,
+    "chatbot": None,
+    "routing": "chatbot",
+    "summarize": "chatbot",
+    "synthesis": "chatbot",
+}
 
 
 # ------------------------------------------------------------------
@@ -37,21 +48,37 @@ LLMUsage = Literal["cluster", "chatbot"]
 
 def _get_model_config(usage: LLMUsage) -> dict:
     prefix = usage.upper()
-
     model = os.getenv(f"{prefix}_LLM_MODEL")
-    if not model:
-        raise ValueError(
-            f"[AI_LIB] {prefix}_LLM_MODEL não encontrada. "
-            f"Exemplos: 'gpt-4', 'claude-3-sonnet-20240229', 'mistral/mistral-large-latest'"
-        )
 
-    api_key = os.getenv(f"{prefix}_LLM_API_KEY")
-    api_base = os.getenv(f"{prefix}_LLM_API_BASE")
+    if not model:
+        fallback = _TIER_FALLBACK.get(usage)
+        if fallback is None:
+            raise ValueError(
+                f"[AI_LIB] {prefix}_LLM_MODEL não encontrada. "
+                f"Exemplos: 'gpt-4', 'claude-3-sonnet-20240229', 'mistral/mistral-large-latest'"
+            )
+        fb_prefix = fallback.upper()
+        model = os.getenv(f"{fb_prefix}_LLM_MODEL")
+        if not model:
+            raise ValueError(
+                f"[AI_LIB] Nem {prefix}_LLM_MODEL nem {fb_prefix}_LLM_MODEL "
+                f"estão definidas. Defina ao menos uma."
+            )
+        api_key = os.getenv(f"{fb_prefix}_LLM_API_KEY")
+        api_base = os.getenv(f"{fb_prefix}_LLM_API_BASE")
+        effective_usage = fallback
+    else:
+        api_key = os.getenv(f"{prefix}_LLM_API_KEY")
+        api_base = os.getenv(f"{prefix}_LLM_API_BASE")
+        effective_usage = usage
 
     if not api_key:
         raise ValueError(
-            f"[AI_LIB] {prefix}_LLM_API_KEY não encontrada. "
-            f"Defina a variável de ambiente {prefix}_LLM_API_KEY com uma chave de API válida."
+            f"[AI_LIB] Credencial não encontrada para o tier '{usage}' "
+            f"(resolvido como '{effective_usage}'). "
+            f"Defina {prefix}_LLM_API_KEY"
+            + (f" ou {_TIER_FALLBACK[usage].upper()}_LLM_API_KEY" if _TIER_FALLBACK.get(usage) else "")
+            + "."
         )
 
     config = {"model": model}
@@ -60,9 +87,10 @@ def _get_model_config(usage: LLMUsage) -> dict:
         config["api_base"] = api_base
 
     logger.info(
-        f"[AI_LIB] Configuração {usage}: model={model}, "
+        f"[AI_LIB] Configuração {usage} → model={model}, "
         f"api_base={api_base or 'default'}, "
         f"api_key=***"
+        + (f" (fallback: {effective_usage})" if effective_usage != usage else "")
     )
 
     return config

@@ -1,12 +1,10 @@
 """
-mota/chat_tool_parser.py — Tool-call parsing for the Mota chat engine.
+mota/chat_tool_parser.py — Tool-call argument parsing for the Mota chat engine.
 
-Handles three formats of tool calls:
-1. Structured (OpenAI-style function_call objects)
-2. Text-based ([TOOL_CALLS]topic_search{...})
-3. Regex fallback extraction from malformed JSON
-
+Handles parsing of structured tool-call arguments (JSON with repair fallback).
 Also provides assistant-message serialization for multi-turn conversations.
+Includes a DSML text-format parser for models that don't support native
+function calling (e.g. some DeepSeek models).
 """
 
 from __future__ import annotations
@@ -26,67 +24,64 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-_RE_TEXT_TOOL_CALL = re.compile(
-    r'^\[TOOL_CALLS\](\w+)\s*(\{.*\})\s*$',
+# ── DSML text-format parser ──────────────────────────────────────────────────
+# Some models (e.g. DeepSeek) emit tool calls in a text format like:
+#   <｜｜DSML｜｜tool_calls>
+#   <｜｜DSML｜｜invoke name="topic_search">
+#   <｜｜DSML｜｜parameter name="searches">[{"query": "..."}]</｜｜DSML｜｜parameter>
+#   </｜｜DSML｜｜invoke>
+#   </｜｜DSML｜｜tool_calls>
+# This parser extracts them into a list of (name, arguments_dict) tuples.
+
+_RE_DSML_INVOKE = re.compile(
+    r'<｜｜DSML｜｜invoke\s+name="([^"]+)">(.*?)</｜｜DSML｜｜invoke>',
+    re.DOTALL,
+)
+_RE_DSML_PARAM = re.compile(
+    r'<｜｜DSML｜｜parameter\s+name="([^"]+)"[^>]*>(.*?)</｜｜DSML｜｜parameter>',
     re.DOTALL,
 )
 
 
-def _try_parse_text_tool_call(content: str) -> Optional[tuple[str, str]]:
-    """Detecta e parseia tool calls em formato texto."""
-    if not content:
+def _try_parse_dsml_tool_calls(content: str) -> list[tuple[str, dict]] | None:
+    """
+    Parse DSML-format tool calls from model text output.
+    Returns a list of (tool_name, arguments_dict) or None if no DSML found.
+    """
+    if not content or "DSML" not in content:
         return None
 
-    content_stripped = content.strip()
-    match = _RE_TEXT_TOOL_CALL.match(content_stripped)
-
-    if not match:
+    invokes = _RE_DSML_INVOKE.findall(content)
+    if not invokes:
         return None
 
-    tool_name = match.group(1)
-    raw_args = match.group(2)
+    results = []
+    for tool_name, invoke_body in invokes:
+        params = _RE_DSML_PARAM.findall(invoke_body)
+        args: dict = {}
+        for param_name, param_value in params:
+            param_value = param_value.strip()
+            # Try to parse as JSON first
+            try:
+                args[param_name] = json.loads(param_value)
+            except json.JSONDecodeError:
+                if HAS_JSON_REPAIR:
+                    try:
+                        args[param_name] = json.loads(repair_json(param_value))
+                        continue
+                    except Exception:
+                        pass
+                # Keep as string if not JSON
+                args[param_name] = param_value
 
-    if HAS_JSON_REPAIR:
-        try:
-            repaired = repair_json(raw_args)
-            json.loads(repaired)
-            raw_args = repaired
-            logger.info(f"[TEXT_TOOL] JSON reparado com sucesso")
-        except Exception:
-            logger.warning(f"[TEXT_TOOL] json_repair falhou")
+        results.append((tool_name, args))
+        logger.info(f"[DSML] Parsed tool call: {tool_name} with args keys={list(args.keys())}")
 
-    return tool_name, raw_args
-
-
-_RE_QUERY = re.compile(r"""(?:"query"|'query')\s*:\s*(?:"([^"]+)"|'([^']+)')""")
-_RE_MAX_DAYS = re.compile(r"""(?:"max_days"|'max_days')\s*:\s*(\d+)""")
-_RE_MIN_DAYS = re.compile(r"""(?:"min_days"|'min_days')\s*:\s*(\d+)""")
-
-
-def _extract_searches_regex(text: str) -> list[dict]:
-    """Extracts searches via regex (parsing fallback)."""
-    searches: list[dict] = []
-
-    for m in _RE_QUERY.finditer(text):
-        query_val = m.group(1) or m.group(2)
-        entry: dict = {"query": query_val}
-
-        nearby = text[m.start():m.start() + 150]
-        mx = _RE_MAX_DAYS.search(nearby)
-        mn = _RE_MIN_DAYS.search(nearby)
-
-        if mx:
-            entry["max_days"] = int(mx.group(1))
-        if mn:
-            entry["min_days"] = int(mn.group(1))
-
-        searches.append(entry)
-
-    return searches
+    return results if results else None
 
 
 def _parse_tool_arguments(raw: str) -> dict:
-    """Parseia argumentos de tool call (JSON ou formato alternativo)."""
+    """Parseia argumentos de tool call (JSON com fallback para json_repair)."""
     parsed = None
 
     try:
@@ -102,10 +97,6 @@ def _parse_tool_arguments(raw: str) -> dict:
             logger.error(f"[PARSE] json_repair falhou: {err}")
 
     if parsed is None:
-        searches = _extract_searches_regex(raw)
-        if searches:
-            logger.warning(f"[PARSE] ✓ {len(searches)} queries via regex")
-            return {"searches": searches}
         return {"searches": []}
 
     if isinstance(parsed, dict) and "searches" in parsed:
@@ -128,11 +119,11 @@ def _parse_tool_arguments(raw: str) -> dict:
                 pass
 
         if isinstance(searches, str):
-            searches = _extract_searches_regex(searches) or []
+            searches = []
 
         parsed["searches"] = searches
 
-    if isinstance(parsed["searches"], list):
+    if isinstance(parsed.get("searches"), list):
         validated = []
         for item in parsed["searches"]:
             if isinstance(item, dict):

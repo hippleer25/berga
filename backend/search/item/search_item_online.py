@@ -10,7 +10,9 @@ Dependências:
     (readability-lxml já deve estar no requirements.txt do projeto)
 """
 
+import hashlib
 import logging
+import os
 import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -21,6 +23,55 @@ from ddgs import DDGS
 from i18n.locale_map import ddg_region, accept_language_header
 
 logger = logging.getLogger(__name__)
+
+# ── Article body cache (Redis, 7-day TTL) ──────────────────────────────────────
+# Avoids re-fetching + re-extracting the same URL across chat turns and users.
+_REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+_REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+_REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+_BODY_CACHE_TTL = 7 * 24 * 3600  # 7 days
+_redis_client = None
+
+
+def _get_redis():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        import redis as _redis_mod
+        _redis_client = _redis_mod.Redis(
+            host=_REDIS_HOST, port=_REDIS_PORT, db=_REDIS_DB,
+            socket_connect_timeout=2, socket_timeout=2, decode_responses=True,
+        )
+        _redis_client.ping()
+    except Exception as e:
+        logger.debug(f"[BODY_CACHE] Redis unavailable: {e}")
+        _redis_client = None
+    return _redis_client
+
+
+def _body_cache_key(url: str) -> str:
+    return f"article_body:{hashlib.sha256(url.encode()).hexdigest()}"
+
+
+def _get_cached_body(url: str) -> str | None:
+    client = _get_redis()
+    if client is None:
+        return None
+    try:
+        return client.get(_body_cache_key(url))
+    except Exception:
+        return None
+
+
+def _set_cached_body(url: str, text: str) -> None:
+    client = _get_redis()
+    if client is None:
+        return
+    try:
+        client.setex(_body_cache_key(url), _BODY_CACHE_TTL, text)
+    except Exception:
+        pass
 
 
 def _parse_date(date_str: str) -> datetime | None:
@@ -127,10 +178,22 @@ def extract_text_from_url(url: str) -> str:
     Extrai o texto principal de uma página web usando readability-lxml
     (o mesmo algoritmo do Firefox Reader Mode, já presente no projeto em post/load.py).
 
+    Results are cached in Redis (7-day TTL) keyed by URL hash to avoid
+    re-fetching + re-extracting the same page across turns and users.
+
     readability retorna HTML limpo — fazemos strip das tags para entregar
     texto puro à IA, sem overhead de dependência nova.
     Retorna string vazia em caso de erro.
     """
+    # Check cache first
+    cached = _get_cached_body(url)
+    if cached is not None:
+        if cached:
+            logger.debug(f"[BODY_CACHE] hit for {url[:80]}")
+            return cached
+        # Empty string cached = previous failure, skip re-fetching
+        return ""
+
     try:
         response = requests.get(url, headers=_headers(), timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
@@ -152,7 +215,9 @@ def extract_text_from_url(url: str) -> str:
             logger.debug(f"readability retornou conteúdo muito curto para {url}")
             return ""
 
-        return clean[:MAX_TEXT_CHARS]
+        result = clean[:MAX_TEXT_CHARS]
+        _set_cached_body(url, result)
+        return result
 
     except requests.RequestException as e:
         logger.warning(f"Falha ao buscar {url}: {e}")

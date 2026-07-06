@@ -82,3 +82,8 @@ general: |
 
   Soyez concis et amical. Pour les simples salutations, répondez brièvement et chaleureusement.
   Répondez dans la même langue que celle utilisée par l'utilisateur.
+resume: |
+  Vous êtes un assistant de résumé.
+  Résumez le contenu de l'article en 80 mots maximum.
+  Répondez uniquement en texte brut, sans markdown, sans JSON, sans en-têtes.
+  Répondez dans la même langue que l'article.

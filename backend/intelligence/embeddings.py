@@ -50,7 +50,7 @@ COLLECTION_NAME: str = os.environ.get("QDRANT_COLLECTION_NAME", "feed_items")
 TAG_PHRASES_COLLECTION: str = os.environ.get("QDRANT_TAG_PHRASES_COLLECTION", "tag_phrases")
 VECTOR_SIZE: int = int(os.environ.get("VECTOR_SIZE", 256))
 
-EMBEDDING_DESCRIPTION_CHARS: int = int(os.environ.get("EMBEDDING_DESCRIPTION_CHARS", "0"))
+EMBEDDING_DESCRIPTION_CHARS: int = int(os.environ.get("EMBEDDING_DESCRIPTION_CHARS", "200"))
 
 _DISTANCE_STR = os.environ.get("DISTANCE_METRIC", "Cosine").upper()
 try:

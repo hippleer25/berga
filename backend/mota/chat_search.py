@@ -31,6 +31,11 @@ from mota.chat_config import (
     POSTS_PER_QUERY_LOCAL_ONLINE,
     POSTS_PER_QUERY_MIXED,
 )
+from mota.tokens import (
+    count_tokens,
+    DEFAULT_CONTEXT_TOKEN_BUDGET,
+    MIN_TOKENS_PER_ARTICLE,
+)
 from search.item.search_item import search_articles_by_text
 from search.item.search_item_online import search_articles_online, extract_text_from_url
 
@@ -107,6 +112,21 @@ def _format_article_for_llm(idx: int, article: dict) -> str:
     header = f"[{idx}]{deep} {pub_date} — {title} ({feed_title})"
 
     return f"{header}\n{link}\n{description}"
+
+
+def _format_article_digest(idx: int, article: dict) -> str:
+    """
+    Formato compacto: título, data, fonte, link + descrição curta.
+    ~80-100 tokens/artigo vs ~200+ do formato completo.
+    Inclui descrição suficiente para o modelo responder sem deep reading.
+    """
+    title = article.get("title", "Sem título")
+    pub_date = (article.get("pub_date") or "")[:10]
+    feed_title = article.get("feed_title", "")
+    link = article.get("link", "")
+    description = _strip_html(article.get("description", ""))[:300]
+    header = f"[{idx}] {pub_date} — {title} ({feed_title})"
+    return f"{header}\n{link}\n{description}" if description else f"{header}\n{link}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -246,44 +266,58 @@ def _deduplicate_articles(articles: list[dict]) -> list[dict]:
 
 def _apply_context_budget(
     articles: list[dict],
-    budget: int = TOTAL_CONTEXT_CHAR_LIMIT,
+    budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
+    model: str | None = None,
 ) -> list[dict]:
     """
-    Aplica orçamento total de contexto, truncando artigos menos relevantes.
+    Aplica orçamento total de contexto (em tokens), truncando artigos menos relevantes.
 
     Artigos já estão ordenados por score boostado (melhores primeiro).
     Os primeiros recebem conteúdo completo; os últimos podem ser truncados
     se o orçamento for excedido.
+
+    Usa litellm.token_counter (provider-aware) quando possível, com fallback
+    heurístico (chars / 4) se a tokenização falhar.
     """
     if not articles:
         return articles
 
-    total = sum(len(a.get("description", "")) for a in articles)
+    # Compute token cost per article's description
+    token_costs = []
+    for art in articles:
+        desc = art.get("description", "")
+        token_costs.append(count_tokens(desc, model))
+
+    total = sum(token_costs)
 
     if total <= budget:
-        logger.info(f"[BUDGET] Conteúdo total {total} chars ≤ orçamento {budget}")
+        logger.info(f"[BUDGET] Conteúdo total {total} tokens ≤ orçamento {budget}")
         return articles
 
-    logger.info(f"[BUDGET] Conteúdo total {total} chars > orçamento {budget} — truncando...")
+    logger.info(f"[BUDGET] Conteúdo total {total} tokens > orçamento {budget} — truncando...")
 
     remaining = budget
-    min_per_article = 400
+    min_per = MIN_TOKENS_PER_ARTICLE
 
     for i, art in enumerate(articles):
         desc = art.get("description", "")
-        desc_len = len(desc)
+        desc_chars = len(desc)
+        cost = token_costs[i]
 
-        if desc_len <= remaining:
-            remaining -= desc_len
-        elif remaining > min_per_article:
-            art["description"] = desc[:remaining] + "\n[...]"
+        if cost <= remaining:
+            remaining -= cost
+        elif remaining > min_per:
+            # Truncate proportionally to fit remaining token budget
+            keep_chars = max(min_per * 4, int(desc_chars * remaining / max(cost, 1)))
+            art["description"] = desc[:keep_chars].rstrip() + "\n[...]"
             remaining = 0
         else:
-            if desc_len > min_per_article:
-                art["description"] = desc[:min_per_article] + "\n[...]"
+            # Not enough budget left — keep the minimum snippet
+            if desc_chars > min_per * 4:
+                art["description"] = desc[: min_per * 4].rstrip() + "\n[...]"
 
-    final_total = sum(len(a.get("description", "")) for a in articles)
-    logger.info(f"[BUDGET] Resultado: {total} → {final_total} chars")
+    final_total = sum(count_tokens(a.get("description", ""), model) for a in articles)
+    logger.info(f"[BUDGET] Resultado: {total} → {final_total} tokens")
 
     return articles
 
@@ -339,11 +373,13 @@ def _call_local(
     limit: int,
     min_days: Optional[int],
     max_days: Optional[int],
+    feed_filter: Optional[list[str]] = None,
 ) -> list[dict]:
     """Executes local search in the user's feed database."""
     logger.info(
         f"[LOCAL] search_articles_by_text({query!r}, limit={limit}, "
-        f"min_days={min_days}, max_days={max_days})"
+        f"min_days={min_days}, max_days={max_days}, "
+        f"feed_filter={len(feed_filter) if feed_filter else 'none'})"
     )
 
     try:
@@ -353,6 +389,7 @@ def _call_local(
             min_similarity=SEARCH_THRESHOLD,
             min_days=min_days,
             max_days=max_days,
+            feed_filter=feed_filter,
         )
         logger.info(f"[LOCAL] ✓ {len(results)} artigos retornados")
         return results
@@ -419,6 +456,7 @@ def run_searches(
     searches: list[dict],
     source_mode: str = "local",
     deep_reading: bool = False,
+    feed_filter: Optional[list[str]] = None,
 ) -> tuple[str, list[dict]]:
     """
     Executa múltiplas buscas e consolida resultados.
@@ -430,6 +468,10 @@ def run_searches(
     4. Deep reading seletivo (top N)
     5. Aplica orçamento de contexto
     6. Formata para o LLM
+
+    Args:
+        feed_filter: lista de feed_sha256 para restringir a busca local
+                     (subscriptions do usuário). None = sem restrição (escopo global).
     """
     searches = _normalize_searches(searches)
     num_queries = len(searches)
@@ -439,6 +481,7 @@ def run_searches(
     logger.info(f"\n{'='*70}")
     logger.info(f"[SEARCH] Iniciando buscas")
     logger.info(f"[SEARCH] Queries: {num_queries} | Modo: {source_mode} | Deep: {deep_reading}")
+    logger.info(f"[SEARCH] feed_filter: {len(feed_filter) if feed_filter else 'none (global)'}")
     logger.info(f"[SEARCH] Distribuição por query → Local: {local_per} Online: {online_per}")
     logger.info(f"{'='*70}")
 
@@ -454,7 +497,9 @@ def run_searches(
 
         # Busca local
         if local_per > 0:
-            local_results = _call_local(query, local_per, min_days, max_days)
+            local_results = _call_local(
+                query, local_per, min_days, max_days, feed_filter=feed_filter
+            )
             local_cut = local_results[:local_per]
 
             for art in local_cut:
@@ -494,9 +539,10 @@ def run_searches(
     # 2b. Recency boost — prioriza artigos recentes
     all_articles = _apply_recency_boost(all_articles)
 
-    # 2c. Selective deep reading (top N local articles only)
-    if deep_reading:
-        all_articles = _selective_deep_read(all_articles)
+    # 2c. Deep reading is now on-demand via the read_article tool.
+    #     The blind top-N prefetch is skipped to save tokens and bandwidth;
+    #     the model can request full text for specific articles it wants to cite.
+    #     (Deep reading for direct articles in _handle_direct_articles is unaffected.)
 
     # 2d. Context budget — truncates less relevant articles
     all_articles = _apply_context_budget(all_articles)
@@ -527,13 +573,15 @@ def run_searches(
     if not all_articles:
         return "No articles found for the searched topics.", []
 
-    # ── Phase 4: Compact formatting for the LLM ───────────────────────────
+    # ── Phase 4: Compact digest for the LLM ────────────────────────────────
+    # Include title + short description so the model can answer without
+    # needing to deep-read every article.
     blocks = [
         "A seguir estão os artigos encontrados, ordenados por relevância e recência. "
-        "Leia o conteúdo de cada um e redija sua resposta:\n"
+        "Sintetize as informações em uma resposta clara:\n"
     ]
 
     for idx, article in enumerate(all_articles, 1):
-        blocks.append(_format_article_for_llm(idx, article))
+        blocks.append(_format_article_digest(idx, article))
 
     return "\n\n".join(blocks), all_articles

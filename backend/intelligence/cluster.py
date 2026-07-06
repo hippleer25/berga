@@ -374,7 +374,7 @@ def _summarize_cluster(articles: list[dict]) -> str:
         f"{titles_text}\n\nHeadline:"
     )
 
-    result = generate_text(prompt, usage="cluster", max_retries=5)
+    result = generate_text(prompt, usage="summarize", max_tokens=128, max_retries=5)
 
     if result:
         logger.info(f"[CLUSTER] Summary generated: \"{result}\"")
@@ -444,6 +444,7 @@ def _build_events(
                     "title": a.get("title"),
                     "url": a.get("link"),
                     "source": a.get("feed_title"),
+                    "feed_sha256": a.get("feed_sha256"),
                     "feed_icon": a.get("feed_icon"),
                     "published_at": a.get("pub_date"),
                 }

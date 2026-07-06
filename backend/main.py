@@ -173,6 +173,9 @@ class ChatRequest(BaseModel):
     message: str
     source_mode: Literal["local", "online", "mixed"] = "local"
     deep_reading: bool = False
+    scope: Literal["mine", "all"] = "mine"
+    folder_id: str | None = None
+    feed_sha256: str | None = None
     articles: list[ArticleInput] = []
 
 
@@ -666,8 +669,44 @@ async def weekly_events(request: Request, response: Response, limit: int = CLUST
 
 
 @app.post("/api/chat")
-def mota_chat(chat_request: ChatRequest, user: dict = Depends(get_current_user)):
+def mota_chat(chat_request: ChatRequest, request: Request, user: dict = Depends(get_current_user)):
     logger.debug("Chat request from user %s", user.get("id"))
+
+    # Request size validation
+    if len(chat_request.articles) > 50:
+        return Response(
+            content='{"detail":"Too many articles (max 50)"}',
+            status_code=413,
+            media_type="application/json",
+        )
+    if len(chat_request.message) > 10000:
+        return Response(
+            content='{"detail":"Message too long (max 10000 chars)"}',
+            status_code=413,
+            media_type="application/json",
+        )
+
+    # Simple per-user rate limiting (20 messages/minute) via Redis
+    user_id = user.get("id")
+    if user_id:
+        import time
+        from mota import conversation as _conv
+        client = _conv._get_client()
+        if client:
+            rate_key = f"mota:rate:{user_id}"
+            try:
+                count = client.incr(rate_key)
+                if count == 1:
+                    client.expire(rate_key, 60)
+                if count > 20:
+                    return Response(
+                        content='{"detail":"Rate limit exceeded. Please wait a minute."}',
+                        status_code=429,
+                        media_type="application/json",
+                    )
+            except Exception:
+                pass  # fail open if Redis is down
+
     gen = chat.receive(chat_request, user)
     return StreamingResponse(
         gen,
@@ -678,6 +717,13 @@ def mota_chat(chat_request: ChatRequest, user: dict = Depends(get_current_user))
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/api/chat/clear")
+def mota_chat_clear(user: dict = Depends(get_current_user)):
+    from mota import conversation
+    success = conversation.clear(user["id"])
+    return {"status": "ok" if success else "error"}
 
 
 @app.post("/api/mota/resume/{item_id}")

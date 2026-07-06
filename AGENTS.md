@@ -42,8 +42,13 @@ cd frontend && npm audit                         # JS vulnerability check
 - All env vars live in `.env` at repo root (loaded by docker-compose for the backend container)
 - **Required env vars**: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `QDRANT_HOST`, `QDRANT_PORT`, `REDIS_HOST`, `EMBEDDING_MODEL_NAME`, `SECRET_KEY`
 - `EMBEDDING_MODEL_NAME` must be set or the backend crashes at import time (`intelligence/embeddings.py` enforces this)
-- `EMBEDDING_DESCRIPTION_CHARS` controls how much of the article description is included in the embedding vector (0 = title only, 200 = recommended). Changing this value after articles are already indexed requires running the `reembed_all` job to update existing vectors.
-- LLM calls go through LiteLLM — model and API key set via `CLUSTER_LLM_*` and `CHATBOT_LLM_*` env vars
+- `EMBEDDING_DESCRIPTION_CHARS` controls how much of the article description is included in the embedding vector (0 = title only, 200 = recommended default). Changing this value after articles are already indexed requires running the `reembed_all` job to update existing vectors.
+- LLM calls go through LiteLLM — model and API key set via env vars. Five tiers (last three fall back to `CHATBOT_LLM_*` if unset):
+  - `CLUSTER_LLM_*` — base tier, required (historical cluster model config)
+  - `CHATBOT_LLM_*` — base tier, required (default for any unconfigured tier)
+  - `ROUTING_LLM_*` — optional, used for tool-decision/classification (cheap model recommended)
+  - `SUMMARIZE_LLM_*` — optional, used for article resume + cluster summaries (cheap model recommended)
+  - `SYNTHESIS_LLM_*` — optional, used for final chat answer synthesis (strong model recommended)
 - Vite dev server proxies `/api` → `API_TARGET` (default `http://backend:5746`), stripping the `/api` prefix
 
 ## Backend Structure

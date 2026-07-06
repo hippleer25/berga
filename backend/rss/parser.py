@@ -16,11 +16,12 @@ from jose import jwt, JWTError
 
 from auth.token import ALGORITHM, SECRET_KEY
 from database.init_db import get_db
-from database.qdrant_utils import add_item_to_qdrant
+from database.qdrant_utils import add_item_to_qdrant, add_items_batch
 from i18n.locale_map import accept_language_header
 from intelligence.embeddings import (
     build_embedding_text,
     embedding_text,
+    embedding_batch,
     get_embedding_model,
     get_qdrant_client,
     COLLECTION_NAME,
@@ -191,7 +192,11 @@ def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None):
             get_embedding_model()
             get_qdrant_client()
             model_fp = get_current_fingerprint()
-    
+
+            # ── Collect entries and batch-embed ────────────────────────────
+            entries_data: list[tuple[str, str, str, str, str, str, float, datetime, str]] = []
+            embedding_texts: list[str] = []
+
             for entry in parsed.get("entries", []):
                 link = entry.get("link", "")
                 if not link:
@@ -220,9 +225,19 @@ def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None):
                     pub_date = datetime.now(timezone.utc)
                     pub_timestamp = pub_date.timestamp()
 
-                vector = embedding_text(build_embedding_text(title, description))
-                logger.debug("[parser] %sd vector — %s", f"{len(vector)}d", title[:80])
+                embedding_texts.append(build_embedding_text(title, description))
+                entries_data.append(
+                    (item_id, title, description, author, image_url, link, pub_timestamp, pub_date, old_hash)
+                )
 
+            # Batch embed all texts at once (much faster than per-entry)
+            vectors = embedding_batch(embedding_texts) if embedding_texts else []
+
+            # Batch upsert to Qdrant
+            from qdrant_client.http.models import PointStruct
+
+            points = []
+            for (item_id, title, description, author, image_url, link, pub_timestamp, pub_date, old_hash), vector in zip(entries_data, vectors):
                 payload = {
                     "title": title,
                     "description": description,
@@ -237,8 +252,11 @@ def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None):
                     "_model_fp": model_fp,
                     "image_url": image_url,
                 }
+                points.append(PointStruct(id=item_id, vector=vector, payload=payload))
 
-                add_item_to_qdrant(item_id, vector, payload)
+            if points:
+                add_items_batch(points)
+                logger.info(f"[parser] Batch upserted {len(points)} items to Qdrant")
 
             conn.commit()
             return {
