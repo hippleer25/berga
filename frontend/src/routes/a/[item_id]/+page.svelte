@@ -1166,6 +1166,40 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
                             <span>{commentVisible && !editingComment && commentText ? $t('article.hideComment') : $t('article.comment')}</span>
                         </button>
 
+          <!-- ── Caixa de resumo (AI) ─────────────────── -->
+                        <button
+                            class="resume-toggle"
+                            onclick={fetchResume}
+                            disabled={resumeLoading}
+                        >
+                            {#if resumeLoading && !resumeText}
+                                <span class="loading loading-spinner loading-xs"></span>
+                            {:else}
+                                <Sparkles size={14} />
+                            {/if}
+                            <span>{resumeVisible && resumeText ? $t('article.hideSummary') : $t('article.summarizeText')}</span>
+                        </button>
+
+                        {#if resumeVisible}
+                            <div class="resume-box">
+                                {#if resumeLoading && !resumeText}
+                                    <div class="resume-skeleton">
+                                        <span class="sk-line" style="width: 92%"></span>
+                                        <span class="sk-line" style="width: 78%"></span>
+                                        <span class="sk-line" style="width: 85%"></span>
+                                        <span class="sk-line" style="width: 60%"></span>
+                                    </div>
+                                {:else if resumeError}
+                                    <p class="resume-error-text">{resumeError}</p>
+                                {:else}
+                                    <p class="resume-text">
+                                        {resumeText}
+                                        {#if resumeLoading}<span class="resume-cursor"></span>{/if}
+                                    </p>
+                                {/if}
+                            </div>
+                        {/if}
+
                         {#if commentVisible}
                             <div class="resume-box comment-box">
                                 {#if editingComment}
@@ -1233,40 +1267,6 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
                                             </button>
                                         {/if}
                                     </div>
-                                {/if}
-                            </div>
-                        {/if}
-
-          <!-- ── Caixa de resumo (AI) ─────────────────── -->
-                        <button
-                            class="resume-toggle"
-                            onclick={fetchResume}
-                            disabled={resumeLoading}
-                        >
-                            {#if resumeLoading && !resumeText}
-                                <span class="loading loading-spinner loading-xs"></span>
-                            {:else}
-                                <Sparkles size={14} />
-                            {/if}
-                            <span>{resumeVisible && resumeText ? $t('article.hideSummary') : $t('article.summarizeText')}</span>
-                        </button>
-
-                        {#if resumeVisible}
-                            <div class="resume-box">
-                                {#if resumeLoading && !resumeText}
-                                    <div class="resume-skeleton">
-                                        <span class="sk-line" style="width: 92%"></span>
-                                        <span class="sk-line" style="width: 78%"></span>
-                                        <span class="sk-line" style="width: 85%"></span>
-                                        <span class="sk-line" style="width: 60%"></span>
-                                    </div>
-                                {:else if resumeError}
-                                    <p class="resume-error-text">{resumeError}</p>
-                                {:else}
-                                    <p class="resume-text">
-                                        {resumeText}
-                                        {#if resumeLoading}<span class="resume-cursor"></span>{/if}
-                                    </p>
                                 {/if}
                             </div>
                         {/if}
@@ -1653,6 +1653,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     /* ── Comment ──────────────────────────────────────────── */
     .comment-box {
         border-left-color: var(--color-info);
+        background: var(--color-base-100);
     }
     .comment-active {
         color: var(--color-info) !important;
@@ -1721,7 +1722,25 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         gap: 8px;
         margin-top: 10px;
     }
-    .comment-save-btn, .comment-edit-btn {
+    .comment-save-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border: 1px solid var(--color-info);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--color-info);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 140ms, border-color 140ms;
+    }
+    .comment-save-btn:hover {
+        background: color-mix(in oklch, var(--color-info) 10%, transparent);
+    }
+    .comment-save-btn:disabled { opacity: 0.5; cursor: default; }
+    .comment-edit-btn {
         display: inline-flex;
         align-items: center;
         gap: 6px;
@@ -1735,8 +1754,8 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         cursor: pointer;
         transition: opacity 140ms;
     }
-    .comment-save-btn:hover, .comment-edit-btn:hover { opacity: 0.85; }
-    .comment-save-btn:disabled, .comment-edit-btn:disabled { opacity: 0.5; cursor: default; }
+    .comment-edit-btn:hover { opacity: 0.85; }
+    .comment-edit-btn:disabled { opacity: 0.5; cursor: default; }
     .comment-cancel-btn {
         padding: 6px 14px;
         border: 1px solid var(--color-base-300);
