@@ -18,6 +18,7 @@
   "options": "Options",
   "folderOptions": "Options du dossier",
   "feedOptions": "Options du flux",
+  "feedError": "Erreur du flux",
   "newSubfolder": "Nouveau sous-dossier",
   "moveToFolder": "Déplacer vers le dossier",
   "copyLink": "Copier le lien",

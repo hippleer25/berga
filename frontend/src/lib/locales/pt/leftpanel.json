@@ -7,6 +7,7 @@
   "options": "Opções",
   "folderOptions": "Opções da pasta",
   "feedOptions": "Opções do feed",
+  "feedError": "Erro no feed",
   "newSubfolder": "Nova subpasta",
   "copyLink": "Copiar link",
   "delete": "Excluir",

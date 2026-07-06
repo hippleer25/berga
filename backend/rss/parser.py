@@ -17,6 +17,7 @@ from jose import jwt, JWTError
 from auth.token import ALGORITHM, SECRET_KEY
 from database.init_db import get_db
 from database.qdrant_utils import add_item_to_qdrant
+from i18n.locale_map import accept_language_header
 from intelligence.embeddings import (
     build_embedding_text,
     embedding_text,
@@ -32,6 +33,21 @@ FEED_FETCH_TIMEOUT = int(os.getenv("FEED_FETCH_TIMEOUT", "15"))
 FEED_PARSER_MAX_WORKERS = int(os.getenv("FEED_PARSER_MAX_WORKERS", "10"))
 
 _executor = ThreadPoolExecutor(max_workers=FEED_PARSER_MAX_WORKERS)
+
+FIREFOX_UA = "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0"
+
+
+def _feed_fetch_headers() -> dict:
+    """Browser-like headers so WAF/CDN-protected feeds don't block the fetch."""
+    return {
+        "User-Agent": FIREFOX_UA,
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,"
+            "application/rss+xml,application/atom+xml,*/*;q=0.8"
+        ),
+        "Accept-Language": accept_language_header(),
+        "Accept-Encoding": "gzip, deflate",
+    }
 
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("127.0.0.0/8"),
@@ -121,14 +137,16 @@ def _extract_image_url(entry: dict) -> str | None:
     return None
 
 
-async def fetch_feed_content(session: aiohttp.ClientSession, feed_url: str) -> str:
+async def fetch_feed_content(session: aiohttp.ClientSession, feed_url: str) -> bytes:
     timeout = aiohttp.ClientTimeout(total=FEED_FETCH_TIMEOUT)
-    async with session.get(feed_url, timeout=timeout) as response:
+    async with session.get(feed_url, timeout=timeout, headers=_feed_fetch_headers()) as response:
         response.raise_for_status()
-        return await response.text()
+        # Return raw bytes so feedparser can detect the charset from the
+        # XML <?xml encoding?> declaration itself.
+        return await response.read()
 
 
-def parse_and_save_feed(feed_url: str, raw_content: str = None):
+def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None):
     parsed = feedparser.parse(raw_content if raw_content else feed_url)
     feed_sha256 = hashlib.sha256(feed_url.encode()).hexdigest()
 
@@ -160,7 +178,9 @@ def parse_and_save_feed(feed_url: str, raw_content: str = None):
                 feed_last_update = %s,
                 entries_count = %s,
                 last_parsed_at = NOW(),
-                parsed = parsed + 1
+                parsed = parsed + 1,
+                last_error = NULL,
+                last_error_at = NULL
             WHERE feed_sha256 = %s
             """, (
                 title_feed, link_feed, description_feed,
@@ -233,11 +253,31 @@ def parse_and_save_feed(feed_url: str, raw_content: str = None):
             cursor.close()
 
 
+def _record_feed_error(feed_url: str, error_msg: str) -> None:
+    """Persist the last fetch/parse error on the feeds row so the UI can surface it."""
+    feed_sha256 = hashlib.sha256(feed_url.encode()).hexdigest()
+    truncated = (error_msg or "")[:500]
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    "UPDATE feeds SET last_error = %s, last_error_at = NOW() WHERE feed_sha256 = %s",
+                    (truncated, feed_sha256),
+                )
+                conn.commit()
+            finally:
+                cursor.close()
+    except Exception:
+        logger.warning("Could not record feed error for %s", feed_url, exc_info=True)
+
+
 async def parse_and_save_feed_async(
     session: aiohttp.ClientSession,
     feed_url: str,
 ) -> dict:
     if not _validate_feed_url(feed_url):
+        _record_feed_error(feed_url, "Feed URL rejected: internal/private address not allowed")
         return {
             "feed_url": feed_url,
             "result": {"status": "error", "message": "Feed URL rejected: internal/private address not allowed"},
@@ -245,6 +285,7 @@ async def parse_and_save_feed_async(
     try:
         raw_content = await fetch_feed_content(session, feed_url)
     except Exception as e:
+        _record_feed_error(feed_url, f"Fetch failed: {e}")
         return {
             "feed_url": feed_url,
             "result": {"status": "error", "message": f"Fetch failed: {e}"},
@@ -256,6 +297,8 @@ async def parse_and_save_feed_async(
         feed_url,
         raw_content,
     )
+    if isinstance(result, dict) and result.get("status") == "error":
+        _record_feed_error(feed_url, result.get("message", "Parse failed"))
     return {"feed_url": feed_url, "result": result}
 
 

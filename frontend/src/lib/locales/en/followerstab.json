@@ -18,6 +18,7 @@
   "options": "Options",
   "folderOptions": "Folder options",
   "feedOptions": "Feed options",
+  "feedError": "Feed error",
   "newSubfolder": "New subfolder",
   "moveToFolder": "Move to folder",
   "copyLink": "Copy link",

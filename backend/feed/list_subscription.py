@@ -16,7 +16,9 @@ def userlist(user_id: int) -> dict:
                 f.feed_description,
                 f.feed_lang,
                 f.feed_last_update,
-                f.entries_count
+                f.entries_count,
+                f.last_error,
+                f.last_error_at
             FROM feeds f
             JOIN user_subscriptions us
                 ON us.feed_sha256 = f.feed_sha256
@@ -102,6 +104,8 @@ def userlist(user_id: int) -> dict:
             "lang":           f["feed_lang"],
             "last_update":    f["feed_last_update"].isoformat() if f["feed_last_update"] else None,
             "entries_count":  f["entries_count"],
+            "last_error":     f["last_error"],
+            "last_error_at":  f["last_error_at"].isoformat() if f["last_error_at"] else None,
             "tags":           tags_by_feed.get(sha, []),
             "folder": {
                 "id":       folder_info["id"],

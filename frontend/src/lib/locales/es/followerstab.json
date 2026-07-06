@@ -18,6 +18,7 @@
   "options": "Opciones",
   "folderOptions": "Opciones de carpeta",
   "feedOptions": "Opciones del feed",
+  "feedError": "Error del feed",
   "newSubfolder": "Nueva subcarpeta",
   "moveToFolder": "Mover a carpeta",
   "copyLink": "Copiar enlace",

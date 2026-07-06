@@ -7,6 +7,7 @@
   "options": "Options",
   "folderOptions": "Folder options",
   "feedOptions": "Feed options",
+  "feedError": "Feed error",
   "newSubfolder": "New subfolder",
   "copyLink": "Copy link",
   "delete": "Delete",

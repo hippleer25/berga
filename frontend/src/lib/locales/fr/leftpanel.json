@@ -7,6 +7,7 @@
   "options": "Options",
   "folderOptions": "Options du dossier",
   "feedOptions": "Options du flux",
+  "feedError": "Erreur du flux",
   "newSubfolder": "Nouveau sous-dossier",
   "copyLink": "Copier le lien",
   "delete": "Supprimer",

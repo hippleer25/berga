@@ -18,6 +18,7 @@
   "options": "Opções",
   "folderOptions": "Opções da pasta",
   "feedOptions": "Opções do feed",
+  "feedError": "Erro no feed",
   "newSubfolder": "Nova subpasta",
   "moveToFolder": "Mover para pasta",
   "copyLink": "Copiar link",

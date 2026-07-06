@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Rss, ChevronRight, ChevronDown, X, MoreHorizontal, FolderPlus, Trash2, Share2, FolderOpen, Folder } from '@lucide/svelte';
+    import { Rss, ChevronRight, ChevronDown, X, MoreHorizontal, FolderPlus, Trash2, Share2, FolderOpen, Folder, AlertTriangle } from '@lucide/svelte';
     import { t } from 'svelte-i18n';
     import { get } from 'svelte/store';
 import { notifySubscriptionChanged } from '$lib/stores/subscription';
@@ -14,6 +14,7 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
         url: string | null;
         title?: string;
         icon?: string;
+        last_error?: string | null;
         folder?: { id: number; name: string; parent_id?: number | null } | null;
         _empty_folder?: boolean;
     };
@@ -427,6 +428,15 @@ style="padding-left: {28 + indent}px;"
                                             </span>
                                         {/if}
                                         <span class="feed-label">{feedDisplayTitle(feed)}</span>
+                                        {#if feed.last_error}
+                                            <span
+                                                class="feed-error-badge"
+                                                title="{$t('leftpanel.feedError')}: {feed.last_error}"
+                                                role="status"
+                                            >
+                                                <AlertTriangle size={12} strokeWidth={2} />
+                                            </span>
+                                        {/if}
                                         <button
                                             class="more-btn"
                                             title="{$t('leftpanel.options')}"
@@ -757,6 +767,15 @@ style="padding-left: {28 + indent}px;"
         overflow: hidden;
         text-overflow: ellipsis;
         line-height: 1.35;
+    }
+
+    .feed-error-badge {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        color: var(--color-warning, #f59e0b);
+        cursor: help;
+        opacity: 0.85;
     }
 
     .more-btn {

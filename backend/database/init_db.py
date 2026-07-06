@@ -221,6 +221,11 @@ def _migrate_smart_tags(cursor) -> None:
     _add_column_if_missing(cursor, "smart_tags", "ai_reinforcement_enabled", "TINYINT(1) DEFAULT 1")
 
 
+def _migrate_feeds(cursor) -> None:
+    _add_column_if_missing(cursor, "feeds", "last_error", "TEXT DEFAULT NULL")
+    _add_column_if_missing(cursor, "feeds", "last_error_at", "DATETIME DEFAULT NULL")
+
+
 _TABLE_OPTIONS = f"DEFAULT CHARSET={_CHARSET} COLLATE={_COLLATE}"
 
 
@@ -255,9 +260,12 @@ def init_db():
                 active_users INT DEFAULT 0,
                 total_users INT DEFAULT 0,
                 parsed INT DEFAULT 0,
-                post_count_30d INT DEFAULT 0
+                post_count_30d INT DEFAULT 0,
+                last_error TEXT DEFAULT NULL,
+                last_error_at DATETIME DEFAULT NULL
             ) {_TABLE_OPTIONS}
             """)
+            _migrate_feeds(cursor)
             cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS user_subscriptions (
                 user_id INT,
