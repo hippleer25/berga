@@ -7,8 +7,14 @@ def get_all(feed_sha256, user):
         cursor = conn.cursor(dictionary=True)
         try:
             cursor.execute(
-                "SELECT * FROM feeds WHERE feed_sha256 = %s",
-                (feed_sha256,),
+                """
+                SELECT f.*, COALESCE(ufo.custom_title, f.feed_title) AS feed_title
+                FROM feeds f
+                LEFT JOIN user_feed_overrides ufo
+                  ON ufo.user_id = %s AND ufo.feed_sha256 = f.feed_sha256
+                WHERE f.feed_sha256 = %s
+                """,
+                (user["id"], feed_sha256),
             )
             feed = cursor.fetchone()
             if not feed:

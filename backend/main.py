@@ -604,8 +604,8 @@ async def route_opml_export(user: dict = Depends(get_current_user)):
 
 
 @app.post("/api/following_structure/")
-async def structure_route(body: StructureRequest, user=Depends(get_current_user)):
-    return await following_structure(body, user)
+async def structure_route(body: StructureRequest, request: Request, user=Depends(get_current_user)):
+    return await following_structure(body, user, request)
 
 
 @app.get("/api/feed/events")

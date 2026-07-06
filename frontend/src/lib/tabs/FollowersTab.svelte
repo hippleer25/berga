@@ -5,7 +5,7 @@
 import {
   Rss, ChevronRight, ChevronDown, X, MoreHorizontal, FolderPlus,
   Trash2, Folder, Plus, Search, MoveRight,
-  Link, GripVertical
+  Link, GripVertical, Pencil, RefreshCw, Loader2
 } from '@lucide/svelte';
     import { t, locale } from 'svelte-i18n';
     import { get } from 'svelte/store';
@@ -68,6 +68,23 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
     // New folder dialog
     let newFolderDialog = $state<{ parentFolderKey: number | null; parentFolderName: string | null; name: string } | null>(null);
 
+    // Edit feed dialog
+    let editFeedDialog = $state<{
+        feedId: string;
+        feedUrl: string;
+        title: string;
+        originalUrl: string;
+        originalTitle: string;
+    } | null>(null);
+    let editFeedSaving = $state(false);
+    let editFeedInput = $state<HTMLInputElement | null>(null);
+
+    // Per-feed refresh tracking
+    let refreshingFeedSha = $state<string | null>(null);
+
+    // Track feeds whose favicon image failed to load -> show fallback
+    let brokenIcons = $state<Set<string>>(new Set());
+
 // ── Mount ─────────────────────────────────────────────
 onMount(() => {
 	loadSubscriptions();
@@ -88,7 +105,10 @@ async function loadSubscriptions(quiet = false) {
         else isRefreshing = true;
         subsError = '';
         try {
-            const res = await apiFetch('/api/list-subscriptions', { credentials: 'include' });
+            const res = await apiFetch('/api/list-subscriptions', {
+                credentials: 'include',
+                cache: 'no-cache', // always revalidate; backend ETag serves 304 when unchanged
+            });
             if (res.status === 401) { window.location.replace('/'); return; }
             if (!res.ok) throw new Error(`${get(t)('followerstab.loadError')} (${res.status})`);
             const raw  = await res.json();
@@ -374,6 +394,116 @@ async function loadSubscriptions(quiet = false) {
         } catch (err) { console.error('Create folder failed:', err); }
         newFolderDialog = null;
     }
+
+    // ── Edit / Refresh Feed ───────────────────────────────
+    function openEditFeedDialog() {
+        if (!contextMenu || contextMenu.type !== 'feed') return;
+        const url = contextMenu.url ?? '';
+        const title = contextMenu.name ?? '';
+        editFeedDialog = {
+            feedId: contextMenu.id,
+            feedUrl: url,
+            title: title === url ? '' : title,
+            originalUrl: url,
+            originalTitle: title,
+        };
+        contextMenu = null;
+        setTimeout(() => editFeedInput?.focus(), 50);
+    }
+
+    function closeEditFeedDialog() {
+        editFeedDialog = null;
+        editFeedSaving = false;
+    }
+
+    async function saveEditFeed() {
+        if (!editFeedDialog || editFeedSaving) return;
+        const { feedId, feedUrl, title, originalUrl, originalTitle } = editFeedDialog;
+        const newUrl = feedUrl.trim();
+        const newTitle = title.trim();
+        const urlChanged = !!newUrl && newUrl !== originalUrl;
+        const titleChanged = newTitle !== (originalTitle === originalUrl ? '' : originalTitle);
+
+        if (!urlChanged && !titleChanged) { closeEditFeedDialog(); return; }
+
+        editFeedSaving = true;
+        editFeedDialog = null; // close dialog immediately to prevent re-entrancy
+
+        // Snapshot the existing feed entry so we can restore folder placement
+        // and fall back to the original title/icon for the optimistic update.
+        const oldFeed = subsData.find(f => f.feed_sha256 === feedId);
+        const oldFolder = oldFeed?.folder ?? null;
+        const oldIcon = oldFeed?.icon;
+        const baseTitle = (oldFeed?.title && oldFeed.title !== oldFeed.url) ? oldFeed.title : undefined;
+
+        try {
+            let targetId = feedId;
+            let finalUrl = originalUrl;
+            let finalTitle = titleChanged ? newTitle : baseTitle;
+
+            if (urlChanged) {
+                const res = await callStructureApi('edit_feed_url', { feed: feedId, feed_url: newUrl });
+                if (!res.feed) throw new Error('Server did not return the new feed id');
+                targetId = res.feed; // backend returns new feed_sha256
+                finalUrl = newUrl;
+                notifySubscriptionChanged();
+
+                // Optimistic update: replace the old feed entry with the new
+                // one IN-PLACE so the page reflects the change instantly and
+                // stale feed_sha256 values can no longer be acted upon.
+                subsData = subsData.map(f =>
+                    f.feed_sha256 === feedId
+                        ? { ...f, feed_sha256: targetId, url: finalUrl, title: finalTitle, icon: oldIcon, folder: oldFolder }
+                        : f
+                );
+            } else if (titleChanged) {
+                // Rename-only: update the title on the existing entry.
+                subsData = subsData.map(f =>
+                    f.feed_sha256 === feedId
+                        ? { ...f, title: finalTitle }
+                        : f
+                );
+            }
+
+            if (titleChanged) {
+                await callStructureApi('rename_feed', { feed: targetId, name: newTitle });
+                subsData = subsData.map(f =>
+                    f.feed_sha256 === targetId ? { ...f, title: newTitle } : f
+                );
+            }
+
+            // Background sync to pick up the freshly-parsed icon/entries and
+            // confirm server state. Non-blocking; the UI already reflects the edit.
+            loadSubscriptions(true).catch((e) => console.error('reload after edit failed:', e));
+        } catch (err) {
+            console.error('Edit feed failed:', err);
+            alert(err instanceof Error ? err.message : String(err));
+            // Revert to authoritative server state on error.
+            await loadSubscriptions(true);
+        } finally {
+            editFeedSaving = false;
+        }
+    }
+
+    async function refreshFeed() {
+        if (!contextMenu || contextMenu.type !== 'feed') return;
+        const feedId = contextMenu.id;
+        contextMenu = null;
+        refreshingFeedSha = feedId;
+        try {
+            await callStructureApi('refresh_feed', { feed: feedId });
+            // Background job enqueued; reload after a short delay so the
+            // freshly-parsed title/icon/entries appear.
+            setTimeout(async () => {
+                await loadSubscriptions(true);
+                notifySubscriptionChanged();
+            }, 2500);
+        } catch (err) {
+            console.error('Refresh feed failed:', err);
+        } finally {
+            setTimeout(() => (refreshingFeedSha = null), 3000);
+        }
+    }
 </script>
 
 <!-- ── Snippets ─────────────────────────────────────── -->
@@ -542,16 +672,20 @@ async function loadSubscriptions(quiet = false) {
                                             <GripVertical size={14} strokeWidth={2} />
                                         </span>
 
-                                        {#if feed.icon}
+                                        {#if refreshingFeedSha === feed.feed_sha256}
+                                            <span class="feed-favicon-fallback feed-favicon-spin">
+                                                <Loader2 size={13} />
+                                            </span>
+                                        {:else if feed.icon && !brokenIcons.has(feed.feed_sha256!)}
                                             <img
                                                 src={feed.icon}
                                                 alt=""
                                                 class="feed-favicon"
-                                                onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                onerror={() => { brokenIcons.add(feed.feed_sha256!); brokenIcons = new Set(brokenIcons); }}
                                             />
                                         {:else}
                                             <span class="feed-favicon-fallback">
-                                                <Rss size={11} />
+                                                <Rss size={13} />
                                             </span>
                                         {/if}
 
@@ -597,6 +731,14 @@ async function loadSubscriptions(quiet = false) {
         {/if}
 
         {#if contextMenu.type === 'feed'}
+            <button class="ctx-item" onclick={openEditFeedDialog}>
+                <Pencil size={14} strokeWidth={2} />
+                <span>{$t('followerstab.editFeed')}</span>
+            </button>
+            <button class="ctx-item" onclick={refreshFeed}>
+                <RefreshCw size={14} strokeWidth={2} />
+                <span>{$t('followerstab.refreshFeed')}</span>
+            </button>
             <button class="ctx-item" onclick={openMovePicker}>
                 <MoveRight size={14} strokeWidth={2} />
                 <span>{$t('followerstab.moveToFolder')}</span>
@@ -713,6 +855,67 @@ async function loadSubscriptions(quiet = false) {
                 disabled={!newFolderDialog.name.trim()}
             >
                 {$t('followerstab.create')}
+            </button>
+        </div>
+    </div>
+{/if}
+
+<!-- ── Edit Feed Dialog ──────────────────────────────────── -->
+{#if editFeedDialog}
+    <div class="dialog-backdrop" onclick={closeEditFeedDialog} aria-hidden="true"></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="{$t('followerstab.editFeedTitle')}">
+        <div class="dialog-header">
+            <p class="dialog-title">{$t('followerstab.editFeedTitle')}</p>
+            <button class="dialog-close" onclick={closeEditFeedDialog} aria-label="{$t('followerstab.close')}">
+                <X size={16} strokeWidth={2} />
+            </button>
+        </div>
+        <p class="dialog-sub">{$t('followerstab.editFeedSubtitle')}</p>
+
+        <label class="dialog-field-label" for="edit-feed-url">{$t('followerstab.feedUrl')}</label>
+        <div class="dialog-input-row">
+            <Link size={14} strokeWidth={2} class="dialog-input-icon" />
+            <input
+                id="edit-feed-url"
+                bind:this={editFeedInput}
+                class="dialog-input"
+                type="text"
+                placeholder="https://example.com/feed.xml"
+                bind:value={editFeedDialog.feedUrl}
+                onkeydown={(e) => {
+                    if (e.key === 'Enter') saveEditFeed();
+                    if (e.key === 'Escape') closeEditFeedDialog();
+                }}
+            />
+        </div>
+
+        <label class="dialog-field-label" for="edit-feed-title">{$t('followerstab.displayName')}</label>
+        <div class="dialog-input-row">
+            <Pencil size={14} strokeWidth={2} class="dialog-input-icon" />
+            <input
+                id="edit-feed-title"
+                class="dialog-input"
+                type="text"
+                placeholder="{$t('followerstab.displayNamePlaceholder')}"
+                bind:value={editFeedDialog.title}
+                onkeydown={(e) => {
+                    if (e.key === 'Enter') saveEditFeed();
+                    if (e.key === 'Escape') closeEditFeedDialog();
+                }}
+            />
+        </div>
+
+        <div class="dialog-actions">
+            <button class="dialog-btn dialog-btn--ghost" onclick={closeEditFeedDialog} disabled={editFeedSaving}>
+                {$t('followerstab.cancel')}
+            </button>
+            <button
+                class="dialog-btn dialog-btn--primary"
+                onclick={saveEditFeed}
+                disabled={editFeedSaving || !editFeedDialog.feedUrl.trim()}
+            >
+                {#if editFeedSaving}<span class="btn-spin"><Loader2 size={14} /></span>{/if}
+                {$t('followerstab.save')}
             </button>
         </div>
     </div>
@@ -1112,9 +1315,32 @@ async function loadSubscriptions(quiet = false) {
         align-items: center;
         justify-content: center;
         color: var(--color-accent);
-        opacity: 0.35;
+        opacity: 0.9;
+        background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+        border-radius: 4px;
         flex-shrink: 0;
     }
+
+    .feed-favicon-spin {
+        animation: berga-spin 0.8s linear infinite;
+    }
+    .btn-spin {
+        display: inline-flex;
+        align-items: center;
+        animation: berga-spin 0.8s linear infinite;
+    }
+    @keyframes berga-spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .dialog-field-label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+        margin: 14px 0 6px 2px;
+    }
+    .dialog-field-label:first-of-type { margin-top: 4px; }
 
     .feed-label {
         flex: 1;

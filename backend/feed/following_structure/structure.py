@@ -20,6 +20,9 @@ class StructureRequest(BaseModel):
     folder: str | None = None   # folder SHA-256 being acted on
     feed: str | None = None     # feed_sha256 being acted on
 
+    # edit_feed_url — new feed URL to subscribe to (replaces the old one)
+    feed_url: str | None = None
+
 
 # ---------------------------------------------------------------------------
 # Folder helpers
@@ -269,6 +272,164 @@ def _move_folder(cursor, user_id: int, folder_id: str, new_parent_id: str | None
     return {"moved_folder": folder_id, "to_parent_id": new_parent_id}
 
 
+def _rename_feed(cursor, user_id: int, feed_sha256: str, custom_title: str | None) -> dict:
+    if not _feed_belongs_to_user(cursor, feed_sha256, user_id):
+        raise HTTPException(status_code=403, detail="Feed not found or access denied")
+
+    if custom_title is None or not custom_title.strip():
+        cursor.execute(
+            "DELETE FROM user_feed_overrides WHERE user_id = %s AND feed_sha256 = %s",
+            (user_id, feed_sha256),
+        )
+        return {"feed": feed_sha256, "custom_title": None, "cleared": True}
+
+    custom_title = custom_title.strip()
+    cursor.execute(
+        """
+        INSERT INTO user_feed_overrides (user_id, feed_sha256, custom_title)
+        VALUES (%s, %s, %s)
+        ON DUPLICATE KEY UPDATE custom_title = VALUES(custom_title)
+        """,
+        (user_id, feed_sha256, custom_title),
+    )
+    return {"feed": feed_sha256, "custom_title": custom_title}
+
+
+def _resolve_feed_url(cursor, feed_sha256: str) -> str:
+    cursor.execute(
+        "SELECT feed_url FROM feeds WHERE feed_sha256 = %s",
+        (feed_sha256,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    return row[0]
+
+
+def _refresh_feed(cursor, user_id: int, feed_sha256: str) -> dict:
+    if not _feed_belongs_to_user(cursor, feed_sha256, user_id):
+        raise HTTPException(status_code=403, detail="Feed not found or access denied")
+    feed_url = _resolve_feed_url(cursor, feed_sha256)
+    return {"feed": feed_sha256, "feed_url": feed_url, "refresh": True}
+
+
+def _edit_feed_url(cursor, user_id: int, feed_sha256: str, new_feed_url: str) -> dict:
+    if not _feed_belongs_to_user(cursor, feed_sha256, user_id):
+        raise HTTPException(status_code=403, detail="Feed not found or access denied")
+
+    if not new_feed_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Invalid URL: must start with http:// or https://")
+
+    new_sha = hashlib.sha256(new_feed_url.encode()).hexdigest()
+
+    # Nothing to do if the URL is unchanged.
+    if new_sha == feed_sha256:
+        return {"feed": feed_sha256, "feed_url": new_feed_url, "unchanged": True}
+
+    # Preserve folder assignment + tags across the re-subscribe.
+    cursor.execute(
+        "SELECT folder_id FROM feed_folders WHERE user_id = %s AND feed_sha256 = %s",
+        (user_id, feed_sha256),
+    )
+    folder_row = cursor.fetchone()
+    folder_id = folder_row[0] if folder_row else None
+
+    cursor.execute(
+        "SELECT tag FROM feed_tags WHERE user_id = %s AND feed_sha256 = %s",
+        (user_id, feed_sha256),
+    )
+    tags = [row[0] for row in cursor.fetchall()]
+
+    # Preserve the per-user rename across the re-subscribe (mirrors folder/tags).
+    cursor.execute(
+        "SELECT custom_title FROM user_feed_overrides WHERE user_id = %s AND feed_sha256 = %s",
+        (user_id, feed_sha256),
+    )
+    ov_row = cursor.fetchone()
+    custom_title = ov_row[0] if ov_row else None
+
+    old_feed_url = _resolve_feed_url(cursor, feed_sha256)
+
+    # Unsubscribe from the old feed (cascades feed_folders/feed_tags for this user).
+    cursor.execute(
+        "DELETE FROM user_subscriptions WHERE user_id = %s AND feed_sha256 = %s",
+        (user_id, feed_sha256),
+    )
+    cursor.execute(
+        "DELETE FROM feed_folders WHERE user_id = %s AND feed_sha256 = %s",
+        (user_id, feed_sha256),
+    )
+    cursor.execute(
+        "DELETE FROM feed_tags WHERE user_id = %s AND feed_sha256 = %s",
+        (user_id, feed_sha256),
+    )
+    cursor.execute(
+        "DELETE FROM user_feed_overrides WHERE user_id = %s AND feed_sha256 = %s",
+        (user_id, feed_sha256),
+    )
+    cursor.execute(
+        """
+        UPDATE feeds
+        SET total_users = (
+            SELECT COUNT(*) FROM user_subscriptions WHERE feed_sha256 = %s
+        )
+        WHERE feed_sha256 = %s
+        """,
+        (feed_sha256, feed_sha256),
+    )
+
+    # Subscribe to the new feed.
+    cursor.execute(
+        "INSERT IGNORE INTO feeds (feed_sha256, feed_url) VALUES (%s, %s)",
+        (new_sha, new_feed_url),
+    )
+    cursor.execute(
+        "INSERT IGNORE INTO user_subscriptions (user_id, feed_sha256) VALUES (%s, %s)",
+        (user_id, new_sha),
+    )
+    cursor.execute(
+        """
+        UPDATE feeds
+        SET total_users = (
+            SELECT COUNT(*) FROM user_subscriptions WHERE feed_sha256 = %s
+        )
+        WHERE feed_sha256 = %s
+        """,
+        (new_sha, new_sha),
+    )
+
+    # Restore folder placement + tags.
+    if folder_id is not None:
+        cursor.execute(
+            "INSERT IGNORE INTO feed_folders (user_id, feed_sha256, folder_id) VALUES (%s, %s, %s)",
+            (user_id, new_sha, folder_id),
+        )
+    for tag in tags:
+        cursor.execute(
+            "INSERT IGNORE INTO feed_tags (user_id, feed_sha256, tag) VALUES (%s, %s, %s)",
+            (user_id, new_sha, tag),
+        )
+
+    # Re-apply the per-user rename to the new feed_sha256.
+    if custom_title is not None:
+        cursor.execute(
+            """
+            INSERT INTO user_feed_overrides (user_id, feed_sha256, custom_title)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE custom_title = VALUES(custom_title)
+            """,
+            (user_id, new_sha, custom_title),
+        )
+
+    return {
+        "old_feed": feed_sha256,
+        "feed": new_sha,
+        "feed_url": new_feed_url,
+        "old_feed_url": old_feed_url,
+        "refresh": True,
+    }
+
+
 # ---------------------------------------------------------------------------
 # list_subscriptions — feeds + empty folders
 # ---------------------------------------------------------------------------
@@ -291,18 +452,21 @@ def list_subscriptions(user_id: int) -> dict:
             SELECT
                 f.feed_sha256,
                 f.feed_url        AS url,
-                f.feed_title      AS title,
+                COALESCE(ufo.custom_title, f.feed_title) AS title,
                 f.feed_icon       AS icon,
                 fo.id             AS folder_id,
                 fo.name           AS folder_name,
                 fo.parent_id      AS folder_parent_id
             FROM user_subscriptions us
             JOIN feeds f ON f.feed_sha256 = us.feed_sha256
+            LEFT JOIN user_feed_overrides ufo
+                 ON ufo.user_id = us.user_id
+                AND ufo.feed_sha256 = f.feed_sha256
             LEFT JOIN feed_folders ff ON ff.user_id = us.user_id
                                      AND ff.feed_sha256 = f.feed_sha256
             LEFT JOIN folders fo ON fo.id = ff.folder_id
             WHERE us.user_id = %s
-            ORDER BY fo.name, f.feed_title
+            ORDER BY fo.name, COALESCE(ufo.custom_title, f.feed_title)
             """,
             (user_id,),
         )
@@ -367,10 +531,13 @@ def list_subscriptions(user_id: int) -> dict:
 # FastAPI endpoint
 # ---------------------------------------------------------------------------
 
-VALID_TASKS = {"create_folder", "delete_folder", "delete_feed", "move_feed", "move_folder"}
+VALID_TASKS = {
+    "create_folder", "delete_folder", "delete_feed", "move_feed", "move_folder",
+    "rename_feed", "edit_feed_url", "refresh_feed",
+}
 
 
-async def following_structure(body: StructureRequest, user: dict):
+async def following_structure(body: StructureRequest, user: dict, request=None):
     if body.task not in VALID_TASKS:
         raise HTTPException(
             status_code=400,
@@ -409,6 +576,23 @@ async def following_structure(body: StructureRequest, user: dict):
                     raise HTTPException(status_code=400, detail="'folder' is required for move_folder")
                 result = _move_folder(cursor, user_id, body.folder, body.parent_folder)
 
+            case "rename_feed":
+                if not body.feed:
+                    raise HTTPException(status_code=400, detail="'feed' is required for rename_feed")
+                result = _rename_feed(cursor, user_id, body.feed, body.name)
+
+            case "edit_feed_url":
+                if not body.feed:
+                    raise HTTPException(status_code=400, detail="'feed' is required for edit_feed_url")
+                if not body.feed_url:
+                    raise HTTPException(status_code=400, detail="'feed_url' is required for edit_feed_url")
+                result = _edit_feed_url(cursor, user_id, body.feed, body.feed_url)
+
+            case "refresh_feed":
+                if not body.feed:
+                    raise HTTPException(status_code=400, detail="'feed' is required for refresh_feed")
+                result = _refresh_feed(cursor, user_id, body.feed)
+
         conn.commit()
 
     except HTTPException:
@@ -422,5 +606,15 @@ async def following_structure(body: StructureRequest, user: dict):
     finally:
         cursor.close()
         conn.close()
+
+    # Enqueue a background parse for refresh / edit_feed_url when an arq pool
+    # is available. Falls back to returning the URL so the caller can decide.
+    if result.get("refresh") and result.get("feed_url"):
+        target_url = result["feed_url"]
+        if request is not None and getattr(request.app.state, "arq", None):
+            await request.app.state.arq.enqueue_job(
+                "parse_single_feed_for_user", user_id, target_url
+            )
+            result["enqueued"] = True
 
     return {"ok": True, "task": body.task, **result}

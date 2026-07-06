@@ -225,6 +225,15 @@ async def parse_feeds_for_user(ctx, user_id: int):
     return result
 
 
+async def parse_single_feed_for_user(ctx, user_id: int, feed_url: str):
+    """Background refresh of a single feed for a user (manual trigger)."""
+    logger.info("parse_single_feed_for_user(user=%d, url=%s)", user_id, feed_url)
+    async with aiohttp.ClientSession() as session:
+        result = await parse_and_save_feed_async(session, feed_url)
+    await asyncio.to_thread(_evaluate_tags_for_users_sync, [user_id])
+    return result
+
+
 async def refresh_weekly_events(ctx):
     logger.info("Starting weekly events refresh...")
     redis = ctx["redis"]
@@ -929,6 +938,7 @@ class WorkerSettings:
         refresh_weekly_events,
         refresh_all_publisher_freq,
         parse_feeds_for_user,
+        parse_single_feed_for_user,
         reembed_all,
         reimage_all,
         refresh_auto_tags,

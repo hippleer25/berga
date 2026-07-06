@@ -33,5 +33,13 @@
   "insideFolder": "Inside \"",
   "folderNamePlaceholder": "Folder name…",
   "create": "Create",
-  "back": "Back"
+  "back": "Back",
+  "editFeed": "Edit feed",
+  "refreshFeed": "Refresh feed",
+  "editFeedTitle": "Edit feed",
+  "editFeedSubtitle": "Change the feed URL or rename it (only for you).",
+  "feedUrl": "Feed URL",
+  "displayName": "Display name",
+  "displayNamePlaceholder": "Custom name (optional)",
+  "save": "Save"
 }

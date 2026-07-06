@@ -33,5 +33,13 @@
   "insideFolder": "Dans \"",
   "folderNamePlaceholder": "Nom du dossier…",
   "create": "Créer",
-  "back": "Retour"
+  "back": "Retour",
+  "editFeed": "Modifier le flux",
+  "refreshFeed": "Actualiser le flux",
+  "editFeedTitle": "Modifier le flux",
+  "editFeedSubtitle": "Modifiez l'URL du flux ou renommez-le (uniquement pour vous).",
+  "feedUrl": "URL du flux",
+  "displayName": "Nom d'affichage",
+  "displayNamePlaceholder": "Nom personnalisé (facultatif)",
+  "save": "Enregistrer"
 }

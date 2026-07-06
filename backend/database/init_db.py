@@ -342,6 +342,16 @@ def init_db():
             ) {_TABLE_OPTIONS}
             """)
             cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS user_feed_overrides (
+                user_id INT,
+                feed_sha256 VARCHAR(64),
+                custom_title VARCHAR(255),
+                PRIMARY KEY (user_id, feed_sha256),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (feed_sha256) REFERENCES feeds(feed_sha256) ON DELETE CASCADE
+            ) {_TABLE_OPTIONS}
+            """)
+            cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS affinity_boosts (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 user_id INT NOT NULL,
