@@ -773,9 +773,9 @@ style="padding-left: {28 + indent}px;"
         display: flex;
         align-items: center;
         flex-shrink: 0;
-        color: var(--color-warning, #f59e0b);
+        color: var(--color-error, #e74c3c);
         cursor: help;
-        opacity: 0.85;
+        opacity: 1;
     }
 
     .more-btn {
