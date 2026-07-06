@@ -28,5 +28,8 @@
   "deleteComment": "Excluir",
   "deleteCommentConfirm": "Excluir este comentário?",
   "saveComment": "Salvar",
-  "commentPlaceholder": "Escreva seu comentário em markdown..."
+  "commentPlaceholder": "Escreva seu comentário em markdown...",
+  "mentionHint": "Digite @ para mencionar um artigo",
+  "mentionNoResults": "Nenhum artigo encontrado",
+  "mentionLoading": "Buscando..."
 }

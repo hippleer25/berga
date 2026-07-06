@@ -2,7 +2,8 @@
     import { page } from '$app/stores';
     import { goto, beforeNavigate } from '$app/navigation';
     import { onMount } from 'svelte';
-    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Layers, Tag, X, Highlighter, Trash2, MessageSquare, Bold, Italic, Heading, Link2, List, ListOrdered, Quote, Code } from '@lucide/svelte';
+    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Layers, Tag, X, Highlighter, Trash2, MessageSquare, AtSign, Bold, Italic, Heading, Link2, List, ListOrdered, Quote, Code } from '@lucide/svelte';
+    import ArticleMention from '$lib/components/ArticleMention.svelte';
 
 import { t, locale } from 'svelte-i18n';
 import { get } from 'svelte/store';
@@ -91,6 +92,37 @@ const HIGHLIGHT_PRESETS = ['#FFEB3B', '#66BB6A', '#42A5F5', '#F48FB1'] as const;
     let commentSaving  = $state(false);
     let commentError   = $state('');
     let commentDeleteConfirm = $state(false);
+    let commentEditor: HTMLTextAreaElement | undefined = $state();
+
+    function handleMentionAccept(snippet: string, start: number, end: number) {
+        const ta = commentEditor;
+        if (!ta) return;
+        commentText = commentText.slice(0, start) + snippet + commentText.slice(end);
+        requestAnimationFrame(() => {
+            ta.focus();
+            const pos = start + snippet.length;
+            ta.selectionStart = pos;
+            ta.selectionEnd = pos;
+        });
+    }
+
+    function insertMentionAt() {
+        const ta = commentEditor;
+        if (!ta) return;
+        editingComment = true;
+        commentVisible = true;
+        requestAnimationFrame(() => {
+            ta.focus();
+            const start = ta.selectionStart;
+            commentText = commentText.slice(0, start) + '@' + commentText.slice(ta.selectionEnd);
+            requestAnimationFrame(() => {
+                const pos = start + 1;
+                ta.selectionStart = pos;
+                ta.selectionEnd = pos;
+                ta.dispatchEvent(new InputEvent('input', { bubbles: true }));
+            });
+        });
+    }
 
 type ArticleTag = { tag_id: number; name: string; color?: string; source: string };
 type UserTag = { id: number; name: string; color?: string };
@@ -1144,6 +1176,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
                                         <button class="md-tb-btn" onclick={() => insertMarkdown('# ', '')} title="Heading"><Heading size={13} /></button>
                                         <button class="md-tb-btn" onclick={() => { const u = prompt('URL:'); if (u) insertMarkdown('[', `](${u})`); }} title="Link"><Link2 size={13} /></button>
                                         <button class="md-tb-btn" onclick={insertWikilink} title="Wikilink"><MessageSquare size={13} /></button>
+                                        <button class="md-tb-btn" onclick={insertMentionAt} title={$t('article.mentionHint')}><AtSign size={13} /></button>
                                         <button class="md-tb-btn" onclick={() => insertMarkdown('- ', '')} title="List"><List size={13} /></button>
                                         <button class="md-tb-btn" onclick={() => insertMarkdown('1. ', '')} title="Ordered list"><ListOrdered size={13} /></button>
                                         <button class="md-tb-btn" onclick={() => insertMarkdown('> ', '')} title="Quote"><Quote size={13} /></button>
@@ -1153,9 +1186,11 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
                                     <textarea
                                         id="comment-editor"
                                         class="comment-textarea"
+                                        bind:this={commentEditor}
                                         bind:value={commentText}
                                         placeholder={$t('article.commentPlaceholder')}
                                     ></textarea>
+                                    <ArticleMention textarea={commentEditor} onaccept={handleMentionAccept} />
                                     {#if commentError}
                                         <p class="comment-error">{commentError}</p>
                                     {/if}

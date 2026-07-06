@@ -28,5 +28,8 @@
   "deleteComment": "Löschen",
   "deleteCommentConfirm": "Diesen Kommentar löschen?",
   "saveComment": "Speichern",
-  "commentPlaceholder": "Schreibe deinen Kommentar in Markdown..."
+  "commentPlaceholder": "Schreibe deinen Kommentar in Markdown...",
+  "mentionHint": "@ tippen, um einen Artikel zu erwähnen",
+  "mentionNoResults": "Keine Artikel gefunden",
+  "mentionLoading": "Suche..."
 }
