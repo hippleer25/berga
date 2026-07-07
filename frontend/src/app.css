@@ -129,11 +129,169 @@ font-style: normal;
 font-display: swap;
 }
 
+@font-face {
+font-family: 'Atkinson Hyperlegible';
+src: url('/fonts/Atkinson_Hyperlegible/AtkinsonHyperlegible-Regular.ttf') format('truetype');
+font-weight: 400;
+font-style: normal;
+font-display: swap;
+}
+@font-face {
+font-family: 'Atkinson Hyperlegible';
+src: url('/fonts/Atkinson_Hyperlegible/AtkinsonHyperlegible-Bold.ttf') format('truetype');
+font-weight: 700;
+font-style: normal;
+font-display: swap;
+}
+@font-face {
+font-family: 'Atkinson Hyperlegible';
+src: url('/fonts/Atkinson_Hyperlegible/AtkinsonHyperlegible-Italic.ttf') format('truetype');
+font-weight: 400;
+font-style: italic;
+font-display: swap;
+}
+@font-face {
+font-family: 'Atkinson Hyperlegible';
+src: url('/fonts/Atkinson_Hyperlegible/AtkinsonHyperlegible-BoldItalic.ttf') format('truetype');
+font-weight: 700;
+font-style: italic;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'JetBrains Mono';
+src: url('/fonts/JetBrains_Mono/JetBrainsMono-VariableFont_wght.ttf') format('truetype');
+font-weight: 100 800;
+font-style: normal;
+font-display: swap;
+}
+@font-face {
+font-family: 'JetBrains Mono';
+src: url('/fonts/JetBrains_Mono/JetBrainsMono-Italic-VariableFont_wght.ttf') format('truetype');
+font-weight: 100 800;
+font-style: italic;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Lexend';
+src: url('/fonts/Lexend/Lexend-VariableFont_wght.ttf') format('truetype');
+font-weight: 100 900;
+font-style: normal;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Lora';
+src: url('/fonts/Lora/Lora-VariableFont_wght.ttf') format('truetype');
+font-weight: 400 700;
+font-style: normal;
+font-display: swap;
+}
+@font-face {
+font-family: 'Lora';
+src: url('/fonts/Lora/Lora-Italic-VariableFont_wght.ttf') format('truetype');
+font-weight: 400 700;
+font-style: italic;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Source Serif 4';
+src: url('/fonts/Source_Serif_4/SourceSerif4-VariableFont_opsz,wght.ttf') format('truetype');
+font-weight: 200 900;
+font-style: normal;
+font-display: swap;
+}
+@font-face {
+font-family: 'Source Serif 4';
+src: url('/fonts/Source_Serif_4/SourceSerif4-Italic-VariableFont_opsz,wght.ttf') format('truetype');
+font-weight: 200 900;
+font-style: italic;
+font-display: swap;
+}
+
+@font-face {
+font-family: 'Spectral';
+src: url('/fonts/Spectral/Spectral-Regular.ttf') format('truetype');
+font-weight: 400;
+font-style: normal;
+font-display: swap;
+}
+@font-face {
+font-family: 'Spectral';
+src: url('/fonts/Spectral/Spectral-Italic.ttf') format('truetype');
+font-weight: 400;
+font-style: italic;
+font-display: swap;
+}
+@font-face {
+font-family: 'Spectral';
+src: url('/fonts/Spectral/Spectral-Medium.ttf') format('truetype');
+font-weight: 500;
+font-style: normal;
+font-display: swap;
+}
+@font-face {
+font-family: 'Spectral';
+src: url('/fonts/Spectral/Spectral-MediumItalic.ttf') format('truetype');
+font-weight: 500;
+font-style: italic;
+font-display: swap;
+}
+@font-face {
+font-family: 'Spectral';
+src: url('/fonts/Spectral/Spectral-SemiBold.ttf') format('truetype');
+font-weight: 600;
+font-style: normal;
+font-display: swap;
+}
+@font-face {
+font-family: 'Spectral';
+src: url('/fonts/Spectral/Spectral-SemiBoldItalic.ttf') format('truetype');
+font-weight: 600;
+font-style: italic;
+font-display: swap;
+}
+@font-face {
+font-family: 'Spectral';
+src: url('/fonts/Spectral/Spectral-Bold.ttf') format('truetype');
+font-weight: 700;
+font-style: normal;
+font-display: swap;
+}
+@font-face {
+font-family: 'Spectral';
+src: url('/fonts/Spectral/Spectral-BoldItalic.ttf') format('truetype');
+font-weight: 700;
+font-style: italic;
+font-display: swap;
+}
+
 :root {
 --font-page-title: 'Newsreader', serif;
 --font-post-title: 'PT Serif', serif;
 --font-article-body: 'Inter', sans-serif;
 --font-ui: 'Inter', sans-serif;
+
+/* Article typography */
+--article-font-size: 1.125rem;
+--article-font-weight: 400;
+--article-letter-spacing: normal;
+--article-line-height: 1.8;
+--article-max-width: 42rem;
+--article-title-max-width: 42rem;
+--article-body-max-width: 42rem;
+--article-image-width: 100%;
+
+/* Post card */
+--postcard-desc-lines: 2;
+--postcard-title-weight: 500;
+--postcard-padding: 12px 6px 4px;
+
+/* Feed density (HomeTab) */
+--feed-density-gap: 0px;
+
 font-family: var(--font-ui);
 }
 

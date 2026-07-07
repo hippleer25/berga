@@ -1,6 +1,66 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
+/* ── Generic numeric preference store ───────────────────────────────────── */
+function createNumberStore(key: string, def: number) {
+  const saved = browser ? localStorage.getItem(key) : null;
+  const n = saved == null ? NaN : Number(saved);
+  const initial = Number.isFinite(n) ? n : def;
+  const { subscribe, set } = writable<number>(initial);
+
+  return {
+    subscribe,
+    setValue: (value: number) => {
+      if (browser) localStorage.setItem(key, String(value));
+      set(value);
+    },
+    getValue: (): number => {
+      let val = def;
+      subscribe(v => (val = v))();
+      return val;
+    },
+  };
+}
+
+function createBooleanStore(key: string, def: boolean) {
+  const saved = browser ? localStorage.getItem(key) : null;
+  const initial = saved == null ? def : saved !== 'false';
+  const { subscribe, set } = writable<boolean>(initial);
+
+  return {
+    subscribe,
+    setValue: (value: boolean) => {
+      if (browser) localStorage.setItem(key, String(value));
+      set(value);
+    },
+    getValue: (): boolean => {
+      let val = def;
+      subscribe(v => (val = v))();
+      return val;
+    },
+  };
+}
+
+function createStringStore<T extends string>(key: string, def: T) {
+  const saved = browser ? (localStorage.getItem(key) as T | null) : null;
+  const initial = (saved ?? def) as T;
+  const { subscribe, set } = writable<T>(initial);
+
+  return {
+    subscribe,
+    setValue: (value: T) => {
+      if (browser) localStorage.setItem(key, value);
+      set(value);
+    },
+    getValue: (): T => {
+      let val = def;
+      subscribe(v => (val = v))();
+      return val;
+    },
+  };
+}
+
+/* ── Cover images ───────────────────────────────────────────────────────── */
 function createCoverImagesStore() {
   const saved = browser ? localStorage.getItem('show-cover-images') : null;
   const initial = saved === 'true';
@@ -76,3 +136,19 @@ function createTextAlignStore(key: string, defaultValue: TextAlign) {
 
 export const titleTextAlign = createTextAlignStore('title-text-align', 'left');
 export const bodyTextAlign = createTextAlignStore('body-text-align', 'left');
+
+/* ── Article typography ─────────────────────────────────────────────────── */
+export const articleFontSize = createNumberStore('article-font-size', 18);
+export const articleFontWeight = createNumberStore('article-font-weight', 400);
+export const articleLetterSpacing = createNumberStore('article-letter-spacing', 0);
+export const articleLineHeight = createNumberStore('article-line-height', 1.8);
+export const articleMaxWidth = createNumberStore('article-max-width', 672);
+export const articleTitleMaxWidth = createNumberStore('article-title-max-width', 672);
+export const articleImageWidth = createNumberStore('article-image-width', 100);
+
+/* ── Post-card ──────────────────────────────────────────────────────────── */
+export const postcardDescLines = createNumberStore('postcard-desc-lines', 2);
+export const postcardTitleBold = createBooleanStore('postcard-title-bold', false);
+
+export type Density = 'compact' | 'comfortable' | 'spacious';
+export const feedDensity = createStringStore<Density>('feed-density', 'comfortable');

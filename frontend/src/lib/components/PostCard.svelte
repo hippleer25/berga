@@ -6,7 +6,7 @@ import { t, locale } from 'svelte-i18n';
  import { get } from 'svelte/store';
  import { apiFetch } from '$lib/api';
 	import { clearFeedCache } from '$lib/stores/feedCache';
-	import { showCoverImages, coverImagePosition } from '$lib/stores/preferences';
+	import { showCoverImages, coverImagePosition, postcardDescLines } from '$lib/stores/preferences';
 
 let {
     item,
@@ -397,8 +397,10 @@ onMount(() => {
         </a>
 
 		<!-- Description -->
-		{#if item.description}
-			<p class="description">{stripHtml(item.description)}</p>
+		{#if item.description && $postcardDescLines > 0}
+			<p class="description" style="--desc-lines: {$postcardDescLines};">
+				{stripHtml(item.description)}
+			</p>
 		{/if}
 
 		{#if showCover && coverPos === 'bottom'}
@@ -534,9 +536,9 @@ disabled={!onTagClick}
     .post-card {
         display: flex;
         align-items: flex-start;
-        padding: 12px 6px 4px;
+        padding: var(--postcard-padding, 12px 6px 4px);
         border-bottom: 1px solid var(--color-base-300); /* Cleaner than color-mix */
-        transition: background 120ms ease;
+        transition: background 120ms ease, padding 180ms ease;
         -webkit-tap-highlight-color: transparent;
         user-select: none;
         cursor: default;
@@ -685,7 +687,7 @@ disabled={!onTagClick}
 display: block;
 font-family: var(--font-post-title);
         font-size: 16px;
-        font-weight: 500; /* Medium: much more legible than 600 in sans-serif */
+        font-weight: var(--postcard-title-weight, 700);
         line-height: 1.4;
         margin-bottom: 6px;
         color: var(--color-base-content);
@@ -709,10 +711,11 @@ font-family: var(--font-post-title);
 		font-size: 13.5px;
 		font-weight: 400; /* Regular weight is better for long body text */
 		line-height: 1.5;
+		letter-spacing: var(--article-letter-spacing, normal);
 		color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
 		margin-bottom: 8px;
 		display: -webkit-box;
-		-webkit-line-clamp: 2;
+		-webkit-line-clamp: var(--desc-lines, 2);
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 	}

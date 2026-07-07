@@ -1456,6 +1456,9 @@ font-family: var(--font-page-title);
     /* ── Feed ────────────────────────────────────────────────── */
     .feed-wrap {
         border-top: 1px solid var(--color-base-300);
+        display: flex;
+        flex-direction: column;
+        gap: var(--feed-density-gap, 0px);
     }
 
 

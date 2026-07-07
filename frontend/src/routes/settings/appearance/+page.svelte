@@ -14,12 +14,43 @@
     FONT_LABELS,
     getSavedFont,
     migrateOldFontPref,
+    applyFontSize,
+    applyFontWeight,
+    applyLetterSpacing,
+    applyLineHeight,
+    applyArticleMaxWidth,
+    applyArticleTitleMaxWidth,
+    applyArticleImageWidth,
+    applyDescLines,
+    applyTitleBold,
+    applyDensity,
+    getSavedDensity,
+    ARTICLE_TYPOGRAPHY,
+    POSTCARD_PREFS,
+    type Density,
   } from '$lib/utils/appearance';
   import type { FontCategory, FontName } from '$lib/utils/appearance';
   import { get } from 'svelte/store';
   import { ripple } from '$lib/actions/ripple';
   import Portal from '$lib/components/Portal.svelte';
-  import { showCoverImages, coverImagePosition, titleTextAlign, bodyTextAlign, type CoverPosition, type TextAlign } from '$lib/stores/preferences';
+  import {
+    showCoverImages,
+    coverImagePosition,
+    titleTextAlign,
+    bodyTextAlign,
+    articleFontSize,
+    articleFontWeight,
+    articleLetterSpacing,
+    articleLineHeight,
+    articleMaxWidth,
+    articleTitleMaxWidth,
+    articleImageWidth,
+    postcardDescLines,
+    postcardTitleBold,
+    feedDensity,
+    type CoverPosition,
+    type TextAlign,
+  } from '$lib/stores/preferences';
 
   const LOCALE_LABELS: Record<SupportedLocale, string> = {
     pt: 'Português',
@@ -65,6 +96,27 @@
   let bodyDropStyle = $state('');
   let bodyPos = $state<TextAlign>('left');
 
+  // ── Collapsible section state ──
+  let typographyOpen = $state(false);
+  let readingOpen = $state(false);
+  let postcardsOpen = $state(false);
+
+  // ── Typography state ──
+  let fontSize = $state<number>(ARTICLE_TYPOGRAPHY.fontSize.default);
+  let fontWeight = $state<number>(ARTICLE_TYPOGRAPHY.fontWeight.default);
+  let letterSpacing = $state<number>(ARTICLE_TYPOGRAPHY.letterSpacing.default);
+  let lineHeight = $state<number>(ARTICLE_TYPOGRAPHY.lineHeight.default);
+
+  // ── Reading view state ──
+  let articleMaxW = $state<number>(ARTICLE_TYPOGRAPHY.maxWidth.default);
+  let articleTitleMaxW = $state<number>(ARTICLE_TYPOGRAPHY.titleMaxWidth.default);
+  let imageWidth = $state<number>(ARTICLE_TYPOGRAPHY.imageWidth.default);
+
+  // ── Post-card state ──
+  let descLines = $state<number>(POSTCARD_PREFS.descLines.default);
+  let titleBold = $state<boolean>(POSTCARD_PREFS.titleBold.default);
+  let density = $state<Density>('comfortable');
+
   $effect(() => {
     console.log('[settings] $locale changed to:', $locale);
     console.log('[settings] $t("settings.language") =', $t('settings.language'));
@@ -81,6 +133,18 @@
     coverPos = get(coverImagePosition);
     titlePos = get(titleTextAlign);
     bodyPos = get(bodyTextAlign);
+
+    // Load new prefs
+    fontSize = get(articleFontSize);
+    fontWeight = get(articleFontWeight);
+    letterSpacing = get(articleLetterSpacing);
+    lineHeight = get(articleLineHeight);
+    articleMaxW = get(articleMaxWidth);
+    articleTitleMaxW = get(articleTitleMaxWidth);
+    imageWidth = get(articleImageWidth);
+    descLines = get(postcardDescLines);
+    titleBold = get(postcardTitleBold);
+    density = getSavedDensity();
 
     if (customCss.trim()) {
       const converted = convertDaisyuiPluginToDataTheme(customCss);
@@ -186,6 +250,46 @@
     bodyPos = pos;
     bodyTextAlign.setPosition(pos);
     bodyDropdownOpen = false;
+  }
+
+  // ── Typography setters ──
+  function setFontSize(v: number) {
+    fontSize = v; applyFontSize(v, true); articleFontSize.setValue(v);
+  }
+  function setFontWeight(v: number) {
+    fontWeight = v; applyFontWeight(v, true); articleFontWeight.setValue(v);
+  }
+  function setLetterSpacing(v: number) {
+    letterSpacing = v; applyLetterSpacing(v, true); articleLetterSpacing.setValue(v);
+  }
+  function setLineHeight(v: number) {
+    lineHeight = v; applyLineHeight(v, true); articleLineHeight.setValue(v);
+  }
+
+  // ── Reading-view setters ──
+  function setArticleMaxWidth(v: number) {
+    articleMaxW = v; applyArticleMaxWidth(v, true); articleMaxWidth.setValue(v);
+  }
+  function setArticleTitleMaxWidth(v: number) {
+    articleTitleMaxW = v; applyArticleTitleMaxWidth(v, true); articleTitleMaxWidth.setValue(v);
+  }
+  function setImageWidth(v: number) {
+    imageWidth = v; applyArticleImageWidth(v, true); articleImageWidth.setValue(v);
+  }
+
+  // ── Post-card setters ──
+  function setDescLines(v: number) {
+    descLines = v; applyDescLines(v, true); postcardDescLines.setValue(v);
+  }
+  function toggleTitleBold() {
+    titleBold = !titleBold; applyTitleBold(titleBold, true); postcardTitleBold.setValue(titleBold);
+  }
+  function setDensity(d: Density) {
+    density = d; applyDensity(d, true); feedDensity.setValue(d);
+  }
+
+  function fmtEm(px: number): string {
+    return `${(px / 16).toFixed(2)}rem`;
   }
 
   function selectFont(category: FontCategory, fontName: string) {
@@ -384,6 +488,24 @@
 <div class="tab-panel">
   <h2 class="section-title">{$t('settings.appearance')}</h2>
 
+  {#snippet sliderRow(label: string, value: number, min: number, max: number, step: number, suffix: string, onInput: (v: number) => void, fmt: ((v: number) => string) | undefined)}
+    <div class="setting-slider-row">
+      <div class="slider-head">
+        <span class="setting-label">{label}</span>
+        <span class="slider-value">{fmt ? fmt(value) : `${value}${suffix ?? ''}`}</span>
+      </div>
+      <input
+        type="range"
+        class="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        oninput={(e) => onInput(Number((e.target as HTMLInputElement).value))}
+      />
+    </div>
+  {/snippet}
+
   <div class="setting-row">
     <span class="setting-label">{$t('settings.language')}</span>
     <div class="picker-wrap">
@@ -400,95 +522,184 @@
     <div class="setting-text">
       <span class="setting-label">{getThemeLabel(activeTheme)}</span>
     </div>
-    <button class="pill-toggle" class:on={activeTheme === 'berga-black'} use:ripple onclick={toggleTheme}>
+    <button class="pill-toggle" class:on={activeTheme === 'berga-black'} use:ripple onclick={toggleTheme} aria-label={$t('settings.lightMode')}>
       <div class="pill-thumb"></div>
     </button>
   </div>
 
-  <div class="setting-row">
-    <div class="setting-text">
-      <span class="setting-label">{$t('settings.showCoverImages')}</span>
-    </div>
-    <button class="pill-toggle" class:on={showCover} use:ripple onclick={toggleShowCover}>
-      <div class="pill-thumb"></div>
-    </button>
-  </div>
+  <details class="section" bind:open={typographyOpen}>
+    <summary class="section-summary">
+      <span class="section-summary-text">{$t('settings.sectionTypography')}</span>
+      <span class="chevron-icon" class:rotated={typographyOpen}><ChevronDown size={14} /></span>
+    </summary>
+    <div class="section-body">
+      {#each fontCategories as cat}
+        <div class="setting-row">
+          <span class="setting-label">{$t(cat.labelKey)}</span>
+          <div class="picker-wrap">
+            <button
+              bind:this={fontBtnEls[cat.key]}
+              class="setting-btn"
+              use:ripple
+              onclick={() => toggleFontDropdown(cat.key)}
+            >
+              <span style="font-family: '{activeFonts[cat.key]}', {FONT_LIST.find(f => f.name === activeFonts[cat.key])?.category ?? 'sans-serif'};">
+                {FONT_LABELS[activeFonts[cat.key]] ?? activeFonts[cat.key]}
+              </span>
+              <span class="chevron-icon" class:rotated={openFontDropdown === cat.key}>
+                <ChevronDown size={14} />
+              </span>
+            </button>
+          </div>
+        </div>
+      {/each}
 
-  {#if showCover}
-    <div class="setting-row">
-      <span class="setting-label">{$t('settings.coverImagePosition')}</span>
-      <div class="picker-wrap">
-        <button
-          bind:this={coverBtnEl}
-          class="setting-btn"
-          use:ripple
-          onclick={toggleCoverDropdown}
-        >
-          <span>
-            {coverPos === 'right' ? $t('settings.coverImagePositionRight') : $t('settings.coverImagePositionBottom')}
-          </span>
-          <span class="chevron-icon" class:rotated={coverDropdownOpen}>
-            <ChevronDown size={14} />
-          </span>
-        </button>
+      {@render sliderRow($t('settings.fontSize'), fontSize,
+        ARTICLE_TYPOGRAPHY.fontSize.min, ARTICLE_TYPOGRAPHY.fontSize.max,
+        ARTICLE_TYPOGRAPHY.fontSize.step, '', setFontSize, fmtEm)}
+
+      {@render sliderRow($t('settings.fontWeight'), fontWeight,
+        ARTICLE_TYPOGRAPHY.fontWeight.min, ARTICLE_TYPOGRAPHY.fontWeight.max,
+        ARTICLE_TYPOGRAPHY.fontWeight.step, '', setFontWeight, undefined)}
+
+      {@render sliderRow($t('settings.letterSpacing'), letterSpacing,
+        ARTICLE_TYPOGRAPHY.letterSpacing.min, ARTICLE_TYPOGRAPHY.letterSpacing.max,
+        ARTICLE_TYPOGRAPHY.letterSpacing.step, 'em', setLetterSpacing,
+        (v) => v === 0 ? $t('settings.normal') : `${v}em`)}
+
+      {@render sliderRow($t('settings.lineHeight'), lineHeight,
+        ARTICLE_TYPOGRAPHY.lineHeight.min, ARTICLE_TYPOGRAPHY.lineHeight.max,
+        ARTICLE_TYPOGRAPHY.lineHeight.step, '', setLineHeight,
+        (v) => v.toFixed(2))}
+    </div>
+  </details>
+
+  <details class="section" bind:open={readingOpen}>
+    <summary class="section-summary">
+      <span class="section-summary-text">{$t('settings.sectionReading')}</span>
+      <span class="chevron-icon" class:rotated={readingOpen}><ChevronDown size={14} /></span>
+    </summary>
+    <div class="section-body">
+      {@render sliderRow($t('settings.bodyWidth'), articleMaxW,
+        ARTICLE_TYPOGRAPHY.maxWidth.min, ARTICLE_TYPOGRAPHY.maxWidth.max,
+        ARTICLE_TYPOGRAPHY.maxWidth.step, '', setArticleMaxWidth,
+        (v) => `${v}px`)}
+
+      {@render sliderRow($t('settings.titleWidth'), articleTitleMaxW,
+        ARTICLE_TYPOGRAPHY.titleMaxWidth.min, ARTICLE_TYPOGRAPHY.titleMaxWidth.max,
+        ARTICLE_TYPOGRAPHY.titleMaxWidth.step, '', setArticleTitleMaxWidth,
+        (v) => `${v}px`)}
+
+      {@render sliderRow($t('settings.imageWidth'), imageWidth,
+        ARTICLE_TYPOGRAPHY.imageWidth.min, ARTICLE_TYPOGRAPHY.imageWidth.max,
+        ARTICLE_TYPOGRAPHY.imageWidth.step, '%', setImageWidth,
+        (v) => v === 0 ? $t('settings.imageWidthAuto') : `${v}%`)}
+
+      <div class="setting-row">
+        <span class="setting-label">{$t('settings.titleTextPosition')}</span>
+        <div class="picker-wrap">
+          <button bind:this={titleBtnEl} class="setting-btn" use:ripple onclick={toggleTitleDropdown}>
+            <span>
+              {titlePos === 'left' ? $t('settings.textAlignLeft') :
+               titlePos === 'justify' ? $t('settings.textAlignJustified') :
+               titlePos === 'center' ? $t('settings.textAlignCenter') :
+               $t('settings.textAlignRight')}
+            </span>
+            <span class="chevron-icon" class:rotated={titleDropdownOpen}>
+              <ChevronDown size={14} />
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <span class="setting-label">{$t('settings.bodyTextPosition')}</span>
+        <div class="picker-wrap">
+          <button bind:this={bodyBtnEl} class="setting-btn" use:ripple onclick={toggleBodyDropdown}>
+            <span>
+              {bodyPos === 'left' ? $t('settings.textAlignLeft') :
+               bodyPos === 'justify' ? $t('settings.textAlignJustified') :
+               bodyPos === 'center' ? $t('settings.textAlignCenter') :
+               $t('settings.textAlignRight')}
+            </span>
+            <span class="chevron-icon" class:rotated={bodyDropdownOpen}>
+              <ChevronDown size={14} />
+            </span>
+          </button>
+        </div>
       </div>
     </div>
-  {/if}
+  </details>
 
-  {#each fontCategories as cat}
-    <div class="setting-row">
-      <span class="setting-label">{$t(cat.labelKey)}</span>
-      <div class="picker-wrap">
-        <button
-          bind:this={fontBtnEls[cat.key]}
-          class="setting-btn"
-          use:ripple
-          onclick={() => toggleFontDropdown(cat.key)}
-        >
-          <span style="font-family: '{activeFonts[cat.key]}', {FONT_LIST.find(f => f.name === activeFonts[cat.key])?.category ?? 'sans-serif'};">
-            {FONT_LABELS[activeFonts[cat.key]] ?? activeFonts[cat.key]}
-          </span>
-          <span class="chevron-icon" class:rotated={openFontDropdown === cat.key}>
-            <ChevronDown size={14} />
-          </span>
+  <details class="section" bind:open={postcardsOpen}>
+    <summary class="section-summary">
+      <span class="section-summary-text">{$t('settings.sectionPostcards')}</span>
+      <span class="chevron-icon" class:rotated={postcardsOpen}><ChevronDown size={14} /></span>
+    </summary>
+    <div class="section-body">
+      <div class="setting-row">
+        <div class="setting-text">
+          <span class="setting-label">{$t('settings.showCoverImages')}</span>
+        </div>
+        <button class="pill-toggle" class:on={showCover} use:ripple onclick={toggleShowCover} aria-label={$t('settings.showCoverImages')}>
+          <div class="pill-thumb"></div>
         </button>
       </div>
-    </div>
-  {/each}
 
-  <div class="setting-row">
-    <span class="setting-label">{$t('settings.titleTextPosition')}</span>
-    <div class="picker-wrap">
-      <button bind:this={titleBtnEl} class="setting-btn" use:ripple onclick={toggleTitleDropdown}>
-        <span>
-          {titlePos === 'left' ? $t('settings.textAlignLeft') :
-           titlePos === 'justify' ? $t('settings.textAlignJustified') :
-           titlePos === 'center' ? $t('settings.textAlignCenter') :
-           $t('settings.textAlignRight')}
-        </span>
-        <span class="chevron-icon" class:rotated={titleDropdownOpen}>
-          <ChevronDown size={14} />
-        </span>
-      </button>
-    </div>
-  </div>
+      {#if showCover}
+        <div class="setting-row">
+          <span class="setting-label">{$t('settings.coverImagePosition')}</span>
+          <div class="picker-wrap">
+            <button
+              bind:this={coverBtnEl}
+              class="setting-btn"
+              use:ripple
+              onclick={toggleCoverDropdown}
+            >
+              <span>
+                {coverPos === 'right' ? $t('settings.coverImagePositionRight') : $t('settings.coverImagePositionBottom')}
+              </span>
+              <span class="chevron-icon" class:rotated={coverDropdownOpen}>
+                <ChevronDown size={14} />
+              </span>
+            </button>
+          </div>
+        </div>
+      {/if}
 
-  <div class="setting-row">
-    <span class="setting-label">{$t('settings.bodyTextPosition')}</span>
-    <div class="picker-wrap">
-      <button bind:this={bodyBtnEl} class="setting-btn" use:ripple onclick={toggleBodyDropdown}>
-        <span>
-          {bodyPos === 'left' ? $t('settings.textAlignLeft') :
-           bodyPos === 'justify' ? $t('settings.textAlignJustified') :
-           bodyPos === 'center' ? $t('settings.textAlignCenter') :
-           $t('settings.textAlignRight')}
-        </span>
-        <span class="chevron-icon" class:rotated={bodyDropdownOpen}>
-          <ChevronDown size={14} />
-        </span>
-      </button>
+      {@render sliderRow($t('settings.descLines'), descLines,
+        POSTCARD_PREFS.descLines.min, POSTCARD_PREFS.descLines.max,
+        POSTCARD_PREFS.descLines.step, '', setDescLines,
+        (v) => v === 0 ? $t('settings.descLinesHidden') : String(v))}
+
+      <div class="setting-row">
+        <div class="setting-text">
+          <span class="setting-label">{$t('settings.boldTitle')}</span>
+        </div>
+        <button class="pill-toggle" class:on={titleBold} use:ripple onclick={toggleTitleBold} aria-label={$t('settings.boldTitle')}>
+          <div class="pill-thumb"></div>
+        </button>
+      </div>
+
+      <div class="setting-row">
+        <span class="setting-label">{$t('settings.density')}</span>
+        <div class="picker-wrap density-picker">
+          {#each ['compact', 'comfortable', 'spacious'] as d}
+            {@const isSel = d === density}
+            <button
+              class="density-btn"
+              class:active={isSel}
+              use:ripple
+              onclick={() => setDensity(d as Density)}
+              aria-pressed={isSel}
+            >
+              {$t(`settings.density${d.charAt(0).toUpperCase() + d.slice(1)}`)}
+            </button>
+          {/each}
+        </div>
+      </div>
     </div>
-  </div>
+  </details>
 
   <div class="setting-block">
     <span class="setting-label">{$t('settings.customCss')}</span>
@@ -611,4 +822,67 @@
     animation: spin 0.6s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Collapsible sections ─────────────────────────────────── */
+  .section {
+    border: 1px solid var(--color-base-300);
+    border-radius: 12px;
+    overflow: hidden;
+    background: color-mix(in oklch, var(--color-base-100) 60%, transparent);
+  }
+  .section > summary { list-style: none; }
+  .section > summary::-webkit-details-marker { display: none; }
+  .section-summary {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px; cursor: pointer; user-select: none;
+    font-size: 14px; font-weight: 600; color: var(--color-base-content);
+    transition: background 130ms;
+  }
+  .section-summary:hover { background: var(--color-base-200); }
+  .section-summary:active { background: color-mix(in oklch, var(--color-base-content) 6%, transparent); }
+  .section-summary-text { display: flex; align-items: center; gap: 6px; }
+  .section-body { padding: 4px 14px 12px; display: flex; flex-direction: column; gap: 4px; }
+
+  /* ── Sliders ──────────────────────────────────────────────── */
+  .setting-slider-row {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 10px 0; border-bottom: 1px solid var(--color-base-300);
+  }
+  .slider-head { display: flex; align-items: center; justify-content: space-between; }
+  .slider-value {
+    font-size: 12px; font-weight: 600; color: var(--color-accent);
+    font-variant-numeric: tabular-nums; font-family: var(--font-ui);
+  }
+  .range {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; border-radius: 999px;
+    background: color-mix(in oklch, var(--color-base-content) 18%, transparent);
+    outline: none; cursor: pointer;
+  }
+  .range::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--color-accent); border: 2px solid var(--color-base-100);
+    box-shadow: 0 1px 4px rgba(0,0,0,.25); cursor: pointer;
+    transition: transform 110ms;
+  }
+  .range::-webkit-slider-thumb:active { transform: scale(1.18); }
+  .range::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--color-base-100);
+    background: var(--color-accent); box-shadow: 0 1px 4px rgba(0,0,0,.25); cursor: pointer;
+  }
+
+  /* ── Density picker ───────────────────────────────────────── */
+  .density-picker { display: flex; gap: 4px; }
+  .density-btn {
+    padding: 6px 10px; border-radius: 8px; border: 1px solid var(--color-base-300);
+    background: transparent; color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: all 130ms;
+    font-family: var(--font-ui);
+  }
+  .density-btn:hover { background: var(--color-base-200); color: var(--color-base-content); }
+  .density-btn.active {
+    background: color-mix(in oklch, var(--color-accent) 16%, transparent);
+    border-color: var(--color-accent); color: var(--color-accent);
+  }
 </style>
