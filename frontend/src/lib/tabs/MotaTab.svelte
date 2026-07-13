@@ -50,6 +50,7 @@
   let chatAbort: AbortController | null = null;
 
   let showScrollBtn = $state(false);
+  let inputButtonsMultiLine = $state(false);
 
   let hasStarted = $derived(messages.some(m => m.role === 'user'));
 
@@ -164,7 +165,9 @@
   function autoResize() {
     if (!textareaRef) return;
     textareaRef.style.height = 'auto';
-    textareaRef.style.height = Math.min(textareaRef.scrollHeight, 120) + 'px';
+    const maxHeight = parseFloat(getComputedStyle(textareaRef).maxHeight) || 135;
+    textareaRef.style.height = Math.min(textareaRef.scrollHeight, maxHeight) + 'px';
+    inputButtonsMultiLine = textareaRef.scrollHeight > 46;
   }
 
   async function sendMessage() {
@@ -174,6 +177,7 @@
     input = '';
     dropdownOpen = false;
     if (textareaRef) textareaRef.style.height = 'auto';
+    inputButtonsMultiLine = false;
 
     messages = [...messages, { role: 'user', content: text, id: idCounter++ }];
     saveMessages();
@@ -558,25 +562,27 @@
         class="chat-textarea"
       ></textarea>
 
-      <button
-        class="mode-trigger"
-        onclick={toggleDropdown}
-        aria-expanded={dropdownOpen}
-        aria-haspopup="listbox"
-        title="{$t('motatab.sourceMode')}"
-      >
-        <span class="mode-trigger-label">{currentSourceLabel}</span>
-        <ChevronUp size={14} />
-      </button>
+      <div class="input-buttons" class:pin-bottom={inputButtonsMultiLine}>
+        <button
+          class="mode-trigger"
+          onclick={toggleDropdown}
+          aria-expanded={dropdownOpen}
+          aria-haspopup="listbox"
+          title="{$t('motatab.sourceMode')}"
+        >
+          <span class="mode-trigger-label">{currentSourceLabel}</span>
+          <ChevronUp size={14} />
+        </button>
 
-      <button
-        class="send-btn {input.trim() && !loading ? 'ready' : 'idle'}"
-        onclick={sendMessage}
-        disabled={loading || !input.trim()}
-        title="{$t('motatab.send')}"
-      >
-        <Send size={15} />
-      </button>
+        <button
+          class="send-btn {input.trim() && !loading ? 'ready' : 'idle'}"
+          onclick={sendMessage}
+          disabled={loading || !input.trim()}
+          title="{$t('motatab.send')}"
+        >
+          <Send size={15} />
+        </button>
+      </div>
     </div>
 
       <div class="footer-meta">
@@ -860,12 +866,19 @@
   border: none;
   background: transparent;
   -webkit-appearance: none;
+  appearance: none;
   flex: 1;
   min-width: 0;
   font-size: 15px;
   color: var(--color-base-content);
-  max-height: 120px;
-  padding: 0;
+  max-height: 135px;
+  padding: 9px 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chat-textarea::-webkit-scrollbar {
+  display: none;
 }
 .chat-textarea::placeholder {
   color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
@@ -887,7 +900,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 46px;
+  min-height: 46px;
   background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
   border: 1px solid var(--color-base-300);
   border-radius: 10px;
@@ -899,6 +912,17 @@
   background: var(--color-base-100);
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 15%, transparent);
+}
+
+/* ── Input buttons (mode trigger + send) ────────────── */
+.input-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.input-buttons.pin-bottom {
+  align-self: flex-end;
 }
 
 /* ── Mode trigger (dropdown button) ─────────────────── */
