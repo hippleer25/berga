@@ -140,6 +140,19 @@ class UserData(BaseModel):
     full_name: str | None = None
 
 
+def _set_auth_cookie(response: Response, token: str):
+    cookie_samesite = "none" if COOKIE_SECURE else "lax"
+    response.set_cookie(
+        key="token",
+        value=token,
+        httponly=True,
+        samesite=cookie_samesite,
+        secure=COOKIE_SECURE,
+        path="/",
+        max_age=int(os.getenv("COOKIE_MAX_AGE", str(7 * 24 * 60 * 60))),
+    )
+
+
 class FeedRequest(BaseModel):
     url: str
 
@@ -189,6 +202,9 @@ def register(x_user_data: UserData, response: Response):
     result = auth_register.user_register(x_user_data)
     if result.get("status") == "error":
         response.status_code = 409 if "already taken" in result.get("message", "") else 400
+        return result
+    if result.get("status") == "success":
+        _set_auth_cookie(response, result["access_token"])
     return result
 
 
@@ -199,17 +215,8 @@ def login(x_user_data: UserData, response: Response):
         response.status_code = 401
         return result
     if result.get("status") == "success":
-        cookie_samesite = "none" if COOKIE_SECURE else "lax"
-        response.set_cookie(
-            key="token",
-            value=result["access_token"],
-            httponly=True,
-            samesite=cookie_samesite,
-            secure=COOKIE_SECURE,
-            path="/",
-            max_age=int(os.getenv("COOKIE_MAX_AGE", str(7 * 24 * 60 * 60)))
-        )
-        return result
+        _set_auth_cookie(response, result["access_token"])
+    return result
 
 
 @app.post("/api/logout")

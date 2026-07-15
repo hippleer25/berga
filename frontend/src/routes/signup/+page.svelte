@@ -10,8 +10,9 @@
 
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
-  import { apiFetch } from '$lib/api';
-  import { instance } from '$lib/stores/instance';
+import { apiFetch, setNativeToken } from '$lib/api';
+import { instance } from '$lib/stores/instance';
+import { auth } from '$lib/stores/auth';
 
   let instanceUrl = $state(get(instance));
   let username = $state("");
@@ -61,7 +62,12 @@
       const data = await response.json();
 
       if (data.status === "success") {
-        message = data.message;
+        const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
+        if (isNative && data.access_token) {
+          setNativeToken(data.access_token);
+        }
+        auth.setLoggedIn();
+        window.location.href = '/home';
       } else {
         message = data.message || get(t)('signup.errorSignup');
       }

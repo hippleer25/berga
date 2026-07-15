@@ -1,6 +1,7 @@
 import logging
 import bcrypt
 from database.init_db import get_db
+from auth.token import create_token
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,13 @@ def user_register(x_user_data):
                 cursor.execute(sql, val)
                 conn.commit()
                 count = cursor.rowcount
-                return {"status": "success", "message": f"{count} usuário registrado com sucesso!"}
+                token = create_token(username)
+                return {
+                    "status": "success",
+                    "message": f"{count} usuário registrado com sucesso!",
+                    "access_token": token,
+                    "token_type": "bearer"
+                }
             except Exception as e:
                 conn.rollback()
                 err_msg = str(e)
