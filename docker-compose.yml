@@ -102,17 +102,13 @@ services:
           memory: 3000M
 
   frontend:
-    image: node:20-slim
+    build: ./frontend
     container_name: berga_front
-    working_dir: /app
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    restart: always
     ports:
-      - "4657:5173"
-    environment:
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - "4657:80"
+    depends_on:
+      - backend
     networks:
       - app_network
 
