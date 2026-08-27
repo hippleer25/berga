@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { onMount } from 'svelte';
  import { page } from '$app/stores';
     import { goto } from '$app/navigation';
     import PostCard from '$lib/components/PostCard.svelte';
@@ -7,6 +8,7 @@
     import { t } from 'svelte-i18n';
 import { get } from 'svelte/store';
 import { apiFetch } from '$lib/api';
+import { syncFeedItemTags, type TagRef } from '$lib/utils/syncFeedTags';
 
 type Tab = 'articles' | 'feeds';
 
@@ -20,6 +22,9 @@ type Tab = 'articles' | 'feeds';
     let articleResults = $state<any[]>([]);
     let articleLoading = $state(false);
     let articleError   = $state('');
+
+    // ── User tags ──────────────────────────────────────────────────────────
+    let tagList = $state<Array<{ id: number; name: string; color?: string }>>([]);
 
     // ── Feeds state ────────────────────────────────────────────────────────
     let feedResults = $state<any[]>([]);
@@ -36,6 +41,22 @@ type Tab = 'articles' | 'feeds';
             relevance_score: item.similarty_score ?? item.relevance_score
         };
     }
+
+    async function loadUserTags() {
+        try {
+            const res = await apiFetch('/api/tags', { credentials: 'include' });
+            if (res.ok) {
+                const data = await res.json();
+                tagList = data.tags ?? [];
+            }
+        } catch { /* non-critical */ }
+    }
+
+    function handleTagChange(payload: { item_id: string; tag_id: number; action: 'assign' | 'unassign'; tag?: TagRef }) {
+        articleResults = syncFeedItemTags(articleResults, payload.item_id, payload.tag_id, payload.action, payload.tag);
+    }
+
+    onMount(loadUserTags);
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
 $effect(() => {
@@ -166,7 +187,7 @@ const res = await apiFetch(
                 <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
                     </p>
                     {#each articleResults as item}
-                        <PostCard {item} server="" tags={item.tags || []} onTagClick={(tag) => goto(`/home?tag_id=${tag.tag_id}`)} />
+                        <PostCard {item} server="" tags={item.tags || []} userTags={tagList} onTagClick={(tag) => goto(`/home?tag_id=${tag.tag_id}`)} onTagChange={handleTagChange} />
                     {/each}
                 {/if}
 

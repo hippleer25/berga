@@ -20,18 +20,19 @@ import {
 	} from '@lucide/svelte';
 import LoaderCircle from '@lucide/svelte/icons/loader-circle';
  import { t } from 'svelte-i18n';
- import { apiFetch } from '$lib/api';
- import {
- 	feedCacheKey,
- 	loadFeedCache,
- 	saveFeedCache,
- 	clearFeedCache,
-	feedBustNeeded,
-	clearBustFlag,
- 	loadSubsCache,
- 	saveSubsCache,
- 	clearSubsCache,
- } from '$lib/stores/feedCache';
+import { apiFetch } from '$lib/api';
+  import {
+  	feedCacheKey,
+  	loadFeedCache,
+  	saveFeedCache,
+  	clearFeedCache,
+ 	feedBustNeeded,
+ 	clearBustFlag,
+  	loadSubsCache,
+  	saveSubsCache,
+  	clearSubsCache,
+  } from '$lib/stores/feedCache';
+  import { syncFeedItemTags, type TagRef } from '$lib/utils/syncFeedTags';
 
 const TAB_ROUTES = ['/followers', '/home', '/events', '/mota'];
 
@@ -462,6 +463,12 @@ $effect(() => {
 
 	function handleTagClick(tag: { tag_id: number; name: string; color?: string; source: string }) {
 		selectTag(tag.tag_id, tag.name);
+	}
+
+	function handleTagChange(payload: { item_id: string; tag_id: number; action: 'assign' | 'unassign'; tag?: TagRef }) {
+		feed = syncFeedItemTags(feed, payload.item_id, payload.tag_id, payload.action, payload.tag);
+		const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
+		saveFeedCache(cacheKey, feed);
 	}
 
 	function applyTagFromUrl() {
@@ -995,6 +1002,7 @@ if (res.ok) {
     selected={$selectedPosts.some((p: any) => p.item_id === item.item_id)}
     onToggleSelect={handleToggleSelect}
     onTagClick={handleTagClick}
+    onTagChange={handleTagChange}
     />
                     </div>
                 {/each}

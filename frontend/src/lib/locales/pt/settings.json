@@ -69,5 +69,14 @@
 "density": "Densidade",
 "densityCompact": "Compacta",
 "densityComfortable": "Confortável",
-"densitySpacious": "Espaçada"
+"densitySpacious": "Espaçada",
+"highlights": "Destaques",
+"highlightsDesc": "Defina as cores e o estilo padrão usados ao destacar texto nos artigos.",
+"highlightColors": "Cores",
+"addColor": "Adicionar cor",
+"removeColor": "Remover cor",
+"highlightStyle": "Estilo",
+"highlightOpacity": "Transparência",
+"highlightRadius": "Cantos arredondados",
+"highlightPreview": "Pré-visualização"
 }

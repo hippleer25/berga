@@ -69,5 +69,14 @@
 "density": "Density",
 "densityCompact": "Compact",
 "densityComfortable": "Comfortable",
-"densitySpacious": "Spacious"
+"densitySpacious": "Spacious",
+"highlights": "Highlights",
+"highlightsDesc": "Set the default colors and style used when highlighting text in articles.",
+"highlightColors": "Colors",
+"addColor": "Add color",
+"removeColor": "Remove color",
+"highlightStyle": "Style",
+"highlightOpacity": "Transparency",
+"highlightRadius": "Rounded corners",
+"highlightPreview": "Preview"
 }

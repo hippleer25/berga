@@ -10,6 +10,7 @@ import { get } from 'svelte/store';
 import { onViewed, flushPending, destroyViewTracker } from '$lib/stores/viewTracker';
 import { apiFetch } from '$lib/api';
 import { feedBustNeeded, clearBustFlag } from '$lib/stores/feedCache';
+ import { syncFeedItemTags, type TagRef } from '$lib/utils/syncFeedTags';
 
 type Mode = 'recommendations' | 'recents';
 
@@ -171,6 +172,10 @@ function formatDate(iso: string | null): string {
         tagList = data.tags ?? [];
       }
     } catch { /* non-critical */ }
+  }
+
+  function handleTagChange(payload: { item_id: string; tag_id: number; action: 'assign' | 'unassign'; tag?: TagRef }) {
+    feed = syncFeedItemTags(feed, payload.item_id, payload.tag_id, payload.action, payload.tag);
   }
 
     // ── Feed items API ────────────────────────────────────
@@ -478,7 +483,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
             {:else}
                 {#each feed as item (item.item_id)}
                     <div use:trackView={item.item_id}>
-                        <PostCard {item} server="" tags={item.tags || []} userTags={tagList} onTagClick={(tag) => goto(`/home?tag_id=${tag.tag_id}`)} />
+                        <PostCard {item} server="" tags={item.tags || []} userTags={tagList} onTagClick={(tag) => goto(`/home?tag_id=${tag.tag_id}`)} onTagChange={handleTagChange} />
                     </div>
                 {/each}
 

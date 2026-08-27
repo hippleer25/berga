@@ -11,7 +11,8 @@ import { apiFetch } from '$lib/api';
 import { renderMarkdown } from '$lib/utils/markdown';
 import { flushPending } from '$lib/stores/viewTracker';
 	import { clearFeedCache } from '$lib/stores/feedCache';
-import { titleTextAlign, bodyTextAlign } from '$lib/stores/preferences';
+import { titleTextAlign, bodyTextAlign, highlightColors, highlightOpacity, highlightRadius, highlightCustomColorDefault } from '$lib/stores/preferences';
+import { hexToRgba } from '$lib/utils/color';
 
 type ItemMeta = {
   item_id: string;
@@ -60,8 +61,6 @@ type Highlight = {
     color: string;
     sort_order: number;
 };
-
-const HIGHLIGHT_PRESETS = ['#FFEB3B', '#66BB6A', '#42A5F5', '#F48FB1'] as const;
 
     let loadedItemId = $state<string | null>(null);
     let titleAlign = $derived($titleTextAlign);
@@ -754,7 +753,8 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
                 const mark = document.createElement('mark');
                 mark.className = 'bergahl';
                 mark.dataset.highlightId = String(highlightId);
-                mark.style.backgroundColor = color;
+                mark.style.backgroundColor = hexToRgba(color, get(highlightOpacity));
+                mark.style.borderRadius = `${get(highlightRadius)}%`;
 
                 range.surroundContents(mark);
 
@@ -777,6 +777,15 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
             if (searchFrom >= fullText.length) break;
         }
     }
+
+    $effect(() => {
+        void $highlightColors;
+        void $highlightOpacity;
+        void $highlightRadius;
+        if (articleBodyEl && highlights.length > 0) {
+            requestAnimationFrame(renderHighlights);
+        }
+    });
 
     function onArticleBodyMouseup(e: MouseEvent) {
         if (webView) return;
@@ -1319,7 +1328,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
             style="left: {highlightMenu.x}px; top: {highlightMenu.y}px;"
             onclick={(e) => e.stopPropagation()}
         >
-            {#each HIGHLIGHT_PRESETS as color}
+            {#each $highlightColors as color}
                 <button
                     class="hl-color-btn"
                     style="background: {color};"
@@ -1329,7 +1338,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
                 ></button>
             {/each}
             <label class="hl-custom-btn" title={$t('article.customColor')}>
-                <input type="color" value="#FF9800" oninput={onCustomColorInput} disabled={highlightLoading} />
+                <input type="color" value={$highlightCustomColorDefault} oninput={onCustomColorInput} disabled={highlightLoading} />
                 <Highlighter size={13} />
             </label>
         </div>
@@ -1893,7 +1902,6 @@ font-family: var(--font-post-title);
 
     /* ── Highlights ────────────────────────────────────────── */
     .article-body :global(mark.bergahl) {
-        border-radius: 2px;
         padding: 0 1px;
         cursor: pointer;
         transition: opacity 120ms;

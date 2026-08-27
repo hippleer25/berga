@@ -7,6 +7,7 @@ import { t, locale } from 'svelte-i18n';
  import { apiFetch } from '$lib/api';
 	import { clearFeedCache } from '$lib/stores/feedCache';
 	import { showCoverImages, coverImagePosition, postcardDescLines } from '$lib/stores/preferences';
+	import type { TagRef } from '$lib/utils/syncFeedTags';
 
 let {
     item,
@@ -16,6 +17,7 @@ let {
     onToggleSelect,
     tags = [],
     onTagClick,
+    onTagChange,
     userTags = [],
 } = $props<{
     item: {
@@ -39,6 +41,18 @@ let {
     onToggleSelect?: (item: any) => void;
     tags?: Array<{ tag_id: number; name: string; color?: string; source: string }>;
     onTagClick?: (tag: { tag_id: number; name: string; color?: string; source: string }) => void;
+    /**
+     * Notifies the parent of a successful tag assignment so it can mirror the
+     * change in its source-of-truth feed array (avoids later re-render wipes
+     * of optimistic state, e.g. after bulk-tag rebuilds). The `tag` payload is
+     * the canonical entry inserted into `localTags`.
+     */
+    onTagChange?: (payload: {
+        item_id: string;
+        tag_id: number;
+        action: 'assign' | 'unassign';
+        tag?: { tag_id: number; name: string; color?: string; source: string };
+    }) => void;
     userTags?: Array<{ id: number; name: string; color?: string }>;
 }>();
 
@@ -237,13 +251,20 @@ async function assignTag(tagId: number, e: MouseEvent) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ item_id: item.item_id, tag_id: tagId }),
         });
-if (res.ok) {
-				clearFeedCache();
-				const ut = userTags.find(ut => ut.id === tagId);
-				if (ut && !localTags.some(lt => lt.tag_id === tagId)) {
-					localTags = [...localTags, { tag_id: ut.id, name: ut.name, color: ut.color, source: 'manual' }];
-				}
-			}
+        if (res.ok) {
+            clearFeedCache();
+            if (!localTags.some(lt => lt.tag_id === tagId)) {
+                const ut = userTags.find(u => u.id === tagId);
+                const entry = {
+                    tag_id: tagId,
+                    name: ut?.name ?? '',
+                    color: ut?.color,
+                    source: 'manual' as const
+                };
+                localTags = [...localTags, entry];
+                onTagChange?.({ item_id: item.item_id, tag_id: tagId, action: 'assign', tag: entry });
+            }
+        }
     } catch { /* */ }
     finally { tagAssignLoading = false; }
 }
@@ -252,6 +273,10 @@ async function unassignTag(tagId: number, e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     if (!item.item_id || tagAssignLoading) return;
+    // Only manual tags can be removed via the UI (the DELETE endpoint only
+    // touches source='manual' rows; auto tags would reappear on next refresh).
+    const tag = localTags.find(lt => lt.tag_id === tagId);
+    if (!tag || (tag.source && tag.source !== 'manual')) return;
     tagAssignLoading = true;
     try {
         const res = await apiFetch('/api/tags/assign', {
@@ -261,7 +286,9 @@ async function unassignTag(tagId: number, e: MouseEvent) {
             body: JSON.stringify({ item_id: item.item_id, tag_id: tagId }),
         });
         if (res.ok) {
+            clearFeedCache();
             localTags = localTags.filter(lt => lt.tag_id !== tagId);
+            onTagChange?.({ item_id: item.item_id, tag_id: tagId, action: 'unassign' });
         }
     } catch { /* */ }
     finally { tagAssignLoading = false; }
@@ -418,9 +445,11 @@ onMount(() => {
 {#each localTags as tag (tag.tag_id)}
 <button
 class="tag-chip"
+class:tag-chip--auto={tag.source && tag.source !== 'manual'}
 style="--chip-color: {tag.color || '#3b82f6'}"
 onclick={() => onTagClick?.(tag)}
 disabled={!onTagClick}
+title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : undefined}
 >
 {tag.name}
 </button>
@@ -478,25 +507,31 @@ disabled={!onTagClick}
 		</button>
 		{#if tagDropdownOpen}
 			<div class="tag-dropdown" onclick={(e) => e.stopPropagation()}>
-				{#if userTags.length === 0}
-					<p class="tag-dropdown-empty">{$t('postcard.noTagsYet')}</p>
-				{:else}
-					{#each userTags as ut (ut.id)}
-						{@const isAssigned = localTags.some(t => t.tag_id === ut.id)}
-						<button
-							class="tag-dropdown-item"
-							class:tag-dropdown-item--assigned={isAssigned}
-							onclick={(e) => isAssigned ? unassignTag(ut.id, e) : assignTag(ut.id, e)}
-							disabled={tagAssignLoading}
-						>
-							<span class="tag-dot" style="background: {ut.color || '#3b82f6'}"></span>
-							<span class="tag-dropdown-item-text">{ut.name}</span>
-							{#if isAssigned}
-								<Check size={12} class="tag-check" />
-							{/if}
-						</button>
-					{/each}
-				{/if}
+{#if userTags.length === 0}
+				<p class="tag-dropdown-empty">{$t('postcard.noTagsYet')}</p>
+			{:else}
+				{#each userTags as ut (ut.id)}
+					{@const assigned = localTags.find((t: TagRef) => t.tag_id === ut.id)}
+					{@const isAssigned = !!assigned}
+					{@const isAuto = isAssigned && !!assigned!.source && assigned!.source !== 'manual'}
+					<button
+						class="tag-dropdown-item"
+						class:tag-dropdown-item--assigned={isAssigned}
+						class:tag-dropdown-item--auto={isAuto}
+						onclick={(e) => isAssigned && !isAuto ? unassignTag(ut.id, e) : isAssigned ? null : assignTag(ut.id, e)}
+						disabled={tagAssignLoading || isAuto}
+						title={isAuto ? $t('postcard.autoTagTooltip') : undefined}
+					>
+						<span class="tag-dot" style="background: {ut.color || '#3b82f6'}"></span>
+						<span class="tag-dropdown-item-text">{ut.name}</span>
+						{#if isAuto}
+							<span class="tag-auto-badge" title={$t('postcard.autoTagTooltip')}>{$t('postcard.autoTag')}</span>
+						{:else if isAssigned}
+							<Check size={12} class="tag-check" />
+						{/if}
+					</button>
+				{/each}
+			{/if}
 			</div>
 		{/if}
 	</div>
@@ -747,6 +782,10 @@ font-family: var(--font-post-title);
 .tag-chip:not(:disabled):hover {
 	background: color-mix(in oklch, var(--chip-color) 24%, transparent);
 }
+.tag-chip--auto {
+	border: 1px dashed color-mix(in oklch, var(--chip-color) 50%, transparent);
+	opacity: 0.85;
+}
 
     /* ── Actions ─────────────────────────────────────────────── */
     .actions-row {
@@ -839,7 +878,20 @@ font-family: var(--font-post-title);
 }
 .tag-dropdown-item:hover { background: var(--color-base-200); }
 .tag-dropdown-item--assigned { color: var(--color-accent); }
+.tag-dropdown-item--auto { opacity: 0.7; cursor: not-allowed; }
+.tag-dropdown-item--auto:hover { background: transparent; }
 .tag-dropdown-item-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .tag-check { flex-shrink: 0; color: var(--color-accent); }
+.tag-auto-badge {
+	flex-shrink: 0;
+	font-size: 9px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 1px 5px;
+	border-radius: 4px;
+	background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+	color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+}
 </style>

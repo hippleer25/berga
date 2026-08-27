@@ -10,6 +10,8 @@
   "tag": "Étiqueter",
   "untag": "Retirer l'étiquette",
   "noTagsYet": "Aucun tag pour le moment",
+  "autoTag": "Automatique",
+  "autoTagTooltip": "Tag appliqué automatiquement — ne peut pas être retiré ici",
   "openOriginal": "Ouvrir l'article original",
   "now": "maintenant",
   "minutesShort": "min",

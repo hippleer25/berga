@@ -6,6 +6,7 @@
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import User from '@lucide/svelte/icons/user';
 	import Tag from '@lucide/svelte/icons/tag';
+	import Highlighter from '@lucide/svelte/icons/highlighter';
 	import { ripple } from '$lib/actions/ripple';
 	import { t } from 'svelte-i18n';
 
@@ -13,6 +14,7 @@
 
 	const tabs = [
 		{ key: 'appearance', href: '/settings/appearance', icon: Palette },
+		{ key: 'highlights', href: '/settings/highlights', icon: Highlighter },
 		{ key: 'subscriptions', href: '/settings/data', icon: Database },
 		{ key: 'affinity', href: '/settings/affinity', icon: Sparkles },
 		{ key: 'tags', href: '/settings/tags', icon: Tag },

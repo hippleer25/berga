@@ -10,6 +10,8 @@
   "tag": "Taggen",
   "untag": "Tag entfernen",
   "noTagsYet": "Noch keine Tags",
+  "autoTag": "Automatisch",
+  "autoTagTooltip": "Automatisch zugewiesener Tag — kann hier nicht entfernt werden",
   "openOriginal": "Originalartikel öffnen",
   "now": "jetzt",
   "minutesShort": "Min.",

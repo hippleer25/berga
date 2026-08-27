@@ -10,6 +10,8 @@
   "tag": "Etiquetar",
   "untag": "Remover etiqueta",
   "noTagsYet": "Nenhuma tag ainda",
+  "autoTag": "Automática",
+  "autoTagTooltip": "Tag aplicada automaticamente — não pode ser removida aqui",
   "openOriginal": "Abrir artigo original",
   "now": "agora",
   "minutesShort": "min",

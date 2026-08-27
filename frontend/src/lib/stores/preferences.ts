@@ -152,3 +152,56 @@ export const postcardTitleBold = createBooleanStore('postcard-title-bold', false
 
 export type Density = 'compact' | 'comfortable' | 'spacious';
 export const feedDensity = createStringStore<Density>('feed-density', 'comfortable');
+
+/* ── Highlights ─────────────────────────────────────────────────────────── */
+const DEFAULT_HIGHLIGHT_COLORS = ['#FFEB3B', '#66BB6A', '#42A5F5', '#F48FB1'];
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+function createHighlightColorsStore(key: string, def: string[]) {
+  const saved = browser ? localStorage.getItem(key) : null;
+  let initial = def;
+  if (saved != null) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.every((c) => typeof c === 'string' && HEX_RE.test(c))) {
+        initial = parsed;
+      }
+    } catch { /* ignore malformed */ }
+  }
+  const { subscribe, set } = writable<string[]>(initial);
+
+  const read = (): string[] => {
+    let val = def;
+    subscribe(v => (val = v))();
+    return val;
+  };
+
+  return {
+    subscribe,
+    setColors: (colors: string[]) => {
+      if (browser) localStorage.setItem(key, JSON.stringify(colors));
+      set(colors);
+    },
+    addColor: (color: string) => {
+      const next = [...read(), color];
+      if (browser) localStorage.setItem(key, JSON.stringify(next));
+      set(next);
+    },
+    removeColor: (index: number) => {
+      const next = read().filter((_, i) => i !== index);
+      if (browser) localStorage.setItem(key, JSON.stringify(next));
+      set(next);
+    },
+    updateColor: (index: number, color: string) => {
+      const next = read().map((c, i) => (i === index ? color : c));
+      if (browser) localStorage.setItem(key, JSON.stringify(next));
+      set(next);
+    },
+    getColors: (): string[] => read(),
+  };
+}
+
+export const highlightColors = createHighlightColorsStore('highlight-colors', DEFAULT_HIGHLIGHT_COLORS);
+export const highlightOpacity = createNumberStore('highlight-opacity', 100);
+export const highlightRadius = createNumberStore('highlight-radius', 0);
+export const highlightCustomColorDefault = createStringStore('highlight-custom-color-default', '#FF9800');

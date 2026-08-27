@@ -69,5 +69,14 @@
 "density": "Dichte",
 "densityCompact": "Kompakt",
 "densityComfortable": "Angenehm",
-"densitySpacious": "Geräumig"
+"densitySpacious": "Geräumig",
+"highlights": "Hervorhebungen",
+"highlightsDesc": "Legen Sie die Standardfarben und den Stil fest, die beim Hervorheben von Text in Artikeln verwendet werden.",
+"highlightColors": "Farben",
+"addColor": "Farbe hinzufügen",
+"removeColor": "Farbe entfernen",
+"highlightStyle": "Stil",
+"highlightOpacity": "Transparenz",
+"highlightRadius": "Abgerundete Ecken",
+"highlightPreview": "Vorschau"
 }
