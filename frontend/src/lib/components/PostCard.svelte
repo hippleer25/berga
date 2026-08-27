@@ -9,16 +9,19 @@ import { t, locale } from 'svelte-i18n';
 	import { showCoverImages, coverImagePosition, postcardDescLines } from '$lib/stores/preferences';
 	import type { TagRef } from '$lib/utils/syncFeedTags';
 
+type TagEntry = { tag_id: number; name: string; color?: string; source: string };
+type UserTag = { id: number; name: string; color?: string };
+
 let {
     item,
     server = '',
     selectionMode = false,
     selected = false,
     onToggleSelect,
-    tags = [],
+    tags = [] as TagEntry[],
     onTagClick,
     onTagChange,
-    userTags = [],
+    userTags = [] as UserTag[],
 } = $props<{
     item: {
         item_id: string;
@@ -39,8 +42,8 @@ let {
     selectionMode?: boolean;
     selected?: boolean;
     onToggleSelect?: (item: any) => void;
-    tags?: Array<{ tag_id: number; name: string; color?: string; source: string }>;
-    onTagClick?: (tag: { tag_id: number; name: string; color?: string; source: string }) => void;
+    tags?: TagEntry[];
+    onTagClick?: (tag: TagEntry) => void;
     /**
      * Notifies the parent of a successful tag assignment so it can mirror the
      * change in its source-of-truth feed array (avoids later re-render wipes
@@ -51,9 +54,9 @@ let {
         item_id: string;
         tag_id: number;
         action: 'assign' | 'unassign';
-        tag?: { tag_id: number; name: string; color?: string; source: string };
+        tag?: TagEntry;
     }) => void;
-    userTags?: Array<{ id: number; name: string; color?: string }>;
+    userTags?: UserTag[];
 }>();
 
 let liked = $state(item.liked ?? false);
@@ -225,7 +228,7 @@ async function toggleSave(e: MouseEvent) {
 }
 
 // ── Tag assignment ──────────────────────────────────────────────────────
-let localTags = $state(tags);
+let localTags = $state<TagEntry[]>(tags);
 $effect(() => {
 	tags;
 	untrack(() => { localTags = tags; });
@@ -254,7 +257,7 @@ async function assignTag(tagId: number, e: MouseEvent) {
         if (res.ok) {
             clearFeedCache();
             if (!localTags.some(lt => lt.tag_id === tagId)) {
-                const ut = userTags.find(u => u.id === tagId);
+                const ut = (userTags as UserTag[]).find(u => u.id === tagId);
                 const entry = {
                     tag_id: tagId,
                     name: ut?.name ?? '',

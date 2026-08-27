@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import threading
+import uuid
 from typing import Optional
 
 import numpy as np
@@ -97,7 +98,9 @@ def build_embedding_text(title: str, description: str = "") -> str:
 
 # ── Model fingerprint ──────────────────────────────────────────────────────────
 
-_SENTINEL_ID = "__berga_model_sentinel__"
+# Qdrant point ids must be uint64 or canonical UUIDs — arbitrary strings are
+# rejected. Use a deterministic UUID so the sentinel is a valid, stable id.
+_SENTINEL_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, "berga_model_sentinel"))
 _PROBE_TEXT = "__berga_probe__"
 _model_changed: bool = False
 _current_fingerprint: str = ""

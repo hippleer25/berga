@@ -229,7 +229,7 @@ def upsert_tag_phrase(tag_id: int, term: str, vector: list[float], manual_count:
     client.upsert(
         collection_name=TAG_PHRASES_COLLECTION,
         points=[PointStruct(
-            id=str(tag_id),
+            id=tag_id,
             vector=vector,
             payload={"term": term, "tag_id": tag_id, "manual_count": manual_count},
         )],
@@ -241,7 +241,7 @@ def delete_tag_phrase(tag_id: int) -> None:
     try:
         client.delete(
             collection_name=TAG_PHRASES_COLLECTION,
-            points_selector=models.PointIdsList(points=[str(tag_id)]),
+            points_selector=models.PointIdsList(points=[tag_id]),
         )
     except Exception:
         logger.warning("Could not delete tag phrase vector for tag_id=%d", tag_id)

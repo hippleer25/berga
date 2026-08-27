@@ -382,6 +382,12 @@ def _call_local(
         f"feed_filter={len(feed_filter) if feed_filter else 'none'})"
     )
 
+    # Empty feed_filter means the user's "mine" scope matched no subscriptions
+    # — there is nothing to search locally (an empty MatchAny is invalid and
+    # passing None would leak global content into a "mine" scope).
+    if feed_filter is not None and len(feed_filter) == 0:
+        return []
+
     try:
         results = search_articles_by_text(
             query=query,

@@ -313,7 +313,7 @@ export function getSavedFont(category: FontCategory): string {
 export function migrateOldFontPref() {
 	const old = localStorage.getItem('preferred-font');
 	if (!old) return;
-	const mapping: Record<string, Record<FontCategory, string>> = {
+	const mapping: Record<string, Partial<Record<FontCategory, string>>> = {
 		'Manrope': { 'ui': 'Manrope' },
 		'Figtree': { 'ui': 'Figtree' },
 		'Barlow': { 'ui': 'Barlow' },

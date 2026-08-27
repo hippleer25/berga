@@ -181,7 +181,7 @@ def mota_text_stream(
             timeout=DEFAULT_TIMEOUT,
         )
         for chunk in response:
-            content = chunk.choices[0].delta.content
+            content = chunk.choices[0].delta.content if chunk.choices else None
             if content:
                 yield content
 
@@ -282,7 +282,7 @@ def stream_llm_response(
             timeout=DEFAULT_TIMEOUT,
         )
         for chunk in response:
-            content = chunk.choices[0].delta.content
+            content = chunk.choices[0].delta.content if chunk.choices else None
             if content:
                 yield content
 

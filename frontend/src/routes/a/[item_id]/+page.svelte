@@ -508,10 +508,18 @@ const res = await apiFetch(`/api/mota/resume/${loadedItemId}`, {
                 buffer = lines.pop() ?? '';
 
                 for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    const chunk = line.slice(6);
-                    if (chunk === '[DONE]') break;
-                    resumeText += chunk;
+                    const trimmed = line.trim();
+                    if (!trimmed.startsWith('data: ')) continue;
+                    const data = trimmed.slice(6);
+                    if (data === '[DONE]') break;
+                    let parsed: any;
+                    try { parsed = JSON.parse(data); } catch { continue; }
+                    if (parsed.content) {
+                        resumeText += parsed.content;
+                    } else if (parsed.error) {
+                        resumeError = parsed.error;
+                        break;
+                    }
                 }
             }
         } catch (err: any) {

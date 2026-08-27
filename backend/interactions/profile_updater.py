@@ -99,7 +99,7 @@ def _update_user_profile(user_id: int, point, action: str, weight: float):
                 """,
                 (
                     user_id,
-                    json.dumps(pos_vector) if pos_vector is not None else None,
+                    json.dumps(pos_vector) if pos_vector is not None else '[]',
                     json.dumps(neg_vector) if neg_vector is not None else None,
                     json.dumps(pub_likes),
                     json.dumps(pub_dislikes),

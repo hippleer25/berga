@@ -5,6 +5,7 @@ from typing import Generator
 from post import load
 from bs4 import BeautifulSoup
 from mota import ai_lib
+from mota.chat_sse import _sse_event, _sse_error, _sse_done
 from i18n.prompts import get_prompt
 
 logger = logging.getLogger(__name__)
@@ -27,14 +28,14 @@ def _truncate_at_boundary(text: str, limit: int) -> str:
 def get(item_id: str, user) -> Generator[str, None, None]:
     response = load.get(user["id"], item_id)
     if response is None:
-        yield "data: Error: article content could not be fetched.\n\n"
-        yield "data: [DONE]\n\n"
+        yield _sse_error("article content could not be fetched")
+        yield _sse_done()
         return
 
     html_text = response.get("content_html") or ""
     if not html_text:
-        yield "data: Error: article has no content.\n\n"
-        yield "data: [DONE]\n\n"
+        yield _sse_error("article has no content")
+        yield _sse_done()
         return
 
     soup = BeautifulSoup(html_text, "html.parser")
@@ -48,9 +49,10 @@ def get(item_id: str, user) -> Generator[str, None, None]:
 
     try:
         for chunk in ai_lib.stream_llm_response(messages, max_tokens=150, usage="summarize"):
-            yield f"data: {chunk}\n\n"
+            if chunk:
+                yield _sse_event(chunk)
     except Exception as e:
         logger.error(f"[RESUME] Erro ao gerar resumo: {e}", exc_info=True)
-        yield f"data: {{\"error\": \"Erro ao gerar resumo: {e}\"}}\n\n"
+        yield _sse_error(f"Erro ao gerar resumo: {e}")
 
-    yield "data: [DONE]\n\n"
+    yield _sse_done()

@@ -299,6 +299,8 @@ def boost_affinity(user_id: int, term: str, direction: str, strength: float) -> 
                         "UPDATE user_vectors SET affinity_neg_vector = %s WHERE user_id = %s",
                         (_safe_vector_for_json(new_vec), user_id),
                     )
+
+                conn.commit()
             finally:
                 cursor.close()
 
@@ -344,6 +346,8 @@ def remove_affinity_boost(user_id: int, term: str, direction: str) -> dict:
                 f"UPDATE user_vectors SET {column} = %s WHERE user_id = %s",
                 (_safe_vector_for_json(new_vec) if new_vec is not None else None, user_id),
             )
+
+            conn.commit()
         finally:
             cursor.close()
 
