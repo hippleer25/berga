@@ -23,6 +23,10 @@
     applyArticleImageWidth,
     applyDescLines,
     applyTitleBold,
+    applyTitleSize,
+    applyDescSize,
+    getSavedTitleSize,
+    getSavedDescSize,
     applyDensity,
     getSavedDensity,
     ARTICLE_TYPOGRAPHY,
@@ -33,6 +37,70 @@
   import { get } from 'svelte/store';
   import { ripple } from '$lib/actions/ripple';
   import Portal from '$lib/components/Portal.svelte';
+  import {
+    uiRadiusSurface,
+    uiRadiusControl,
+    uiNavStyle,
+    uiGlass,
+    uiAccent,
+    uiBorderOn,
+    uiBorderWidth,
+    uiBorderColor,
+    uiNavIndicator,
+    uiChipIcons,
+    uiDeckWidthPct,
+    uiDeckHeightVw,
+    uiDeckRadiusPct,
+    uiWelcomeBold,
+    applyRadiusSurfaces,
+    applyRadiusControls,
+    applyNavStyle,
+    applyGlass,
+    applyAccent,
+    applyBorder,
+    applyNavIndicator,
+    applyChipIcons,
+    applyDeckWidthPct,
+    applyDeckHeightVw,
+    applyDeckRadiusPct,
+    applyWelcomeBold,
+    resetUiPrefs,
+    getSavedRadiusSurface,
+    getSavedRadiusControl,
+    getSavedNavStyle,
+    getSavedGlass,
+    getSavedAccent,
+    getSavedBorderOn,
+    getSavedBorderWidth,
+    getSavedBorderColor,
+    getSavedNavIndicator,
+    getSavedChipIcons,
+    getSavedDeckWidthPct,
+    getSavedDeckHeightVw,
+    getSavedDeckRadiusPct,
+    getSavedWelcomeBold,
+    RADIUS_SURFACE_MIN,
+    RADIUS_SURFACE_MAX,
+    RADIUS_SURFACE_DEFAULT,
+    RADIUS_CONTROL_MIN,
+    RADIUS_CONTROL_MAX,
+    RADIUS_CONTROL_DEFAULT,
+    DECK_WIDTH_PCT_MIN,
+    DECK_WIDTH_PCT_MAX,
+    DECK_WIDTH_PCT_DEFAULT,
+    DECK_HEIGHT_VW_MIN,
+    DECK_HEIGHT_VW_MAX,
+    DECK_HEIGHT_VW_DEFAULT,
+    DECK_RADIUS_PCT_MIN,
+    DECK_RADIUS_PCT_MAX,
+    DECK_RADIUS_PCT_DEFAULT,
+    BORDER_WIDTH_MIN,
+    BORDER_WIDTH_MAX,
+    type NavStyle,
+    type NavIndicator,
+  } from '$lib/stores/uiPrefs';
+  import { tabOrder, setTabOrder, TAB_DEFS, type TabId } from '$lib/config/tabs';
+  import { ChevronUp, RotateCcw } from '@lucide/svelte';
   import {
     showCoverImages,
     coverImagePosition,
@@ -96,10 +164,44 @@
   let bodyDropStyle = $state('');
   let bodyPos = $state<TextAlign>('left');
 
-  // ── Collapsible section state ──
-  let typographyOpen = $state(false);
-  let readingOpen = $state(false);
-  let postcardsOpen = $state(false);
+  // ── Border state ──
+  const BORDER_COLOR_PRESETS: (string | null)[] = [
+    null,
+    '#F5B942',
+    '#4F9CF9',
+    '#4CAF7D',
+    '#E5533D',
+    '#9B6BF2',
+    '#2DD4BF',
+  ];
+
+  // ── Interface state ──
+  const ACCENT_PRESETS: (string | null)[] = [
+    null,
+    '#F5B942',
+    '#4F9CF9',
+    '#4CAF7D',
+    '#E5533D',
+    '#9B6BF2',
+    '#F06BA8',
+    '#2DD4BF',
+  ];
+  let radiusSurfaceVal = $state<number>(getSavedRadiusSurface());
+  let radiusControlVal = $state<number>(getSavedRadiusControl());
+  let navStyleVal = $state<NavStyle>(getSavedNavStyle());
+  let glassVal = $state<boolean>(getSavedGlass());
+  let accentVal = $state<string | null>(getSavedAccent());
+  let customAccent = $state<string>(getSavedAccent() ?? '#F5B942');
+  let borderOn = $state<boolean>(getSavedBorderOn());
+  let borderWidth = $state<number>(getSavedBorderWidth());
+  let borderColor = $state<string | null>(getSavedBorderColor());
+  let customBorderColor = $state<string>(getSavedBorderColor() ?? '#8f8f96');
+  let navIndicatorVal = $state<NavIndicator>(getSavedNavIndicator());
+  let chipIcons = $state<boolean>(getSavedChipIcons());
+  let deckWidth = $state<number>(getSavedDeckWidthPct());
+  let deckHeight = $state<number>(getSavedDeckHeightVw());
+  let deckRadius = $state<number>(getSavedDeckRadiusPct());
+  let welcomeBold = $state<boolean>(getSavedWelcomeBold());
 
   // ── Typography state ──
   let fontSize = $state<number>(ARTICLE_TYPOGRAPHY.fontSize.default);
@@ -115,6 +217,8 @@
   // ── Post-card state ──
   let descLines = $state<number>(POSTCARD_PREFS.descLines.default);
   let titleBold = $state<boolean>(POSTCARD_PREFS.titleBold.default);
+  let titleSizeVal = $state<number>(getSavedTitleSize());
+  let descSizeVal = $state<number>(getSavedDescSize());
   let density = $state<Density>('comfortable');
 
   $effect(() => {
@@ -284,8 +388,84 @@
   function toggleTitleBold() {
     titleBold = !titleBold; applyTitleBold(titleBold, true); postcardTitleBold.setValue(titleBold);
   }
+  function setTitleSize(v: number) {
+    titleSizeVal = v; applyTitleSize(v, true);
+  }
+  function setDescSize(v: number) {
+    descSizeVal = v; applyDescSize(v, true);
+  }
   function setDensity(d: Density) {
     density = d; applyDensity(d, true); feedDensity.setValue(d);
+  }
+
+  // ── Interface setters ──
+  function setRadiusSurface(v: number) {
+    radiusSurfaceVal = v; applyRadiusSurfaces(v, true); uiRadiusSurface.set(v);
+  }
+  function setRadiusControl(v: number) {
+    radiusControlVal = v; applyRadiusControls(v, true); uiRadiusControl.set(v);
+  }
+  function setNavStyle(s: NavStyle) {
+    navStyleVal = s; applyNavStyle(s, true); uiNavStyle.set(s);
+  }
+  function toggleGlass() {
+    glassVal = !glassVal; applyGlass(glassVal, true); uiGlass.set(glassVal);
+  }
+  function setAccent(hex: string | null) {
+    accentVal = hex; applyAccent(hex, true); uiAccent.set(hex);
+    if (hex) customAccent = hex;
+  }
+  function setBorderOn(v: boolean) {
+    borderOn = v; applyBorder(v, borderWidth, borderColor, true); uiBorderOn.set(v);
+  }
+  function setBorderWidth(v: number) {
+    borderWidth = v; applyBorder(borderOn, v, borderColor, true); uiBorderWidth.set(v);
+  }
+  function setBorderColor(hex: string | null) {
+    borderColor = hex; applyBorder(borderOn, borderWidth, hex, true); uiBorderColor.set(hex);
+    if (hex) customBorderColor = hex;
+  }
+  function setNavIndicator(s: NavIndicator) {
+    navIndicatorVal = s; applyNavIndicator(s, true); uiNavIndicator.set(s);
+  }
+  function toggleChipIcons() {
+    chipIcons = !chipIcons; applyChipIcons(chipIcons, true); uiChipIcons.set(chipIcons);
+  }
+  function setDeckWidth(v: number) {
+    deckWidth = v; applyDeckWidthPct(v, true); uiDeckWidthPct.set(v);
+  }
+  function setDeckHeight(v: number) {
+    deckHeight = v; applyDeckHeightVw(v, true); uiDeckHeightVw.set(v);
+  }
+  function setDeckRadius(v: number) {
+    deckRadius = v; applyDeckRadiusPct(v, true); uiDeckRadiusPct.set(v);
+  }
+  function toggleWelcomeBold() {
+    welcomeBold = !welcomeBold; applyWelcomeBold(welcomeBold, true); uiWelcomeBold.set(welcomeBold);
+  }
+  function moveTab(i: number, dir: -1 | 1) {
+    const arr = [...get(tabOrder)];
+    const j = i + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setTabOrder(arr);
+  }
+  function resetInterface() {
+    resetUiPrefs();
+    radiusSurfaceVal = RADIUS_SURFACE_DEFAULT;
+    radiusControlVal = RADIUS_CONTROL_DEFAULT;
+    navStyleVal = 'bar';
+    glassVal = true;
+    accentVal = null;
+    borderOn = false;
+    borderWidth = 1;
+    borderColor = null;
+    navIndicatorVal = 'modern';
+    chipIcons = true;
+    deckWidth = DECK_WIDTH_PCT_DEFAULT;
+    deckHeight = DECK_HEIGHT_VW_DEFAULT;
+    deckRadius = DECK_RADIUS_PCT_DEFAULT;
+    welcomeBold = false;
   }
 
   function fmtEm(px: number): string {
@@ -527,12 +707,301 @@
     </button>
   </div>
 
-  <details class="section" bind:open={typographyOpen}>
-    <summary class="section-summary">
-      <span class="section-summary-text">{$t('settings.sectionTypography')}</span>
-      <span class="chevron-icon" class:rotated={typographyOpen}><ChevronDown size={14} /></span>
-    </summary>
-    <div class="section-body">
+  {#snippet TabIcon(id: TabId)}
+    {@const Icon = TAB_DEFS[id].icon}
+    <Icon size={18} strokeWidth={1.8} />
+  {/snippet}
+
+  <div class="settings-group">
+    <div class="group-label">{$t('settings.interface')}</div>
+    <div class="group-card">
+      <div class="setting-row">
+        <span class="setting-label">{$t('settings.bottomNavStyle')}</span>
+        <div class="navstyle-picker">
+          <button
+            class="navstyle-card"
+            class:active={navStyleVal === 'bar'}
+            use:ripple
+            onclick={() => setNavStyle('bar')}
+            aria-pressed={navStyleVal === 'bar'}
+          >
+            <span class="navstyle-preview navstyle-preview--bar"><span></span><span></span><span></span></span>
+            <span class="navstyle-label">{$t('settings.navStyleBar')}</span>
+          </button>
+          <button
+            class="navstyle-card"
+            class:active={navStyleVal === 'deck'}
+            use:ripple
+            onclick={() => setNavStyle('deck')}
+            aria-pressed={navStyleVal === 'deck'}
+          >
+            <span class="navstyle-preview navstyle-preview--deck"><span></span><span></span><span></span></span>
+            <span class="navstyle-label">{$t('settings.navStyleDeck')}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <span class="setting-label">{$t('settings.navIndicator')}</span>
+        <div class="navstyle-picker">
+          <button
+            class="navstyle-card"
+            class:active={navIndicatorVal === 'modern'}
+            use:ripple
+            onclick={() => setNavIndicator('modern')}
+            aria-pressed={navIndicatorVal === 'modern'}
+          >
+            <span class="navstyle-preview navstyle-preview--modern"><span></span><span></span><span></span></span>
+            <span class="navstyle-label">{$t('settings.navIndicatorModern')}</span>
+          </button>
+          <button
+            class="navstyle-card"
+            class:active={navIndicatorVal === 'classic'}
+            use:ripple
+            onclick={() => setNavIndicator('classic')}
+            aria-pressed={navIndicatorVal === 'classic'}
+          >
+            <span class="navstyle-preview navstyle-preview--classic"><span></span><span></span><span></span></span>
+            <span class="navstyle-label">{$t('settings.navIndicatorClassic')}</span>
+          </button>
+        </div>
+      </div>
+
+      {#if navStyleVal === 'deck'}
+        <div class="setting-slider-row">
+          <div class="slider-head">
+            <span class="setting-label">{$t('settings.deckWidth')}</span>
+            <span class="slider-value">{deckWidth}%</span>
+          </div>
+          <input
+            type="range"
+            class="range"
+            min={DECK_WIDTH_PCT_MIN}
+            max={DECK_WIDTH_PCT_MAX}
+            step={1}
+            value={deckWidth}
+            oninput={(e) => setDeckWidth(Number((e.target as HTMLInputElement).value))}
+          />
+        </div>
+
+        <div class="setting-slider-row">
+          <div class="slider-head">
+            <span class="setting-label">{$t('settings.deckHeight')}</span>
+            <span class="slider-value">{deckHeight}%</span>
+          </div>
+          <input
+            type="range"
+            class="range"
+            min={DECK_HEIGHT_VW_MIN}
+            max={DECK_HEIGHT_VW_MAX}
+            step={0.5}
+            value={deckHeight}
+            oninput={(e) => setDeckHeight(Number((e.target as HTMLInputElement).value))}
+          />
+        </div>
+
+        <div class="setting-slider-row">
+          <div class="slider-head">
+            <span class="setting-label">{$t('settings.deckRadius')}</span>
+            <span class="slider-value">{deckRadius}%</span>
+          </div>
+          <input
+            type="range"
+            class="range"
+            min={DECK_RADIUS_PCT_MIN}
+            max={DECK_RADIUS_PCT_MAX}
+            step={1}
+            value={deckRadius}
+            oninput={(e) => setDeckRadius(Number((e.target as HTMLInputElement).value))}
+          />
+        </div>
+      {/if}
+
+      <div class="setting-row">
+        <div class="setting-text">
+          <span class="setting-label">{$t('settings.frostedGlass')}</span>
+        </div>
+        <button class="pill-toggle" class:on={glassVal} use:ripple onclick={toggleGlass} aria-label={$t('settings.frostedGlass')}>
+          <div class="pill-thumb"></div>
+        </button>
+      </div>
+
+      <div class="setting-slider-row">
+        <div class="slider-head">
+          <span class="setting-label">{$t('settings.radiusSurfaces')}</span>
+          <span class="slider-value">{radiusSurfaceVal}px</span>
+        </div>
+        <input
+          type="range"
+          class="range"
+          min={RADIUS_SURFACE_MIN}
+          max={RADIUS_SURFACE_MAX}
+          step={1}
+          value={radiusSurfaceVal}
+          oninput={(e) => setRadiusSurface(Number((e.target as HTMLInputElement).value))}
+        />
+      </div>
+
+      <div class="setting-slider-row">
+        <div class="slider-head">
+          <span class="setting-label">{$t('settings.radiusControls')}</span>
+          <span class="slider-value">{radiusControlVal}px</span>
+        </div>
+        <input
+          type="range"
+          class="range"
+          min={RADIUS_CONTROL_MIN}
+          max={RADIUS_CONTROL_MAX}
+          step={1}
+          value={radiusControlVal}
+          oninput={(e) => setRadiusControl(Number((e.target as HTMLInputElement).value))}
+        />
+        <p class="row-hint">{$t('settings.radiusHint')}</p>
+      </div>
+
+      <div class="setting-row accent-row">
+        <span class="setting-label">{$t('settings.accentColor')}</span>
+        <div class="accent-swatches">
+          {#each ACCENT_PRESETS as preset}
+            <button
+              class="swatch"
+              class:selected={accentVal === preset}
+              style="background: {preset ?? 'var(--color-accent)'}"
+              use:ripple
+              onclick={() => setAccent(preset)}
+              aria-label={preset ?? $t('settings.accentThemeDefault')}
+              aria-pressed={accentVal === preset}
+            ></button>
+          {/each}
+          <label
+            class="swatch swatch-custom"
+            class:selected={accentVal !== null && !ACCENT_PRESETS.includes(accentVal)}
+            title={$t('settings.accentCustom')}
+          >
+            <input
+              type="color"
+              value={customAccent}
+              oninput={(e) => setAccent((e.target as HTMLInputElement).value)}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text">
+          <span class="setting-label">{$t('settings.borders')}</span>
+        </div>
+        <button class="pill-toggle" class:on={borderOn} use:ripple onclick={() => setBorderOn(!borderOn)} aria-label={$t('settings.borders')}>
+          <div class="pill-thumb"></div>
+        </button>
+      </div>
+
+      {#if borderOn}
+        <div class="setting-slider-row">
+          <div class="slider-head">
+            <span class="setting-label">{$t('settings.borderWidth')}</span>
+            <span class="slider-value">{borderWidth}px</span>
+          </div>
+          <input
+            type="range"
+            class="range"
+            min={BORDER_WIDTH_MIN}
+            max={BORDER_WIDTH_MAX}
+            step={0.5}
+            value={borderWidth}
+            oninput={(e) => setBorderWidth(Number((e.target as HTMLInputElement).value))}
+          />
+        </div>
+
+        <div class="setting-row accent-row">
+          <span class="setting-label">{$t('settings.borderColor')}</span>
+          <div class="accent-swatches">
+            {#each BORDER_COLOR_PRESETS as preset}
+              <button
+                class="swatch swatch-line"
+                class:selected={borderColor === preset}
+                style="background: {preset ?? 'var(--ui-border-color)'}"
+                use:ripple
+                onclick={() => setBorderColor(preset)}
+                aria-label={preset ?? $t('settings.borderColorDefault')}
+                aria-pressed={borderColor === preset}
+              ></button>
+            {/each}
+            <label
+              class="swatch swatch-custom"
+              class:selected={borderColor !== null && !BORDER_COLOR_PRESETS.includes(borderColor)}
+              title={$t('settings.accentCustom')}
+            >
+              <input
+                type="color"
+                value={customBorderColor}
+                oninput={(e) => setBorderColor((e.target as HTMLInputElement).value)}
+              />
+            </label>
+          </div>
+        </div>
+      {/if}
+
+      <div class="setting-row">
+        <div class="setting-text">
+          <span class="setting-label">{$t('settings.chipIcons')}</span>
+        </div>
+        <button class="pill-toggle" class:on={chipIcons} use:ripple onclick={toggleChipIcons} aria-label={$t('settings.chipIcons')}>
+          <div class="pill-thumb"></div>
+        </button>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text">
+          <span class="setting-label">{$t('settings.boldWelcome')}</span>
+        </div>
+        <button class="pill-toggle" class:on={welcomeBold} use:ripple onclick={toggleWelcomeBold} aria-label={$t('settings.boldWelcome')}>
+          <div class="pill-thumb"></div>
+        </button>
+      </div>
+
+      <div class="setting-block">
+        <span class="setting-label">{$t('settings.tabOrder')}</span>
+        <div class="taborder-list">
+          {#each $tabOrder as id, i (id)}
+            <div class="taborder-row" class:first={i === 0} class:last={i === $tabOrder.length - 1}>
+              <span class="taborder-icon">{@render TabIcon(id)}</span>
+              <span class="taborder-label">{$t(`navbar.${id}`)}</span>
+              <span class="taborder-controls">
+                <button
+                  class="taborder-btn"
+                  onclick={() => moveTab(i, -1)}
+                  disabled={i === 0}
+                  aria-label={$t('settings.moveUp')}
+                >
+                  <ChevronUp size={16} />
+                </button>
+                <button
+                  class="taborder-btn"
+                  onclick={() => moveTab(i, 1)}
+                  disabled={i === $tabOrder.length - 1}
+                  aria-label={$t('settings.moveDown')}
+                >
+                  <ChevronDown size={16} />
+                </button>
+              </span>
+            </div>
+          {/each}
+        </div>
+      </div>
+
+      <div class="css-actions">
+        <button class="action-btn" use:ripple onclick={resetInterface}>
+          <RotateCcw size={14} />
+          <span>{$t('settings.resetInterface')}</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-group">
+    <div class="group-label">{$t('settings.sectionTypography')}</div>
+    <div class="group-card">
       {#each fontCategories as cat}
         <div class="setting-row">
           <span class="setting-label">{$t(cat.labelKey)}</span>
@@ -572,14 +1041,11 @@
         ARTICLE_TYPOGRAPHY.lineHeight.step, '', setLineHeight,
         (v) => v.toFixed(2))}
     </div>
-  </details>
+  </div>
 
-  <details class="section" bind:open={readingOpen}>
-    <summary class="section-summary">
-      <span class="section-summary-text">{$t('settings.sectionReading')}</span>
-      <span class="chevron-icon" class:rotated={readingOpen}><ChevronDown size={14} /></span>
-    </summary>
-    <div class="section-body">
+  <div class="settings-group">
+    <div class="group-label">{$t('settings.sectionReading')}</div>
+    <div class="group-card">
       {@render sliderRow($t('settings.bodyWidth'), articleMaxW,
         ARTICLE_TYPOGRAPHY.maxWidth.min, ARTICLE_TYPOGRAPHY.maxWidth.max,
         ARTICLE_TYPOGRAPHY.maxWidth.step, '', setArticleMaxWidth,
@@ -629,14 +1095,11 @@
         </div>
       </div>
     </div>
-  </details>
+  </div>
 
-  <details class="section" bind:open={postcardsOpen}>
-    <summary class="section-summary">
-      <span class="section-summary-text">{$t('settings.sectionPostcards')}</span>
-      <span class="chevron-icon" class:rotated={postcardsOpen}><ChevronDown size={14} /></span>
-    </summary>
-    <div class="section-body">
+  <div class="settings-group">
+    <div class="group-label">{$t('settings.sectionPostcards')}</div>
+    <div class="group-card">
       <div class="setting-row">
         <div class="setting-text">
           <span class="setting-label">{$t('settings.showCoverImages')}</span>
@@ -681,6 +1144,18 @@
         </button>
       </div>
 
+      {@render sliderRow($t('settings.cardTitleSize'), titleSizeVal,
+        POSTCARD_PREFS.titleSize.min, POSTCARD_PREFS.titleSize.max,
+        POSTCARD_PREFS.titleSize.step, '',
+        setTitleSize,
+        (v) => `${v}%`)}
+
+      {@render sliderRow($t('settings.cardDescSize'), descSizeVal,
+        POSTCARD_PREFS.descSize.min, POSTCARD_PREFS.descSize.max,
+        POSTCARD_PREFS.descSize.step, '',
+        setDescSize,
+        (v) => `${v}%`)}
+
       <div class="setting-row">
         <span class="setting-label">{$t('settings.density')}</span>
         <div class="picker-wrap density-picker">
@@ -699,27 +1174,29 @@
         </div>
       </div>
     </div>
-  </details>
+  </div>
 
-  <div class="setting-block">
-    <span class="setting-label">{$t('settings.customCss')}</span>
-    <p class="section-desc">{$t('settings.customCssDesc')}</p>
-    <textarea
-      class="css-editor"
-      bind:value={customCss}
-      placeholder={'/* Your custom CSS here */\n.page-root { ... }'}
-      spellcheck="false"
-      rows="8"
-    ></textarea>
-    <div class="css-actions">
-      <button class="action-btn accent" use:ripple onclick={saveCustomCss} disabled={cssSaveStatus === 'saving'}>
-        {#if cssSaveStatus === 'saving'}<span class="spinner"></span><span>{$t('settings.saving')}</span>
-        {:else if cssSaveStatus === 'saved'}<Check size={14} /><span>{$t('settings.saved')}</span>
-        {:else}<span>{$t('settings.saveCss')}</span>{/if}
-      </button>
-      <button class="action-btn" use:ripple onclick={() => { customCss = ''; saveCustomCss(); }} disabled={!customCss.trim()}>
-        <span>{$t('settings.resetCss')}</span>
-      </button>
+  <div class="settings-group">
+    <div class="group-label">{$t('settings.customCss')}</div>
+    <div class="group-card">
+      <p class="section-desc">{$t('settings.customCssDesc')}</p>
+      <textarea
+        class="css-editor"
+        bind:value={customCss}
+        placeholder={'/* Your custom CSS here */\n.page-root { ... }'}
+        spellcheck="false"
+        rows="8"
+      ></textarea>
+      <div class="css-actions">
+        <button class="action-btn accent" use:ripple onclick={saveCustomCss} disabled={cssSaveStatus === 'saving'}>
+          {#if cssSaveStatus === 'saving'}<span class="spinner"></span><span>{$t('settings.saving')}</span>
+          {:else if cssSaveStatus === 'saved'}<Check size={14} /><span>{$t('settings.saved')}</span>
+          {:else}<span>{$t('settings.saveCss')}</span>{/if}
+        </button>
+        <button class="action-btn" use:ripple onclick={() => { customCss = ''; saveCustomCss(); }} disabled={!customCss.trim()}>
+          <span>{$t('settings.resetCss')}</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -727,15 +1204,16 @@
 <style>
   .tab-panel { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; }
   .section-title { font-size: 16px; font-weight: 700; color: var(--color-base-content); margin: 0; }
-  .section-desc { font-size: 13px; line-height: 1.45; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); margin: -8px 0 0; }
+  .section-desc { font-size: 13px; line-height: 1.45; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); margin: 0; overflow-wrap: anywhere; }
 
-  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--color-base-300); }
-  .setting-block { display: flex; flex-direction: column; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-base-300); }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--color-base-300); }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-block { display: flex; flex-direction: column; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--color-base-300); }
   .setting-label { font-size: 14px; font-weight: 500; color: var(--color-base-content); }
-  .setting-text { display: flex; flex-direction: column; gap: 2px; }
+  .setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 
   .setting-btn {
-    display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 10px;
+    display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--ui-radius-sm);
     border: 1px solid var(--color-base-300); background: transparent;
     font-size: 13px; font-weight: 500; position: relative; overflow: hidden;
     color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
@@ -750,7 +1228,7 @@
   .picker-backdrop { position: fixed; inset: 0; z-index: 9998; pointer-events: auto; }
   .picker-dropdown {
     z-index: 9999; background: var(--color-base-100); border: 1px solid var(--color-base-300);
-    border-radius: 10px; box-shadow: 0 8px 24px color-mix(in oklch, black 20%, transparent);
+    border-radius: var(--ui-radius-sm); box-shadow: 0 8px 24px color-mix(in oklch, black 20%, transparent);
     padding: 4px; min-width: 180px; overflow-y: auto;
     animation: picker-pop 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
     position: fixed;
@@ -760,7 +1238,7 @@
     display: flex; align-items: center; justify-content: space-between; width: 100%;
     padding: 8px 10px; border: none; background: transparent; cursor: pointer;
     font-size: 13px; font-weight: 500; color: var(--color-base-content);
-    border-radius: 6px; transition: background 110ms; text-align: left; gap: 8px;
+    border-radius: var(--ui-radius-xs); transition: background 110ms; text-align: left; gap: 8px;
   }
   .picker-item:hover { background: var(--color-base-200); }
   .picker-item:active { transform: scale(0.97); }
@@ -774,7 +1252,7 @@
   @keyframes picker-pop { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
   .pill-toggle {
-    width: 44px; height: 24px; border-radius: 999px;
+    width: 44px; height: 24px; border-radius: var(--ui-radius-full);
     background: color-mix(in oklch, var(--color-base-content) 20%, transparent);
     position: relative; border: none; cursor: pointer; transition: background 200ms;
     flex-shrink: 0; overflow: hidden;
@@ -791,7 +1269,7 @@
 
 
   .css-editor {
-    width: 100%; padding: 12px; border-radius: 10px;
+    width: 100%; box-sizing: border-box; padding: 12px; border-radius: var(--ui-radius-sm);
     border: 1px solid var(--color-base-300); background: var(--color-base-200);
     color: var(--color-base-content); font-family: 'Fira Code', 'Cascadia Code', monospace;
     font-size: 13px; line-height: 1.5; resize: vertical; outline: none;
@@ -804,7 +1282,7 @@
 
   .action-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 10px 16px; border-radius: 10px; border: 1px solid var(--color-base-300);
+    padding: 10px 16px; border-radius: var(--ui-radius-sm); border: 1px solid var(--color-base-300);
     background: transparent; color: var(--color-base-content); cursor: pointer;
     font-size: 13px; font-weight: 600; transition: all 130ms ease;
     position: relative; overflow: hidden;
@@ -823,25 +1301,24 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Collapsible sections ─────────────────────────────────── */
-  .section {
-    border: 1px solid var(--color-base-300);
-    border-radius: 12px;
-    overflow: hidden;
-    background: color-mix(in oklch, var(--color-base-100) 60%, transparent);
+  /* ── Flat grouped sections (iOS style) ────────────────────── */
+  .settings-group { display: flex; flex-direction: column; gap: 10px; }
+  .group-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: color-mix(in oklch, var(--color-base-content) 48%, transparent);
+    padding: 4px 0 0;
   }
-  .section > summary { list-style: none; }
-  .section > summary::-webkit-details-marker { display: none; }
-  .section-summary {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 14px; cursor: pointer; user-select: none;
-    font-size: 14px; font-weight: 600; color: var(--color-base-content);
-    transition: background 130ms;
+  /* Flat, Spotify-style: no inner boxes — rows separated by dividers */
+  .group-card {
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+    border: none;
+    padding: 0;
   }
-  .section-summary:hover { background: var(--color-base-200); }
-  .section-summary:active { background: color-mix(in oklch, var(--color-base-content) 6%, transparent); }
-  .section-summary-text { display: flex; align-items: center; gap: 6px; }
-  .section-body { padding: 4px 14px 12px; display: flex; flex-direction: column; gap: 4px; }
 
   /* ── Sliders ──────────────────────────────────────────────── */
   .setting-slider-row {
@@ -855,7 +1332,7 @@
   }
   .range {
     -webkit-appearance: none; appearance: none;
-    width: 100%; height: 4px; border-radius: 999px;
+    width: 100%; height: 4px; border-radius: var(--ui-radius-full);
     background: color-mix(in oklch, var(--color-base-content) 18%, transparent);
     outline: none; cursor: pointer;
   }
@@ -874,8 +1351,100 @@
 
   /* ── Density picker ───────────────────────────────────────── */
   .density-picker { display: flex; gap: 4px; }
+
+  /* ── Interface: nav style picker ──────────────────────────── */
+  .navstyle-picker { display: flex; gap: 8px; }
+  .navstyle-card {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 8px; border-radius: var(--ui-radius-sm);
+    border: 1px solid var(--color-base-300); background: transparent;
+    cursor: pointer; transition: all 130ms; position: relative; overflow: hidden;
+  }
+  .navstyle-card:hover { background: var(--color-base-200); }
+  .navstyle-card.active {
+    border-color: var(--color-accent);
+    background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+  }
+  .navstyle-label { font-size: 11px; font-weight: 600; color: var(--color-base-content); }
+  .navstyle-preview {
+    display: flex; align-items: center; gap: 5px;
+    width: 64px; height: 26px; padding: 3px;
+    background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+    border-radius: var(--ui-radius-xs);
+  }
+  .navstyle-preview span {
+    flex: 1; height: 8px; border-radius: var(--ui-radius-full);
+    background: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+  }
+  .navstyle-preview span:first-child { background: var(--color-accent); }
+  .navstyle-preview--deck { padding: 3px 7px; border-radius: var(--ui-radius-full); border: 1px solid var(--color-base-300); }
+  /* Modern: active icon sits in a tinted pill; Classic: whole item lights up */
+  .navstyle-preview--modern span:first-child {
+    background: color-mix(in oklch, var(--color-accent) 26%, transparent);
+    height: 14px;
+    margin-top: -3px;
+    margin-bottom: -3px;
+    border-radius: var(--ui-radius-full);
+  }
+  .navstyle-preview--classic span:first-child {
+    background: color-mix(in oklch, var(--color-accent) 26%, transparent);
+  }
+
+  /* ── Interface: accent swatches ───────────────────────────── */
+  .accent-row { flex-wrap: wrap; gap: 8px; }
+  .accent-swatches { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .swatch {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2px solid transparent; cursor: pointer; padding: 0;
+    box-shadow: inset 0 0 0 2px var(--color-base-100);
+    transition: transform 120ms, border-color 120ms;
+    position: relative; overflow: hidden;
+  }
+  .swatch:hover { transform: scale(1.12); }
+  .swatch.selected { border-color: var(--color-base-content); }
+  .swatch-line { border-radius: var(--ui-radius-xs); }
+  .swatch-custom {
+    display: flex; align-items: center; justify-content: center;
+    background:
+      conic-gradient(#f66 0 0.5turn, #6cf 0.5turn 0.75turn, #f66 0.75turn);
+    font-size: 0;
+  }
+  .swatch-custom input {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+
+  .row-hint {
+    font-size: 12px;
+    line-height: 1.4;
+    color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+    margin: 4px 0 0;
+  }
+
+  /* ── Interface: tab order ─────────────────────────────────── */
+  .taborder-list { display: flex; flex-direction: column; gap: 6px; }
+  .taborder-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--color-base-300);
+    border-radius: var(--ui-radius-sm);
+    background: color-mix(in oklch, var(--color-base-100) 60%, transparent);
+  }
+  .taborder-icon {
+    display: flex; align-items: center; color: var(--color-accent);
+  }
+  .taborder-label { flex: 1; font-size: 13px; font-weight: 500; color: var(--color-base-content); }
+  .taborder-controls { display: flex; gap: 4px; }
+  .taborder-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px;
+    border: 1px solid var(--color-base-300); border-radius: var(--ui-radius-sm);
+    background: transparent; color: var(--color-base-content);
+    cursor: pointer; transition: all 120ms;
+  }
+  .taborder-btn:hover:not(:disabled) { background: var(--color-base-200); }
+  .taborder-btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .density-btn {
-    padding: 6px 10px; border-radius: 8px; border: 1px solid var(--color-base-300);
+    padding: 6px 10px; border-radius: var(--ui-radius-sm); border: 1px solid var(--color-base-300);
     background: transparent; color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
     font-size: 12px; font-weight: 600; cursor: pointer; transition: all 130ms;
     font-family: var(--font-ui);

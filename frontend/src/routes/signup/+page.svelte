@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import User from "@lucide/svelte/icons/user";
   import UserCircle from "@lucide/svelte/icons/user-circle";
   import Mail from "@lucide/svelte/icons/mail";
@@ -7,12 +8,14 @@
   import EyeClosed from "@lucide/svelte/icons/eye-closed";
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import Globe from '@lucide/svelte/icons/globe';
+  import AlertTriangle from '@lucide/svelte/icons/triangle-alert';
 
   import { t } from 'svelte-i18n';
   import { get } from 'svelte/store';
-import { apiFetch, setNativeToken } from '$lib/api';
-import { instance } from '$lib/stores/instance';
-import { auth } from '$lib/stores/auth';
+  import { onMount } from 'svelte';
+  import { apiFetch, setNativeToken } from '$lib/api';
+  import { instance } from '$lib/stores/instance';
+  import { checkSession, setSessionLoggedIn } from '$lib/stores/session';
 
   let instanceUrl = $state(get(instance));
   let username = $state("");
@@ -24,10 +27,17 @@ import { auth } from '$lib/stores/auth';
   let message = $state("");
   let loading = $state(false);
 
-	let usernameRef: HTMLInputElement;
-	let fullNameRef: HTMLInputElement;
-	let emailRef: HTMLInputElement;
-	let passwordRef: HTMLInputElement;
+  let usernameRef: HTMLInputElement;
+  let fullNameRef: HTMLInputElement;
+  let emailRef: HTMLInputElement;
+  let passwordRef: HTMLInputElement;
+
+  onMount(async () => {
+    // Already authenticated → nothing to do here.
+    if (await checkSession()) {
+      goto('/home', { replaceState: true });
+    }
+  });
 
 	let instanceTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
@@ -39,6 +49,16 @@ import { auth } from '$lib/stores/auth';
 
   function focusNext(nextRef: HTMLInputElement | undefined) {
     nextRef?.focus();
+  }
+
+  function errorMessage(data: any): string {
+    switch (data?.code) {
+      case 'username_taken': return get(t)('signup.usernameTaken');
+      case 'email_taken':    return get(t)('signup.emailTaken');
+      case 'missing_fields': return get(t)('signup.missingFields');
+      case 'server_error':   return get(t)('signup.serverError');
+      default:               return get(t)('signup.errorSignup');
+    }
   }
 
   async function signup() {
@@ -66,10 +86,10 @@ import { auth } from '$lib/stores/auth';
         if (isNative && data.access_token) {
           setNativeToken(data.access_token);
         }
-        auth.setLoggedIn();
-        window.location.href = '/home';
+        setSessionLoggedIn();
+        goto('/home', { replaceState: true });
       } else {
-        message = data.message || get(t)('signup.errorSignup');
+        message = errorMessage(data);
       }
 
     } catch (err) {
@@ -203,12 +223,15 @@ import { auth } from '$lib/stores/auth';
                 </div>
 
                 {#if message}
-                    <p class="message-text">{message}</p>
+                    <div class="error-alert" role="alert">
+                        <AlertTriangle size={16} class="error-icon" />
+                        <span>{message}</span>
+                    </div>
                 {/if}
 
                 <!-- Actions -->
                 <div class="form-actions">
-                    <button class="action-btn" onclick={() => window.location.href = '/'}>
+                    <button class="action-btn" onclick={() => goto('/')}>
                         <ArrowLeft size={16} />
                         <span>{$t('signup.back')}</span>
                     </button>
@@ -305,7 +328,7 @@ font-family: var(--font-page-title);
         height: 44px;
         background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
         border: 1px solid var(--color-base-300);
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         padding: 0 14px;
         font-size: 14px;
         color: var(--color-base-content);
@@ -385,13 +408,30 @@ font-family: var(--font-page-title);
         transform: scale(0.6);
     }
 
-    /* ── Message Text ───────────────────────────────────────── */
-    .message-text {
+    /* ── Error Message ──────────────────────────────────────── */
+    .error-alert {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 14px;
+        border-radius: var(--ui-radius-sm);
+        background: color-mix(in oklch, var(--color-error) 10%, transparent);
+        border: 1px solid color-mix(in oklch, var(--color-error) 35%, transparent);
+        color: var(--color-error);
         font-size: 13px;
-        text-align: center;
-        margin: 0;
-        padding: 4px 0;
-        color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+        font-weight: 500;
+        animation: shake 0.36s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+    }
+
+    @keyframes shake {
+        10%, 90% { transform: translateX(-1px); }
+        20%, 80% { transform: translateX(2px); }
+        30%, 50%, 70% { transform: translateX(-3px); }
+        40%, 60% { transform: translateX(3px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .error-alert { animation: none; }
     }
 
     /* ── Action Buttons ─────────────────────────────────────── */
@@ -408,7 +448,7 @@ font-family: var(--font-page-title);
         justify-content: center;
         gap: 6px;
         padding: 10px 16px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: 1px solid var(--color-base-300);
         background: transparent;
         color: var(--color-base-content);

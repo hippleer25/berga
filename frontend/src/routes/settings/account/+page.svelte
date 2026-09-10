@@ -2,9 +2,10 @@
 import LogOut from '@lucide/svelte/icons/log-out';
   import Globe from '@lucide/svelte/icons/globe';
   import { t } from 'svelte-i18n';
+  import { goto } from '$app/navigation';
   import { apiFetch, clearNativeToken } from '$lib/api';
  import { instance } from '$lib/stores/instance';
- import { auth } from '$lib/stores/auth';
+ import { setSessionLoggedOut } from '$lib/stores/session';
  import { ripple } from '$lib/actions/ripple';
 
  let instanceUrl = $state(instance.getInstance());
@@ -18,8 +19,8 @@ async function logout() {
       await apiFetch('/api/logout', { method: 'POST', credentials: 'include' });
     } finally {
       clearNativeToken();
-      auth.setLoggedOut();
-      window.location.replace('/');
+      setSessionLoggedOut();
+      goto('/', { replaceState: true });
     }
   }
 </script>
@@ -60,7 +61,7 @@ async function logout() {
 
 	.action-btn {
 		display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-		padding: 10px 16px; border-radius: 10px; border: 1px solid var(--color-base-300);
+		padding: 10px 16px; border-radius: var(--ui-radius-sm); border: 1px solid var(--color-base-300);
 		background: transparent; color: var(--color-base-content); cursor: pointer;
 		font-size: 13px; font-weight: 600; transition: all 130ms ease;
 		position: relative; overflow: hidden;
@@ -75,7 +76,7 @@ async function logout() {
 .setting-label { font-size: 13px; font-weight: 600; color: color-mix(in oklch, var(--color-base-content) 80%, transparent); padding-left: 2px; }
 .setting-desc { font-size: 12px; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); margin: 0; line-height: 1.4; }
 .input-icon-wrap { position: relative; display: flex; align-items: center; }
-.custom-input { width: 100%; height: 44px; background: color-mix(in oklch, var(--color-base-200) 50%, transparent); border: 1px solid var(--color-base-300); border-radius: 10px; padding: 0 14px; font-size: 14px; color: var(--color-base-content); transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease; outline: none; }
+.custom-input { width: 100%; height: 44px; background: color-mix(in oklch, var(--color-base-200) 50%, transparent); border: 1px solid var(--color-base-300); border-radius: var(--ui-radius-sm); padding: 0 14px; font-size: 14px; color: var(--color-base-content); transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease; outline: none; }
 .custom-input::placeholder { color: color-mix(in oklch, var(--color-base-content) 35%, transparent); }
 .custom-input:focus { background: var(--color-base-100); border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 15%, transparent); }
 .custom-input.has-icon-left { padding-left: 42px; }

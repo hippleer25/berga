@@ -11,5 +11,7 @@
   "loggingIn": "Anmeldung läuft...",
   "loginBtn": "Anmelden",
   "instanceLabel": "Instanz",
-  "instancePlaceholder": "z.B. bergamota.net.br"
+  "instancePlaceholder": "z.B. bergamota.net.br",
+  "missingFields": "Benutzername und Passwort eingeben",
+  "serverError": "Serverfehler. Versuche es gleich erneut."
 }

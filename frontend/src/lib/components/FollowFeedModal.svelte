@@ -283,7 +283,7 @@
 	.box {
 		background: var(--color-base-100, white);
 		border: 1px solid color-mix(in oklch, var(--color-base-content, #000) 10%, transparent);
-		border-radius: 16px;
+		border-radius: var(--ui-radius-lg);
 		width: 100%;
 		max-width: 420px;
 		box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
@@ -307,7 +307,7 @@
 		font-size: 14px;
 		color: color-mix(in oklch, var(--color-base-content, #000) 40%, transparent);
 		padding: 4px 6px;
-		border-radius: 6px;
+		border-radius: var(--ui-radius-xs);
 		transition: background 0.15s, color 0.15s;
 		z-index: 1;
 	}
@@ -422,7 +422,7 @@
 		gap: 8px;
 		background: color-mix(in oklch, var(--color-error, #ef4444) 8%, transparent);
 		border: 1px solid color-mix(in oklch, var(--color-error, #ef4444) 20%, transparent);
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm);
 		padding: 8px 12px;
 	}
 
@@ -448,7 +448,7 @@
 		margin: 0;
 		padding: 0;
 		border: 1px solid color-mix(in oklch, var(--color-base-content, #000) 10%, transparent);
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm);
 		overflow: hidden;
 		max-height: 280px;
 		overflow-y: auto;
@@ -520,7 +520,7 @@
 		gap: 8px;
 		background: color-mix(in oklch, var(--color-base-content, #000) 5%, transparent);
 		border: 1px solid color-mix(in oklch, var(--color-base-content, #000) 10%, transparent);
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm);
 		padding: 10px 12px;
 	}
 
@@ -565,7 +565,7 @@
 		margin: 0;
 		padding: 0;
 		border: 1px solid color-mix(in oklch, var(--color-base-content, #000) 10%, transparent);
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm);
 		overflow: hidden;
 	}
 
@@ -624,7 +624,7 @@
 		font-size: 13px;
 		font-weight: 700;
 		padding: 8px 20px;
-		border-radius: 999px;
+		border-radius: var(--ui-radius-full);
 		border: none;
 		background: var(--color-primary, #3b82f6);
 		color: var(--color-primary-content, #fff);
@@ -638,7 +638,7 @@
 		font-size: 13px;
 		font-weight: 600;
 		padding: 8px 16px;
-		border-radius: 999px;
+		border-radius: var(--ui-radius-full);
 		border: 1px solid color-mix(in oklch, var(--color-base-content, #000) 15%, transparent);
 		background: none;
 		color: var(--color-base-content, #000);

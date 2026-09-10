@@ -7,8 +7,9 @@
     import { Search } from '@lucide/svelte';
     import { t } from 'svelte-i18n';
 import { get } from 'svelte/store';
-import { apiFetch } from '$lib/api';
-import { syncFeedItemTags, type TagRef } from '$lib/utils/syncFeedTags';
+    import { apiFetch } from '$lib/api';
+    import { syncFeedItemTags, type TagRef } from '$lib/utils/syncFeedTags';
+    import ScreenShell from '$lib/components/ScreenShell.svelte';
 
 type Tab = 'articles' | 'feeds';
 
@@ -124,6 +125,7 @@ const res = await apiFetch(
 }
 </script>
 
+<ScreenShell>
 <div class="page-root">
     <div class="main-content">
 
@@ -232,6 +234,7 @@ const res = await apiFetch(
 
     </div>
 </div>
+</ScreenShell>
 
 <!-- ── Follow Feed Modal ───────────────────────────────────────────────── -->
 {#if modalFeed}
@@ -265,7 +268,7 @@ const res = await apiFetch(
         gap: 12px;
         background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
         border: 1px solid var(--color-base-300);
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         padding: 0 16px;
         height: 46px;
         transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
@@ -303,7 +306,7 @@ const res = await apiFetch(
     .mode-pill {
         display: flex;
         background: var(--color-base-200);
-        border-radius: 13px;
+        border-radius: calc(var(--ui-radius-sm) + 3px);
         padding: 3px;
         gap: 2px;
         flex-shrink: 0;
@@ -313,7 +316,7 @@ const res = await apiFetch(
         align-items: center;
         gap: 5px;
         padding: 6px 14px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: none;
         background: transparent;
         font-size: 13px;
@@ -386,7 +389,7 @@ const res = await apiFetch(
   margin: 0 -16px;
   padding-left: 16px;
   padding-right: 16px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-xs);
 }
 .feed-card:active {
   background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
@@ -436,7 +439,7 @@ font-family: var(--font-post-title);
         font-size: 12px;
         font-weight: 600;
         padding: 4px 14px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: 1px solid var(--color-base-300);
         background: transparent;
         cursor: pointer;

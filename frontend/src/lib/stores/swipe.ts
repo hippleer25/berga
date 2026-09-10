@@ -10,6 +10,13 @@ export const activeTabIdx  = writable(0);
  */
 export const navVisible = writable(true);
 
+/**
+ * True while a stacked screen (settings, article, feed, folder, search)
+ * covers the tab layer. NavBar is hidden; ScreenShell flips it to false
+ * when the screen starts closing so the nav reappears during the reveal.
+ */
+export const stackedScreenOpen = writable(false);
+
 // ── Multi-select feature ──────────────────────────────────────────────────────
 
 /** Whether the user is in post-selection mode (long press activated). */

@@ -274,6 +274,29 @@ font-display: swap;
 --font-article-body: 'Inter', sans-serif;
 --font-ui: 'Inter', sans-serif;
 
+/* UI customization (overridden at runtime from uiPrefs) */
+--ui-radius-xs: 4px;
+--ui-radius-sm: 7px;
+--ui-radius: 12px;
+--ui-radius-lg: 17px;
+--ui-radius-xl: 24px;
+--ui-radius-full: 999px;
+
+/* Floating deck (driven by uiPrefs — relative units, universal) */
+--deck-width: 73vw;
+--deck-height: 16vw;
+--deck-radius: calc(var(--deck-height) * 27 / 100);
+
+/* Border option (driven by uiPrefs via data-border + vars) */
+--ui-border-width: 1px;
+--ui-border-color: color-mix(in oklch, var(--color-base-content) 16%, transparent);
+
+/* Frosted glass tokens */
+--glass-blur: blur(22px) saturate(180%);
+--glass-bg: color-mix(in oklch, var(--color-base-100) 58%, transparent);
+--glass-bg-strong: color-mix(in oklch, var(--color-base-100) 82%, transparent);
+--glass-border: color-mix(in oklch, var(--color-base-content) 12%, transparent);
+
 /* Article typography */
 --article-font-size: 1.125rem;
 --article-font-weight: 400;
@@ -287,6 +310,8 @@ font-display: swap;
 /* Post card */
 --postcard-desc-lines: 2;
 --postcard-title-weight: 500;
+--postcard-title-scale: 1;
+--postcard-desc-scale: 1;
 --postcard-padding: 12px 6px 4px;
 
 /* Feed density (HomeTab) */
@@ -352,7 +377,7 @@ textarea:focus:not(:focus-visible) {
   --color-primary-content: oklch(0% 0 0);
   --color-secondary: oklch(65% 0 0);
   --color-secondary-content: oklch(0% 0 0);
-  --color-accent: oklch(82% 0.16 90);
+  --color-accent: oklch(62% 0.15 90);
   --color-accent-content: oklch(15% 0.05 90);
   --color-neutral: oklch(65% 0 0);
   --color-neutral-content: oklch(0% 0 0);
@@ -459,6 +484,13 @@ textarea:focus:not(:focus-visible) {
   padding-bottom: calc(64px + env(safe-area-inset-bottom, 8px));
 }
 
+/* Floating deck is taller and sits 14px above the bottom edge */
+@media (max-width: 767.98px) {
+  [data-nav-style="deck"] .page-root {
+    padding-bottom: calc(var(--deck-height, 16vw) + 28px + env(safe-area-inset-bottom, 8px));
+  }
+}
+
 @media (min-width: 768px) {
   .page-root { padding-bottom: 0; }
 }
@@ -467,4 +499,63 @@ textarea:focus:not(:focus-visible) {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ── Frosted glass off → solid surfaces ─────────────────────────────────── */
+[data-glass="off"] {
+  --glass-blur: none;
+  --glass-bg: var(--color-base-100);
+  --glass-bg-strong: var(--color-base-100);
+  --glass-border: var(--color-base-200);
+}
+
+/* Browsers without backdrop-filter get readable solid surfaces instead */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  :root {
+    --glass-bg: var(--color-base-100);
+    --glass-bg-strong: var(--color-base-100);
+  }
+}
+
+/* ── Border option: outline chrome + controls ───────────────────────────── */
+[data-border="on"] .btn,
+[data-border="on"] input[type="text"],
+[data-border="on"] input[type="search"],
+[data-border="on"] input[type="email"],
+[data-border="on"] input[type="password"],
+[data-border="on"] input[type="number"],
+[data-border="on"] input[type="url"],
+[data-border="on"] input[type="color"],
+[data-border="on"] input[type="date"],
+[data-border="on"] select,
+[data-border="on"] textarea {
+  border-width: var(--ui-border-width);
+  border-color: var(--ui-border-color);
+}
+
+[data-border="on"] .btn:not(.btn-ghost):not(.btn-link):not(.btn-circle):not(.btn-active):not(.btn-primary):not(.btn-secondary):not(.btn-accent):not(.btn-error):not(.btn-info):not(.btn-success):not(.btn-warning),
+[data-border="on"] .dropdown-content,
+[data-border="on"] .modal-box {
+  border-style: solid;
+  border-width: var(--ui-border-width);
+  border-color: var(--ui-border-color);
+}
+
+/* App-specific chrome and cards (scoped styles → need !important) */
+[data-border="on"] .top-bar,
+[data-border="on"] .post-card,
+[data-border="on"] .filter-chip,
+[data-border="on"] .navstyle-card,
+[data-border="on"] .taborder-row,
+[data-border="on"] .settings-group,
+[data-border="on"] .picker-dropdown {
+  border-style: solid !important;
+  border-width: var(--ui-border-width) !important;
+  border-color: var(--ui-border-color) !important;
+}
+
+/* ── Filter pill icons toggle ───────────────────────────────────────────── */
+[data-chip-icons="off"] .mode-btn > svg,
+[data-chip-icons="off"] .filter-chip > svg {
+  display: none;
 }

@@ -11,6 +11,7 @@
   "loggingIn": "Connexion en cours...",
   "loginBtn": "Se connecter",
   "instanceLabel": "Instance",
-  "instancePlaceholder": "ex. bergamota.net.br"
+  "instancePlaceholder": "ex. bergamota.net.br",
+  "missingFields": "Saisissez votre identifiant et mot de passe",
+  "serverError": "Erreur serveur. Réessayez sous peu."
 }
-

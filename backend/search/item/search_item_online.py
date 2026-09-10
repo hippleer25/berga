@@ -5,9 +5,12 @@ Busca artigos de notícias online usando DuckDuckGo e extrai o texto completo
 das páginas. Retorna dicts no mesmo formato que a API local de /search, para
 que o chat.py os processe de forma uniforme.
 
+Dois eixos suportados:
+  - vertical="news"  → DDGS.news(): resultados datados, ideais para atualidades
+  - vertical="web"   → DDGS.text(): web geral, ideal para contexto/explanações
+
 Dependências:
     pip install ddgs requests readability-lxml
-    (readability-lxml já deve estar no requirements.txt do projeto)
 """
 
 import hashlib
@@ -16,6 +19,7 @@ import os
 import re
 from datetime import datetime, timezone
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from readability import Document
@@ -235,10 +239,10 @@ def search_articles_online(
     max_days: int | None = None,
     min_days: int | None = None,
     fetch_full_text: bool = False,
+    vertical: str = "news",
 ) -> list[dict]:
     """
-    Busca artigos de notícias no DuckDuckGo e retorna uma lista de dicts
-    no mesmo formato da API local de /search.
+    Busca artigos no DuckDuckGo e retorna dicts no formato padrão do app.
 
     Parâmetros
     ----------
@@ -250,6 +254,7 @@ def search_articles_online(
                      de pós-processamento quando combinado com max_days.
     fetch_full_text: Se True, faz fetch de cada URL e extrai o texto completo.
                      Use com moderação — adiciona latência.
+    vertical       : "news" (DDGS.news, datado) ou "web" (DDGS.text, web geral).
 
     Retorna
     -------
@@ -259,6 +264,7 @@ def search_articles_online(
     query = query.strip()
     if not query:
         return []
+    vertical = vertical if vertical in ("news", "web") else "news"
 
     # Maps max_days to DDGS timelimit
     timelimit: str | None = None
@@ -271,21 +277,32 @@ def search_articles_online(
             timelimit = "m"
         # > 30 days: DDGS doesn't support, no time filter
 
-    logger.info("[ONLINE] query=%r timelimit=%s limit=%d fetch_full=%s", query, timelimit, limit, fetch_full_text)
+    logger.info("[ONLINE] query=%r vertical=%s timelimit=%s limit=%d fetch_full=%s",
+                query, vertical, timelimit, limit, fetch_full_text)
 
     try:
-        raw_results = list(DDGS().news(
-            query,
-            region=ddg_region(),
-            safesearch="off",
-            timelimit=timelimit,
-            max_results=limit * 3,
-        ))
+        ddgs = DDGS()
+        if vertical == "web":
+            raw_results = list(ddgs.text(
+                query,
+                region=ddg_region(),
+                safesearch="off",
+                timelimit=timelimit,
+                max_results=limit * 3,
+            ))
+        else:
+            raw_results = list(ddgs.news(
+                query,
+                region=ddg_region(),
+                safesearch="off",
+                timelimit=timelimit,
+                max_results=limit * 3,
+            ))
     except Exception as e:
         logger.error(f"[ONLINE] Falha na busca DDGS: {e}")
         return []
 
-    logger.info("[ONLINE] %d raw results from DDGS", len(raw_results))
+    logger.info("[ONLINE] %d raw results from DDGS (%s)", len(raw_results), vertical)
 
     # Pontua, filtra blacklist e ordena
     scored: list[tuple[float, dict]] = []
@@ -301,8 +318,8 @@ def search_articles_online(
 
     logger.info("[ONLINE] %d articles after blacklist filter", len(candidates))
 
-    # Filter by min_days in post-processing (when DDGS doesn't filter)
-    if min_days is not None:
+    # Filter by min_days in post-processing (news vertical only — web has no dates)
+    if min_days is not None and vertical == "news":
         now_ts = datetime.now(timezone.utc).timestamp()
         cutoff = now_ts - (min_days * 24 * 3600)
         filtered = []
@@ -320,9 +337,9 @@ def search_articles_online(
     for idx, r in enumerate(candidates):
         url       = r.get("url", r.get("href", ""))
         title     = r.get("title", "No title")
-        snippet   = r.get("body", r.get("excerpt", ""))
-        source    = r.get("source", _domain(url))
-        pub_raw   = r.get("date", "")
+        snippet   = r.get("body", r.get("excerpt", "")) or ""
+        source    = r.get("source", "") or _domain(url)
+        pub_raw   = r.get("date", "") or ""
         pub_dt    = _parse_date(pub_raw)
 
         # Full text (optional — fetch on demand)
@@ -331,7 +348,12 @@ def search_articles_online(
             logger.debug("[ONLINE] Extracting text from %s", url)
             full_text = extract_text_from_url(url)
 
-        description = full_text if full_text else snippet
+        # Web vertical: fetch full text of the first few results so short
+        # snippets remain useful for synthesis
+        if vertical == "web" and not full_text and url and idx < min(3, limit):
+            full_text = extract_text_from_url(url)
+
+        description = full_text or snippet
 
         # Artificial descending score (DDGS doesn't return similarity)
         similarity = round(max(0.50, 0.95 - idx * 0.05), 4)
@@ -348,6 +370,7 @@ def search_articles_online(
             "feed_link":        f"https://{_domain(url)}",
             "similarity_score": similarity,
             "search_type":      "online",
+            "vertical":         vertical,
             "url_hash":         None,
             "item_id":          None,
         })

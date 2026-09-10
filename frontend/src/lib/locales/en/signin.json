@@ -11,5 +11,7 @@
   "loggingIn": "Signing in...",
   "loginBtn": "Sign In",
   "instanceLabel": "Instance",
-  "instancePlaceholder": "e.g. bergamota.net.br"
+  "instancePlaceholder": "e.g. bergamota.net.br",
+  "missingFields": "Enter your username and password",
+  "serverError": "Server error. Try again shortly."
 }

@@ -2,13 +2,14 @@
 mota/chat_search.py — Search orchestration and post-processing pipeline.
 
 Handles the full search lifecycle:
-  1. Execute local (Qdrant) and/or online (DuckDuckGo) searches
+  1. Execute local (Qdrant) and/or online (DuckDuckGo news + web) searches
+     — all queries run in parallel via ThreadPoolExecutor
   2. Strip HTML, truncate per-article content
   3. Deduplicate by normalized URL
   4. Apply recency boost and re-sort
-  5. Selective deep reading (top N local articles)
-  6. Apply total context budget
-  7. Format articles compactly for the LLM
+  5. Apply total context token budget
+  6. Format digests compactly for the LLM (with stable citation ids when a
+     SourceRegistry assigner is provided)
 """
 
 from __future__ import annotations
@@ -18,18 +19,18 @@ import json
 import logging
 import math
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Callable, Optional
 
 from mota.chat_config import (
     CONTENT_CHAR_LIMIT,
-    TOTAL_CONTEXT_CHAR_LIMIT,
     SEARCH_THRESHOLD,
-    MAX_DEEP_READ_ARTICLES,
-    RECENCY_HALF_LIFE_DAYS,
-    RECENCY_BOOST_WEIGHT,
     POSTS_PER_QUERY_LOCAL_ONLINE,
     POSTS_PER_QUERY_MIXED,
+    RECENCY_HALF_LIFE_DAYS,
+    RECENCY_BOOST_WEIGHT,
+    ENABLE_WEB_VERTICAL,
 )
 from mota.tokens import (
     count_tokens,
@@ -37,7 +38,7 @@ from mota.tokens import (
     MIN_TOKENS_PER_ARTICLE,
 )
 from search.item.search_item import search_articles_by_text
-from search.item.search_item_online import search_articles_online, extract_text_from_url
+from search.item.search_item_online import search_articles_online
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ def _enrich_with_full_text(article: dict) -> dict:
     logger.info(f"[DEEP READ] Extraindo texto de: {url}")
 
     try:
+        from search.item.search_item_online import extract_text_from_url
         full_text = extract_text_from_url(url)
     except Exception as e:
         logger.error(f"[DEEP READ] Erro ao extrair texto: {e}")
@@ -98,9 +100,23 @@ def _enrich_with_full_text(article: dict) -> dict:
     return article
 
 
+def _format_article_digest(idx: int, article: dict) -> str:
+    """
+    Formato compacto: título, data, fonte, link + descrição curta.
+    ~80-100 tokens/artigo vs ~200+ do formato completo.
+    """
+    title = article.get("title", "Sem título")
+    pub_date = (article.get("pub_date") or "")[:10]
+    feed_title = article.get("feed_title", "")
+    link = article.get("link", "")
+    description = _strip_html(article.get("description", ""))[:300]
+    header = f"[{idx}] {pub_date} — {title} ({feed_title})"
+    return f"{header}\n{link}\n{description}" if description else f"{header}\n{link}"
+
+
 def _format_article_for_llm(idx: int, article: dict) -> str:
     """
-    Formata artigo para envio ao LLM (formato compacto para economia de tokens).
+    Formata artigo para envio ao LLM (usado no modo artigos diretos).
     """
     title = article.get("title", "Sem título")
     description = _strip_html(article.get("description", ""))
@@ -112,21 +128,6 @@ def _format_article_for_llm(idx: int, article: dict) -> str:
     header = f"[{idx}]{deep} {pub_date} — {title} ({feed_title})"
 
     return f"{header}\n{link}\n{description}"
-
-
-def _format_article_digest(idx: int, article: dict) -> str:
-    """
-    Formato compacto: título, data, fonte, link + descrição curta.
-    ~80-100 tokens/artigo vs ~200+ do formato completo.
-    Inclui descrição suficiente para o modelo responder sem deep reading.
-    """
-    title = article.get("title", "Sem título")
-    pub_date = (article.get("pub_date") or "")[:10]
-    feed_title = article.get("feed_title", "")
-    link = article.get("link", "")
-    description = _strip_html(article.get("description", ""))[:300]
-    header = f"[{idx}] {pub_date} — {title} ({feed_title})"
-    return f"{header}\n{link}\n{description}" if description else f"{header}\n{link}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -171,10 +172,6 @@ def _apply_recency_boost(
     """
     Aplica boost de recência aos scores de similaridade dos artigos.
 
-    Artigos mais recentes recebem um aumento no score, permitindo que
-    conteúdo atual seja priorizado sobre conteúdo antigo mesmo com
-    similaridade semântica ligeiramente menor.
-
     Fórmula: boosted_score = similarity + weight × exp(−age_days / half_life)
     """
     if not articles:
@@ -204,24 +201,53 @@ def _apply_recency_boost(
 
     articles.sort(key=lambda a: a.get("similarity_score", 0), reverse=True)
 
-    logger.info(f"[RECENCY] Ranking após boost (half_life={half_life}, weight={weight}):")
-    for i, art in enumerate(articles[:10], 1):
-        raw = art.get("similarity_score_raw", 0)
-        boosted = art.get("similarity_score", 0)
-        boost = art.get("recency_boost", 0)
-        age = art.get("_age_days", "?")
-        title = art.get("title", "")[:60]
-        logger.info(
-            f" {i}. score {raw:.3f}→{boosted:.3f} (+{boost:.3f}) "
-            f"age={age}d | {title}"
-        )
-
     return articles
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DEDUPLICAÇÃO DE ARTIGOS
 # ══════════════════════════════════════════════════════════════════════════════
+
+_CHAT_PUB_AFFINITY_WEIGHT = 0.08
+
+
+def _apply_publisher_boost(
+    articles: list[dict],
+    publisher_affinity: Optional[dict],
+) -> list[dict]:
+    """
+    Boost leve (+−0.08) para resultados LOCAIS de feeds cujo engajamento
+    o usuário aprendeu (likes − dislikes). Reordena após o recency boost.
+    Só afeta o ranking — nunca é explicado ao modelo.
+    """
+    likes_map = publisher_affinity.get("likes") or {}
+    dislikes_map = publisher_affinity.get("dislikes") or {}
+    if not likes_map and not dislikes_map:
+        return articles
+
+    boosted = 0
+    for art in articles:
+        feed_hash = art.get("feed_sha256")
+        if not feed_hash or art.get("search_type") != "local":
+            continue
+        likes = float(likes_map.get(feed_hash, 0))
+        dislikes = float(dislikes_map.get(feed_hash, 0))
+        if likes == dislikes:
+            continue
+        boost = _CHAT_PUB_AFFINITY_WEIGHT * math.tanh((likes - dislikes) / 3.0)
+        if boost == 0:
+            continue
+        art["similarity_score_raw"] = art.get("similarity_score_raw", art.get("similarity_score", 0))
+        art["similarity_score"] = art["similarity_score_raw"] + boost
+        art["publisher_boost"] = round(boost, 4)
+        boosted += 1
+
+    articles.sort(key=lambda a: a.get("similarity_score", 0), reverse=True)
+    if boosted:
+        logger.info(f"[PUB_AFFINITY] {boosted} artigos locais reordenados por engajamento")
+
+    return articles
+
 
 def _normalize_url(url: str) -> str:
     """Normalizes URL for duplicate comparison."""
@@ -236,26 +262,26 @@ def _normalize_url(url: str) -> str:
 
 def _deduplicate_articles(articles: list[dict]) -> list[dict]:
     """
-    Remove artigos duplicados por URL normalizada.
-    Mantém a primeira ocorrência (que deve ter o maior score após ordenação).
+    Remove artigos duplicados por URL normalizada (e título idêntico).
     """
-    seen: set[str] = set()
+    seen_urls: set[str] = set()
+    seen_titles: set[str] = set()
     unique: list[dict] = []
-    dupes_removed = 0
 
     for art in articles:
         url = _normalize_url(art.get("link", ""))
+        title_key = re.sub(r"\s+", " ", art.get("title", "").strip().lower())[:80]
 
-        if url and url in seen:
-            dupes_removed += 1
+        if url and url in seen_urls:
+            continue
+        if title_key and title_key in seen_titles:
             continue
 
         if url:
-            seen.add(url)
+            seen_urls.add(url)
+        if title_key:
+            seen_titles.add(title_key)
         unique.append(art)
-
-    if dupes_removed:
-        logger.info(f"[DEDUP] {dupes_removed} duplicata(s) removida(s) → {len(unique)} únicos")
 
     return unique
 
@@ -271,23 +297,12 @@ def _apply_context_budget(
 ) -> list[dict]:
     """
     Aplica orçamento total de contexto (em tokens), truncando artigos menos relevantes.
-
-    Artigos já estão ordenados por score boostado (melhores primeiro).
-    Os primeiros recebem conteúdo completo; os últimos podem ser truncados
-    se o orçamento for excedido.
-
-    Usa litellm.token_counter (provider-aware) quando possível, com fallback
-    heurístico (chars / 4) se a tokenização falhar.
+    Usa litellm.token_counter (provider-aware), com fallback heurístico (chars / 4).
     """
     if not articles:
         return articles
 
-    # Compute token cost per article's description
-    token_costs = []
-    for art in articles:
-        desc = art.get("description", "")
-        token_costs.append(count_tokens(desc, model))
-
+    token_costs = [count_tokens(a.get("description", ""), model) for a in articles]
     total = sum(token_costs)
 
     if total <= budget:
@@ -307,59 +322,15 @@ def _apply_context_budget(
         if cost <= remaining:
             remaining -= cost
         elif remaining > min_per:
-            # Truncate proportionally to fit remaining token budget
             keep_chars = max(min_per * 4, int(desc_chars * remaining / max(cost, 1)))
             art["description"] = desc[:keep_chars].rstrip() + "\n[...]"
             remaining = 0
         else:
-            # Not enough budget left — keep the minimum snippet
             if desc_chars > min_per * 4:
                 art["description"] = desc[: min_per * 4].rstrip() + "\n[...]"
 
     final_total = sum(count_tokens(a.get("description", ""), model) for a in articles)
     logger.info(f"[BUDGET] Resultado: {total} → {final_total} tokens")
-
-    return articles
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# DEEP READING SELETIVO
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _selective_deep_read(
-    articles: list[dict],
-    max_articles: int = MAX_DEEP_READ_ARTICLES,
-) -> list[dict]:
-    """
-    Faz leitura profunda apenas dos top N artigos locais por score.
-
-    Artigos online já possuem texto completo (busca online faz fetch).
-    Limitar deep reading a N artigos economiza bandwidth e tempo
-    em servidores caseiros.
-
-    Os artigos já devem estar ordenados por score boostado.
-    """
-    if not articles:
-        return articles
-
-    deep_count = 0
-    local_count = 0
-
-    for art in articles:
-        if deep_count >= max_articles:
-            break
-
-        if art.get("search_type") == "online" or art.get("deep_read"):
-            continue
-
-        local_count += 1
-        _enrich_with_full_text(art)
-        deep_count += 1
-
-    logger.info(
-        f"[DEEP SELECTIVE] {deep_count} artigos lidos "
-        f"(de {local_count} locais elegíveis, limite={max_articles})"
-    )
 
     return articles
 
@@ -375,7 +346,7 @@ def _call_local(
     max_days: Optional[int],
     feed_filter: Optional[list[str]] = None,
 ) -> list[dict]:
-    """Executes local search in the user's feed database."""
+    """Executes local search in the feed database (Qdrant semantic)."""
     logger.info(
         f"[LOCAL] search_articles_by_text({query!r}, limit={limit}, "
         f"min_days={min_days}, max_days={max_days}, "
@@ -383,8 +354,6 @@ def _call_local(
     )
 
     # Empty feed_filter means the user's "mine" scope matched no subscriptions
-    # — there is nothing to search locally (an empty MatchAny is invalid and
-    # passing None would leak global content into a "mine" scope).
     if feed_filter is not None and len(feed_filter) == 0:
         return []
 
@@ -416,7 +385,6 @@ def _normalize_searches(searches: list) -> list[dict]:
         if isinstance(item, dict):
             safe.append(item)
         elif isinstance(item, str):
-            logger.warning(f"[NORMALIZE] Search item era string: {item[:100]}")
             try:
                 parsed = json.loads(item)
                 if isinstance(parsed, dict):
@@ -458,136 +426,150 @@ def _get_posts_distribution(num_queries: int, source_mode: str) -> tuple[int, in
     return local_per, online_per
 
 
-def run_searches(
-    searches: list[dict],
-    source_mode: str = "local",
-    deep_reading: bool = False,
-    feed_filter: Optional[list[str]] = None,
-) -> tuple[str, list[dict]]:
-    """
-    Executa múltiplas buscas e consolida resultados.
+def _execute_one_search(
+    search: dict,
+    local_per: int,
+    online_per: int,
+    feed_filter: Optional[list[str]],
+) -> list[dict]:
+    """Runs a single sub-query (local +/or online) and returns cleaned articles."""
+    query = search.get("query", "")
+    min_days = search.get("min_days")
+    max_days = search.get("max_days")
+    vertical = search.get("vertical", "news")
 
-    Pipeline pós-busca:
-    1. Limpa HTML e trunca por artigo
-    2. Deduplica por URL
-    3. Aplica recency boost e re-ordena
-    4. Deep reading seletivo (top N)
-    5. Aplica orçamento de contexto
-    6. Formata para o LLM
+    collected: list[dict] = []
 
-    Args:
-        feed_filter: lista de feed_sha256 para restringir a busca local
-                     (subscriptions do usuário). None = sem restrição (escopo global).
-    """
-    searches = _normalize_searches(searches)
-    num_queries = len(searches)
+    if local_per > 0:
+        for art in _call_local(query, local_per, min_days, max_days, feed_filter=feed_filter):
+            art["search_type"] = art.get("search_type", "local")
+            if art.get("description"):
+                art["description"] = _truncate_content(_strip_html(art["description"]))
+            collected.append(art)
 
-    local_per, online_per = _get_posts_distribution(num_queries, source_mode)
-
-    logger.info(f"\n{'='*70}")
-    logger.info(f"[SEARCH] Iniciando buscas")
-    logger.info(f"[SEARCH] Queries: {num_queries} | Modo: {source_mode} | Deep: {deep_reading}")
-    logger.info(f"[SEARCH] feed_filter: {len(feed_filter) if feed_filter else 'none (global)'}")
-    logger.info(f"[SEARCH] Distribuição por query → Local: {local_per} Online: {online_per}")
-    logger.info(f"{'='*70}")
-
-    all_articles: list[dict] = []
-
-    # ── Fase 1: Coleta de artigos ──────────────────────────────────────────
-    for i, search in enumerate(searches, 1):
-        query = search.get("query", "")
-        min_days = search.get("min_days")
-        max_days = search.get("max_days")
-
-        logger.info(f"\n[SEARCH {i}/{num_queries}] '{query}' (min={min_days}, max={max_days})")
-
-        # Busca local
-        if local_per > 0:
-            local_results = _call_local(
-                query, local_per, min_days, max_days, feed_filter=feed_filter
+    if online_per > 0:
+        if not ENABLE_WEB_VERTICAL and vertical == "web":
+            vertical = "news"  # web vertical disabled via env
+        online_count = 0
+        try:
+            results = search_articles_online(
+                query,
+                limit=online_per,
+                max_days=max_days,
+                min_days=min_days,
+                fetch_full_text=False,
+                vertical=vertical,
             )
-            local_cut = local_results[:local_per]
-
-            for art in local_cut:
-                art["search_type"] = art.get("search_type", "local")
+            for art in results:
                 if art.get("description"):
                     art["description"] = _truncate_content(_strip_html(art["description"]))
+            online_count = len(results)
+            collected.extend(results)
+        except Exception as e:
+            logger.error(f" [ONLINE] ✗ Erro: {e}")
+            online_count = 0
 
-            all_articles.extend(local_cut)
-            logger.info(f" [LOCAL] {len(local_cut)} artigos")
-
-        # Busca online
-        if online_per > 0:
+        # Auto web-vertical retry: news returned nothing → fall back to
+        # general web once (recency weighting in run_searches handles dates).
+        if (
+            online_count == 0
+            and vertical == "news"
+            and ENABLE_WEB_VERTICAL
+        ):
             try:
-                online_results = search_articles_online(
+                results = search_articles_online(
                     query,
                     limit=online_per,
                     max_days=max_days,
                     min_days=min_days,
-                    fetch_full_text=True,
+                    fetch_full_text=False,
+                    vertical="web",
                 )
-                online_cut = online_results[:online_per]
-
-                for art in online_cut:
+                for art in results:
                     if art.get("description"):
                         art["description"] = _truncate_content(_strip_html(art["description"]))
-
-                all_articles.extend(online_cut)
-                logger.info(f" [ONLINE] {len(online_cut)} artigos")
+                if results:
+                    logger.info(" [ONLINE] ↻ news vazio → vertical web fallback: %d artigos", len(results))
+                collected.extend(results)
             except Exception as e:
-                logger.error(f" [ONLINE] ✗ Erro: {e}")
+                logger.error(f" [ONLINE] ✗ Erro no fallback web: {e}")
 
-    # ── Phase 2: Post-processing pipeline ──────────────────────────────────
+    return collected
 
-    # 2a. Deduplicação por URL
+
+def run_searches(
+    searches: list[dict],
+    source_mode: str = "local",
+    feed_filter: Optional[list[str]] = None,
+    id_assigner: Callable[[dict], int] | None = None,
+    token_budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
+    publisher_affinity: Optional[dict] = None,
+) -> tuple[str, list[dict]]:
+    """
+    Executa múltiplas buscas (em paralelo) e consolida os resultados.
+
+    Args:
+        searches: lista de {query, vertical?, min_days?, max_days?}
+        source_mode: "local" | "online" | "mixed"
+        feed_filter: feed_sha256 subscriptions (None = escopo global)
+        id_assigner: callable(article) → citation id usado no digest; quando
+                     ausente usa 1..N relativo.
+        token_budget: orçamento total de tokens para descrições.
+        publisher_affinity: {'likes': {feed: n}, 'dislikes': {feed: n}} do
+                     perfil do usuário; aplica boost leve a resultados locais
+                     de feeds com engajamento positivo/negativo.
+
+    Returns:
+        (texto formatado para o LLM, lista de artigos únicos)
+    """
+    searches = _normalize_searches(searches)
+    num_queries = len(searches)
+
+    logger.info(f"[SEARCH] Queries: {num_queries} | Modo: {source_mode} | "
+                f"feed_filter: {len(feed_filter) if feed_filter else 'none (global)'}")
+
+    all_articles: list[dict] = []
+    local_per, online_per = _get_posts_distribution(num_queries, source_mode)
+
+    logger.info(f"[SEARCH] Distribuição por query → Local: {local_per} Online: {online_per}")
+
+    # ── Fase 1: coleta em paralelo ────────────────────────────────────────────
+    if num_queries == 1:
+        results_map = [_execute_one_search(searches[0], local_per, online_per, feed_filter)]
+    else:
+        with ThreadPoolExecutor(max_workers=min(6, num_queries * 2)) as pool:
+            futures = [
+                pool.submit(_execute_one_search, s, local_per, online_per, feed_filter)
+                for s in searches
+            ]
+            results_map = [f.result() for f in futures]
+
+    for i, (search, arts) in enumerate(zip(searches, results_map), 1):
+        logger.info(f"[SEARCH {i}/{num_queries}] {search.get('query', '')!r} → {len(arts)} artigos")
+        all_articles.extend(arts)
+
+    # ── Fase 2: pós-processamento ─────────────────────────────────────────────
     all_articles = _deduplicate_articles(all_articles)
-
-    # 2b. Recency boost — prioriza artigos recentes
     all_articles = _apply_recency_boost(all_articles)
+    if publisher_affinity:
+        all_articles = _apply_publisher_boost(all_articles, publisher_affinity)
+    all_articles = _apply_context_budget(all_articles, budget=token_budget)
 
-    # 2c. Deep reading is now on-demand via the read_article tool.
-    #     The blind top-N prefetch is skipped to save tokens and bandwidth;
-    #     the model can request full text for specific articles it wants to cite.
-    #     (Deep reading for direct articles in _handle_direct_articles is unaffected.)
-
-    # 2d. Context budget — truncates less relevant articles
-    all_articles = _apply_context_budget(all_articles)
-
-    # ── Fase 3: Log consolidado ────────────────────────────────────────────
-    logger.info(f"\n{'='*70}")
     logger.info(f"[SEARCH] ✓ TOTAL: {len(all_articles)} artigos (após dedup + boost)")
-    logger.info(f"{'='*70}")
-
-    for idx, art in enumerate(all_articles, 1):
-        desc = _strip_html(art.get("description", ""))
-        deep_tag = " [deep]" if art.get("deep_read") else ""
-        raw_score = art.get("similarity_score_raw", 0)
-        boosted_score = art.get("similarity_score", 0)
-        boost = art.get("recency_boost", 0)
-        age = art.get("_age_days", "?")
-        source = art.get("search_type", "")
-
-        logger.info(
-            f" [{idx}]{deep_tag} {source} | raw={raw_score:.3f} "
-            f"boosted={boosted_score:.3f} (+{boost:.3f}) age={age}d | "
-            f"{art.get('feed_title', '')} | {art.get('title', '')}"
-        )
-        logger.info(f" ({len(desc)} chars): {desc[:120]}{'...' if len(desc) > 120 else ''}")
-
-    logger.info(f"{'='*70}\n")
+    for art in all_articles:
+        art.pop("_age_days", None)
 
     if not all_articles:
         return "No articles found for the searched topics.", []
 
-    # ── Phase 4: Compact digest for the LLM ────────────────────────────────
-    # Include title + short description so the model can answer without
-    # needing to deep-read every article.
-    blocks = [
-        "A seguir estão os artigos encontrados, ordenados por relevância e recência. "
-        "Sintetize as informações em uma resposta clara:\n"
-    ]
+    # ── Fase 3: digest compacto, com ids de citação contínuos ─────────────────
+    if id_assigner is not None:
+        intro = ("A seguir estão os artigos encontrados, ordenados por relevância e recência. "
+                 "Os números entre colchetes são a fonte citável:\n")
+        body = "\n\n".join(_format_article_digest(id_assigner(a), a) for a in all_articles)
+    else:
+        intro = ("A seguir estão os artigos encontrados, ordenados por relevância e recência. "
+                 "Sintetize as informações em uma resposta clara:\n")
+        body = "\n\n".join(_format_article_digest(i, a) for i, a in enumerate(all_articles, 1))
 
-    for idx, article in enumerate(all_articles, 1):
-        blocks.append(_format_article_digest(idx, article))
-
-    return "\n\n".join(blocks), all_articles
+    return f"{intro}{body}", all_articles

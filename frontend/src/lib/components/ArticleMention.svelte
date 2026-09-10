@@ -266,14 +266,14 @@
 		max-height: 280px;
 		overflow-y: auto;
 		border: 1px solid;
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm);
 		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
 		font-size: 0.85rem;
 		user-select: none;
 	}
 	.mention-item {
 		padding: 6px 8px;
-		border-radius: 6px;
+		border-radius: var(--ui-radius-xs);
 		cursor: pointer;
 		display: flex;
 		flex-direction: column;

@@ -2,6 +2,7 @@
     import { Rss, ChevronRight, ChevronDown, X, MoreHorizontal, FolderPlus, Trash2, Share2, FolderOpen, Folder, AlertTriangle } from '@lucide/svelte';
     import { t } from 'svelte-i18n';
     import { get } from 'svelte/store';
+    import { goto } from '$app/navigation';
 import { notifySubscriptionChanged } from '$lib/stores/subscription';
  import { apiFetch } from '$lib/api';
 
@@ -164,10 +165,12 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
 
     // ── Navigation ────────────────────────────────────────
     function navigateToFeed(sha: string) {
-        window.location.href = `/f/${sha}`;
+        open = false;
+        goto(`/f/${sha}`);
     }
     function navigateToFolder(folderId: number) {
-        window.location.href = `/c/${folderId}`;
+        open = false;
+        goto(`/c/${folderId}`);
     }
 
     // ── API helpers ───────────────────────────────────────
@@ -582,7 +585,7 @@ style="padding-left: {28 + indent}px;"
         justify-content: center;
         width: 32px;
         height: 32px;
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         border: none;
         background: transparent;
         color: var(--color-base-content);
@@ -622,7 +625,7 @@ style="padding-left: {28 + indent}px;"
     /* ── Folder ── */
     .folder-block {
         margin-bottom: 1px;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         transition: background 130ms ease, outline 130ms ease;
     }
 
@@ -646,7 +649,7 @@ style="padding-left: {28 + indent}px;"
         cursor: pointer;
         text-align: left;
         transition: background 130ms ease;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         user-select: none;
         box-sizing: border-box;
     }
@@ -696,7 +699,7 @@ style="padding-left: {28 + indent}px;"
         color: var(--color-primary);
         background: color-mix(in oklch, var(--color-primary) 13%, transparent);
         padding: 1px 7px;
-        border-radius: 20px;
+        border-radius: var(--ui-radius-lg);
         line-height: 1.7;
         flex-shrink: 0;
     }
@@ -717,7 +720,7 @@ style="padding-left: {28 + indent}px;"
         padding-bottom: 7px;
         cursor: pointer;
         transition: background 120ms ease;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         user-select: none;
         position: relative;
         box-sizing: border-box;
@@ -742,7 +745,7 @@ style="padding-left: {28 + indent}px;"
     .feed-favicon {
         width: 16px;
         height: 16px;
-        border-radius: 3px;
+        border-radius: var(--ui-radius-xs);
         object-fit: cover;
         flex-shrink: 0;
     }
@@ -784,7 +787,7 @@ style="padding-left: {28 + indent}px;"
         justify-content: center;
         width: 24px;
         height: 24px;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         border: none;
         background: transparent;
         color: var(--color-base-content);
@@ -804,7 +807,7 @@ style="padding-left: {28 + indent}px;"
         z-index: 200;
         background: var(--color-base-100);
         border: 1px solid var(--color-base-200);
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         box-shadow:
             0 4px 6px color-mix(in oklch, black 8%, transparent),
             0 10px 30px color-mix(in oklch, black 14%, transparent);
@@ -847,7 +850,7 @@ style="padding-left: {28 + indent}px;"
         font-size: 13px;
         font-weight: 500;
         color: var(--color-base-content);
-        border-radius: 7px;
+        border-radius: var(--ui-radius-sm);
         transition: background 110ms ease;
         text-align: left;
     }
@@ -875,7 +878,7 @@ style="padding-left: {28 + indent}px;"
         z-index: 110;
         background: var(--color-base-100);
         border: 1px solid var(--color-base-200);
-        border-radius: 14px;
+        border-radius: var(--ui-radius);
         padding: 20px 20px 16px;
         min-width: 260px;
         max-width: 90vw;
@@ -907,7 +910,7 @@ style="padding-left: {28 + indent}px;"
         font-size: 14px;
         background: var(--color-base-200);
         border: 1px solid transparent;
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         color: var(--color-base-content);
         outline: none;
         box-sizing: border-box;
@@ -927,7 +930,7 @@ style="padding-left: {28 + indent}px;"
 
     .dialog-btn {
         padding: 7px 16px;
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;

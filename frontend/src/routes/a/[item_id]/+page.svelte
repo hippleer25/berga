@@ -13,6 +13,8 @@ import { flushPending } from '$lib/stores/viewTracker';
 	import { clearFeedCache } from '$lib/stores/feedCache';
 import { titleTextAlign, bodyTextAlign, highlightColors, highlightOpacity, highlightRadius, highlightCustomColorDefault } from '$lib/stores/preferences';
 import { hexToRgba } from '$lib/utils/color';
+import ScreenShell from '$lib/components/ScreenShell.svelte';
+import { closeScreen } from '$lib/utils/screenStack';
 
 type ItemMeta = {
   item_id: string;
@@ -271,7 +273,7 @@ const res = await apiFetch(`/api/load-text/${id}`, {
       credentials: 'include'
     });
 
-            if (res.status === 401) { goto('/'); return; }
+            if (res.status === 401) { goto('/login?returnTo=' + encodeURIComponent($page.url.pathname)); return; }
             if (!res.ok) throw new Error(`${get(t)('article.loadError')} (${res.status})`);
 
             const data: ReaderData = await res.json();
@@ -491,7 +493,7 @@ const res = await apiFetch(`/api/mota/resume/${loadedItemId}`, {
         signal: resumeAbort.signal,
       });
 
-            if (res.status === 401) { goto('/'); return; }
+            if (res.status === 401) { goto('/login?returnTo=' + encodeURIComponent($page.url.pathname)); return; }
             if (!res.ok) throw new Error(`${get(t)('article.loadError')} (${res.status})`);
 
             const reader = res.body?.getReader();
@@ -553,7 +555,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' }
     });
-            if (res.status === 401) { goto('/'); return; }
+            if (res.status === 401) { goto('/login?returnTo=' + encodeURIComponent($page.url.pathname)); return; }
             if (!res.ok) throw new Error();
 
             if (type === 'like') {
@@ -611,7 +613,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content_md: commentText }),
             });
-            if (res.status === 401) { goto('/'); return; }
+            if (res.status === 401) { goto('/login?returnTo=' + encodeURIComponent($page.url.pathname)); return; }
             if (!res.ok) throw new Error();
             editingComment = false;
             commentVisible = true;
@@ -630,7 +632,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
                 method: 'DELETE',
                 credentials: 'include',
             });
-            if (res.status === 401) { goto('/'); return; }
+            if (res.status === 401) { goto('/login?returnTo=' + encodeURIComponent($page.url.pathname)); return; }
             if (!res.ok) throw new Error();
             commentText = '';
             commentVisible = false;
@@ -952,12 +954,13 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 
 <svelte:window onclick={outsideClick} />
 
+<ScreenShell>
 <div class="reader-page" class:web-mode={webView}>
 
     <!-- ── Top Navigation (Ghost Toolbar) ────────────────────── -->
     <header class="top-bar-wrap">
         <div class="top-bar">
-	<button class="ghost-btn back-btn" onclick={() => goto('/home')} title="{$t('article.backToFeed')}">
+	<button class="ghost-btn back-btn" onclick={() => closeScreen()} title="{$t('article.backToFeed')}">
 			<ArrowLeft size={18} />
 		</button>
 
@@ -1375,6 +1378,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     {/if}
 
 </div>
+</ScreenShell>
 
 <style>
     /* ── Page Shell ──────────────────────────────────────────── */
@@ -1429,7 +1433,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         background: transparent;
         border: none;
         padding: 6px 8px;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
         cursor: pointer;
         text-decoration: none;
@@ -1553,7 +1557,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 	overflow-y: auto;
 	background: var(--color-base-100);
 	border: 1px solid var(--color-base-300);
-	border-radius: 8px;
+	border-radius: var(--ui-radius-sm);
 	box-shadow: 0 4px 16px rgba(0,0,0,.12);
 	padding: 4px;
 	margin-top: 4px;
@@ -1566,7 +1570,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 	width: 100%;
 	padding: 7px 10px;
 	border: none;
-	border-radius: 6px;
+	border-radius: var(--ui-radius-xs);
 	background: transparent;
 	color: var(--color-base-content);
 	font-size: 13px;
@@ -1586,7 +1590,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 	font-size: 11px;
 	font-weight: 600;
 	padding: 3px 8px;
-	border-radius: 999px;
+	border-radius: var(--ui-radius-full);
 	background: color-mix(in oklch, var(--chip-color) 14%, transparent);
 	color: var(--chip-color);
 	white-space: nowrap;
@@ -1626,7 +1630,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         font-size: 13px;
         font-weight: 500;
         padding: 6px 12px;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         cursor: pointer;
         transition: background 140ms, border-color 140ms;
     }
@@ -1641,7 +1645,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         padding: 16px;
         background: var(--color-base-200);
         border-left: 3px solid var(--color-accent); /* Smart insertion highlight */
-        border-radius: 0 8px 8px 0;
+        border-radius: 0 var(--ui-radius-sm) var(--ui-radius-sm) 0;
         min-height: 4rem;
     }
 
@@ -1666,7 +1670,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 
     .resume-skeleton { display: flex; flex-direction: column; gap: 8px; }
     .sk-line {
-        display: block; height: 12px; border-radius: 4px;
+        display: block; height: 12px; border-radius: var(--ui-radius-xs);
         background: color-mix(in oklch, var(--color-base-content) 12%, transparent);
         animation: shimmer 1.4s ease-in-out infinite;
     }
@@ -1700,7 +1704,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         width: 30px;
         height: 28px;
         border: 1px solid var(--color-base-300);
-        border-radius: 4px;
+        border-radius: var(--ui-radius-xs);
         background: transparent;
         color: var(--color-base-content);
         cursor: pointer;
@@ -1722,7 +1726,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         min-height: 120px;
         padding: 10px 12px;
         border: 1px solid var(--color-base-300);
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         background: var(--color-base-100);
         color: var(--color-base-content);
         font-family: var(--font-ui);
@@ -1751,7 +1755,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         gap: 6px;
         padding: 6px 14px;
         border: 1px solid var(--color-info);
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         background: transparent;
         color: var(--color-info);
         font-size: 13px;
@@ -1769,7 +1773,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         gap: 6px;
         padding: 6px 14px;
         border: none;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         background: var(--color-info);
         color: var(--color-info-content);
         font-size: 13px;
@@ -1782,7 +1786,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     .comment-cancel-btn {
         padding: 6px 14px;
         border: 1px solid var(--color-base-300);
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         background: transparent;
         color: var(--color-base-content);
         font-size: 13px;
@@ -1792,7 +1796,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     .comment-del-btn {
         padding: 6px 14px;
         border: 1px solid var(--color-error);
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         background: transparent;
         color: var(--color-error);
         font-size: 13px;
@@ -1811,7 +1815,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     .comment-delete-confirm button {
         padding: 4px 10px;
         border: none;
-        border-radius: 4px;
+        border-radius: var(--ui-radius-xs);
         font-size: 12px;
         font-weight: 600;
         cursor: pointer;
@@ -1834,12 +1838,12 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     .comment-rendered :global(code) {
         font-size: 0.85em;
         padding: 2px 5px;
-        border-radius: 3px;
+        border-radius: var(--ui-radius-xs);
         background: var(--color-base-300);
     }
     .comment-rendered :global(pre) {
         background: var(--color-base-300);
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         padding: 12px;
         overflow-x: auto;
         font-size: 0.85em;
@@ -1852,7 +1856,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
         font-style: italic;
         color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
     }
-    .comment-rendered :global(img) { max-width: 100%; border-radius: 6px; }
+    .comment-rendered :global(img) { max-width: 100%; border-radius: var(--ui-radius-xs); }
     .comment-rendered :global(ul), .comment-rendered :global(ol) { padding-left: 1.5em; margin: 0.5em 0; }
     .comment-rendered :global(li) { margin-bottom: 0.25em; }
     .comment-rendered :global(h1), .comment-rendered :global(h2), .comment-rendered :global(h3), .comment-rendered :global(h4) {
@@ -1896,13 +1900,13 @@ font-family: var(--font-post-title);
     .article-body :global(a) {
         color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px;
     }
-    .article-body :global(img) { max-width: var(--article-image-width, 100%); height: auto; border-radius: 8px; margin: 2em auto; display: block; }
+    .article-body :global(img) { max-width: var(--article-image-width, 100%); height: auto; border-radius: var(--ui-radius-sm); margin: 2em auto; display: block; }
     .article-body :global(blockquote) {
         border-left: 3px solid var(--color-accent);
         margin: 1.5em 0; padding: 0.25em 1em; font-style: italic;
         color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
     }
-    .article-body :global(pre) { background: var(--color-base-200); border-radius: 6px; padding: 1em; overflow-x: auto; font-size: 0.9em; margin: 1.5em 0; }
+    .article-body :global(pre) { background: var(--color-base-200); border-radius: var(--ui-radius-xs); padding: 1em; overflow-x: auto; font-size: 0.9em; margin: 1.5em 0; }
     .article-body :global(hr) { border: none; border-top: 1px solid var(--color-base-300); margin: 3em 0; }
 .article-body.align-justify { text-align: justify; }
 .article-body.align-center  { text-align: center; }
@@ -1927,7 +1931,7 @@ font-family: var(--font-post-title);
         gap: 6px;
         background: var(--color-base-100);
         border: 1px solid var(--color-base-300);
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         box-shadow: 0 4px 16px rgba(0,0,0,.15);
         padding: 6px 8px;
     }
@@ -1982,7 +1986,7 @@ font-family: var(--font-post-title);
         z-index: 40;
         background: var(--color-base-100);
         border: 1px solid var(--color-base-300);
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         box-shadow: 0 4px 16px rgba(0,0,0,.15);
         padding: 4px;
     }
@@ -1993,7 +1997,7 @@ font-family: var(--font-post-title);
         gap: 6px;
         padding: 6px 10px;
         border: none;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         background: transparent;
         color: var(--color-error);
         font-size: 12px;
@@ -2032,7 +2036,7 @@ font-family: var(--font-post-title);
   background: color-mix(in oklch, var(--color-base-content) 4%, transparent);
   margin: 0 -16px;
   padding: 12px 16px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-xs);
   border-color: transparent;
 }
 .similar-item:active {
@@ -2064,7 +2068,7 @@ font-family: var(--font-post-title);
   color: var(--color-accent);
   background: color-mix(in oklch, var(--color-accent) 10%, transparent);
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-xs);
   margin-left: 16px;
   flex-shrink: 0;
 }
@@ -2085,7 +2089,7 @@ font-family: var(--font-post-title);
     .blocked-body { font-size: 0.9rem; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); margin: 0; line-height: 1.6; }
     .blocked-link {
         display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
-        padding: 8px 16px; border-radius: 6px; background: var(--color-base-200);
+        padding: 8px 16px; border-radius: var(--ui-radius-xs); background: var(--color-base-200);
         color: var(--color-accent); font-size: 14px; font-weight: 600;
         text-decoration: none; transition: background 120ms;
     }

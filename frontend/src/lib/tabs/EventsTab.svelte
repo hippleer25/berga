@@ -121,7 +121,7 @@ function handleSearch(e: Event) {
         gap: 12px; /* Safe space between text and icon */
         background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
         border: 1px solid var(--color-base-300);
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         padding: 0 16px;
         height: 46px;
         transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
@@ -174,7 +174,7 @@ function handleSearch(e: Event) {
   border-bottom: 1px solid var(--color-base-300);
 }
 .sk-bar {
-  border-radius: 4px;
+  border-radius: var(--ui-radius-xs);
   background: linear-gradient(
     90deg,
     color-mix(in oklch, var(--color-base-300) 60%, transparent) 0%,
@@ -187,7 +187,7 @@ function handleSearch(e: Event) {
 .sk-title {
   height: 14px;
   margin-bottom: 6px;
-  border-radius: 5px;
+  border-radius: var(--ui-radius-xs);
 }
 .sk-meta {
   display: flex;

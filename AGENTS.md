@@ -49,6 +49,7 @@ cd frontend && npm audit                         # JS vulnerability check
   - `ROUTING_LLM_*` — optional, used for tool-decision/classification (cheap model recommended)
   - `SUMMARIZE_LLM_*` — optional, used for article resume + cluster summaries (cheap model recommended)
   - `SYNTHESIS_LLM_*` — optional, used for final chat answer synthesis (strong model recommended)
+- Optional chat tuning env vars (all defaulted, see `mota/chat_config.py`): `AGENT_MAX_ROUNDS` (2), `AGENT_TOKEN_BUDGET` (6000 tool-context tokens), `ROUTER_MAX_TOKENS`, `SYNTHESIS_OUTPUT_TOKENS`/`SYNTHESIS_BRIEF_OUTPUT_TOKENS`, `HISTORY_TOKEN_BUDGET` (1200), `HISTORY_VERBATIM_TURNS` (3), `ENABLE_WEB_VERTICAL` (1), `ENABLE_WIKI` (1), `CHAT_DAILY_TOKEN_BUDGET` (250000 per-user daily soft cap, 0 disables)
 - Vite dev server proxies `/api` → `API_TARGET` (default `http://backend:5746`), stripping the `/api` prefix
 
 ## Backend Structure
@@ -66,7 +67,16 @@ cd frontend && npm audit                         # JS vulnerability check
 | `intelligence/cluster.py` | Weekly event clustering via LLM |
 | `intelligence/similar.py` | Similar-article search via Qdrant |
 | `intelligence/affinity.py` | User affinity analysis and boost controls |
-| `mota/chat.py` | AI chat handler — tool calling with search fallback, deep reading |
+| `mota/chat.py` | AI chat handler — router → bounded agent loop → synthesis with citations (streaming SSE) |
+| `mota/chat_router.py` | LLM intent router (ROUTING tier): classification, standalone-query rewrite for follow-ups, sub-queries, sources, time filter — outputs strict JSON |
+| `mota/agent.py` | Bounded agent loop: up to `AGENT_MAX_ROUNDS` tool rounds (topic_search / get_current_events / read_article / get_similar / search_wiki), token-budgeted context |
+| `mota/chat_search.py` | Search orchestration: parallel sub-queries (local Qdrant + DDG news/web), dedup, recency boost, token-budgeted digests |
+| `mota/sources.py` | Numbered citation registry: `[n]` inline citations, source URLs kept backend-side, streamed to client as a `sources` SSE event |
+| `mota/conversation.py` | Per-user conversation memory: token-budgeted history (older turns LLM-summarized + Redis cache), per-turn source registry |
+| `mota/chat_classifier.py` | Regex pre-filter only (pure greetings skip the router for zero cost) |
+| `mota/tokens.py` | Token counting (litellm.token_counter, char fallback) + context budgets |
+| `mota/wiki.py` | Wikipedia REST background lookup (free, no keys) |
+| `mota/chat_config.py` | All chat constants (env-overridable): agent rounds, token budgets, history budget, feature switches |
 | `mota/article_resume.py` | Article summarization (streaming SSE) |
 | `workers/tasks.py` | arq job definitions + WorkerSettings (cron every 6h for feeds, 6h for events, daily publisher freq) |
 
@@ -82,8 +92,9 @@ cd frontend && npm audit                         # JS vulnerability check
 ## Gotchas
 
 - **Frontend is SPA, not SSR** — `adapter-static` with `fallback: 'index.html'`. All routes must work client-side.
-- **No tests configured** — no test runner or test files found in either frontend or backend.
-- **`tt.py`** is a debug helper (prints Qdrant payload keys), called in the `/api/chat` route — not production code.
+- **No tests configured** — no test runner or test files found in either frontend or backend. Chat is verified via E2E scripts piped into `docker compose exec -T backend python -` (register → Bearer token → SSE `/api/chat`).
+- **Chat source/citation flow** — source URLs never enter LLM prompts; `mota/sources.py` maps `[n]` to URLs backend-side and emits them as a final `sources` SSE event. Executed search queries are emitted as a `queries` SSE event (frontend renders search chips). `ChatRequest.deep_reading` is accepted but ignored (deep reading is on-demand via `read_article`).
+- **Chat token guardrail** — per-user daily counter (`mota:tokens:{user}:{utcdate}` in Redis), accrued at end of turn from LLM usage counters; enforced as 429 in `/api/chat` when `CHAT_DAILY_TOKEN_BUDGET` is exceeded (fail-open if Redis is down).
 - **Schema migrations are inline** — `database/init_db.py` auto-creates tables and runs column migrations on startup. No migration files or CLI.
 - **`workers/settings.py` defines a duplicate `WorkerSettings`** — the canonical one is at the bottom of `workers/tasks.py` (with cron_jobs). The one in `settings.py` is stale.
 - **Root `package.json`** is vestigial (only tailwindcss deps, no scripts). All real frontend work is in `frontend/`.

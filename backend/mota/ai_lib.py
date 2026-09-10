@@ -108,6 +108,7 @@ def generate_text(
     temperature: float = 0.3,
     usage: LLMUsage = "cluster",
     max_retries: int = 2,
+    usage_out: dict | None = None,
 ) -> str | None:
     config = _get_model_config(usage)
 
@@ -131,6 +132,14 @@ def generate_text(
                 timeout=DEFAULT_TIMEOUT,
             )
             content = response.choices[0].message.content
+            if usage_out is not None:
+                _u = getattr(response, "usage", None)
+                usage_out["router"] = usage_out.get("router", 0) + int(
+                    getattr(_u, "total_tokens", 0) or 0
+                )
+                usage_out["router_prompt"] = usage_out.get("router_prompt", 0) + int(
+                    getattr(_u, "prompt_tokens", 0) or 0
+                )
             return content.strip() if content else None
 
         except litellm.RateLimitError as e:
@@ -251,6 +260,45 @@ def call_llm_with_tools(
 
     except Exception as e:
         logger.error(f"[AI_LIB] Error calling LLM with tools ({config.get('model')}): {e}")
+        return None
+
+
+def call_llm_messages_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    tool_choice: str | dict | None = "auto",
+    model: str | None = None,
+    max_tokens: int = 512,
+    temperature: float = 0.2,
+    usage: LLMUsage = "routing",
+):
+    """
+    Tool-calling over a full message list (multi-turn agent loop).
+
+    `messages` must already include system/history/user/tool roles.
+    Returns the raw response or None on failure.
+    """
+    config = _get_model_config(usage)
+    if model:
+        config["model"] = model
+
+    kwargs = {
+        "model": config["model"],
+        "messages": messages,
+        "tools": tools,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "api_key": config.get("api_key"),
+        "api_base": config.get("api_base"),
+        "timeout": DEFAULT_TIMEOUT,
+    }
+    if tool_choice is not None:
+        kwargs["tool_choice"] = tool_choice
+
+    try:
+        return completion(**kwargs)
+    except Exception as e:
+        logger.error(f"[AI_LIB] Error calling LLM loop with tools ({config.get('model')}): {e}")
         return None
 
 

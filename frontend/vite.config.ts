@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       sveltekit(),
       VitePWA({
-        registerType: "prompt",
+        registerType: "autoUpdate",
         injectRegister: false,
         includeAssets: [
           "favicon.ico",
@@ -30,8 +30,8 @@ export default defineConfig(({ mode }) => {
 			navigateFallback: "index.html",
 			navigateFallbackDenylist: [/^\/api\//],
 			cleanupOutdatedCaches: true,
-			skipWaiting: false,
-			clientsClaim: false,
+			skipWaiting: true,
+			clientsClaim: true,
 			globPatterns: [
 				"**/*.{js,css,html,ico,svg,woff2,ttf}",
 				"icons/*.png",

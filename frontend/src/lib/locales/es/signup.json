@@ -14,5 +14,9 @@
   "registering": "Registrando...",
   "done": "Hecho",
   "instanceLabel": "Instancia",
-  "instancePlaceholder": "ej. bergamota.net.br"
+  "instancePlaceholder": "ej. bergamota.net.br",
+  "usernameTaken": "Ese nombre de usuario ya está en uso",
+  "emailTaken": "Ese correo ya está registrado",
+  "missingFields": "Completa todos los campos obligatorios",
+  "serverError": "Error del servidor. Inténtalo pronto de nuevo."
 }

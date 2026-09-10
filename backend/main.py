@@ -698,6 +698,7 @@ def mota_chat(chat_request: ChatRequest, request: Request, user: dict = Depends(
     if user_id:
         import time
         from mota import conversation as _conv
+        from mota.chat_config import CHAT_DAILY_TOKEN_BUDGET
         client = _conv._get_client()
         if client:
             rate_key = f"mota:rate:{user_id}"
@@ -713,6 +714,19 @@ def mota_chat(chat_request: ChatRequest, request: Request, user: dict = Depends(
                     )
             except Exception:
                 pass  # fail open if Redis is down
+
+            # Daily soft token guardrail (approximate). Fail-open if Redis is down.
+            if CHAT_DAILY_TOKEN_BUDGET > 0:
+                try:
+                    used = _conv.daily_tokens(user_id)
+                    if used >= CHAT_DAILY_TOKEN_BUDGET:
+                        return Response(
+                            content='{"detail":"Daily chat token budget reached. The counter resets at midnight UTC."}',
+                            status_code=429,
+                            media_type="application/json",
+                        )
+                except Exception:
+                    pass
 
     gen = chat.receive(chat_request, user)
     return StreamingResponse(

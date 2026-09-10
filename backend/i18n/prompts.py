@@ -1,8 +1,8 @@
 """
 prompts.py — Loads Mota system prompts from YAML files, keyed by locale.
 
-Each YAML file in i18n/prompts/ contains four top-level keys:
-  tool_calling, synthesis, direct_articles, general
+Each YAML file in i18n/prompts/ contains top-level keys:
+  router, agent, synthesis, direct_articles, general, resume, history_summary
 
 get_prompt(name, locale) returns the prompt string.
 Falls back to English if the locale file is missing.
@@ -21,11 +21,13 @@ logger = logging.getLogger(__name__)
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 _VALID_PROMPT_NAMES = frozenset({
-    "tool_calling",
+    "router",
+    "agent",
     "synthesis",
     "direct_articles",
     "general",
     "resume",
+    "history_summary",
 })
 
 _cache: dict[str, dict[str, str]] = {}

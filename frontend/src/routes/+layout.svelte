@@ -1,32 +1,48 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
+	import { afterNavigate } from '$app/navigation';
 	import { Capacitor } from '@capacitor/core';
 	import { StatusBar, Style } from '@capacitor/status-bar';
 	import { SplashScreen } from '@capacitor/splash-screen';
-	import { useRegisterSW } from 'virtual:pwa-register/svelte';
+	import { registerSW } from 'virtual:pwa-register';
 	import { t } from 'svelte-i18n';
 	import NavBar from '$lib/components/NavBar.svelte';
 	import PageTrack from '$lib/components/PageTrack.svelte';
 	import LeftPanel from '$lib/components/LeftPanel.svelte';
 	import { drawerOpen } from '$lib/stores/drawer';
 	import { initAppearance } from '$lib/utils/appearance';
-	import { RefreshCw, X } from '@lucide/svelte';
+	import { initUiPrefs } from '$lib/stores/uiPrefs';
+	import { sessionChecked, sessionLoggedIn } from '$lib/stores/session';
+	import { stackedScreenOpen } from '$lib/stores/swipe';
+	import { resetScreenStack } from '$lib/utils/screenStack';
+	import { orderedTabs } from '$lib/config/tabs';
 	import "../app.css";
 
 	const { children } = $props();
 
-	const TAB_ROUTES = ['/followers', '/home', '/events', '/mota'];
-	const isTab = $derived(
-		TAB_ROUTES.some(r =>
-			$page.url.pathname === r || $page.url.pathname.startsWith(r + '/')
-		)
+	const AUTH_ROUTES = ['/', '/login', '/signup'];
+	const isAuthRoute = $derived(AUTH_ROUTES.includes($page.url.pathname));
+	// Optimistic: render the tab layer before the session check resolves,
+	// hide it only once the backend confirms the user is logged out.
+	const showTabsLayer = $derived(
+		!isAuthRoute && (!$sessionChecked || $sessionLoggedIn)
 	);
 
-	const {
-		needRefresh,
-		updateServiceWorker,
-	} = useRegisterSW({
+	// Leaving the stacked-screen world resets the unwind base.
+	afterNavigate(({ to }) => {
+		if (!to) return;
+		const path = to.url.pathname;
+		const isTab = $orderedTabs.some(
+			t => path === t.href || path.startsWith(t.href + '/')
+		);
+		if (isTab || AUTH_ROUTES.includes(path)) resetScreenStack();
+	});
+
+	// Service worker registers silently and auto-updates in the background
+	// (registerType: 'autoUpdate'). The hourly check keeps long-running
+	// sessions in sync with new deploys without any prompt.
+	registerSW({
 		onRegisteredSW(_url: string, registration?: ServiceWorkerRegistration) {
 			if (registration) {
 				setInterval(() => registration.update().catch(() => {}), 60 * 60 * 1000);
@@ -37,19 +53,13 @@
 		},
 	});
 
-	function dismissUpdate() {
-		needRefresh.set(false);
-	}
-	function applyUpdate() {
-		updateServiceWorker(true);
-	}
-
 	onMount(async () => {
 		if (Capacitor.isNativePlatform()) {
 			await StatusBar.setBackgroundColor({ color: '#000000' });
 			await StatusBar.setStyle({ style: Style.Light });
 		}
 		initAppearance();
+		initUiPrefs();
 
 		if (Capacitor.isNativePlatform()) {
 			requestAnimationFrame(() => {
@@ -74,100 +84,28 @@
   <link rel="icon" href="/icons/berga_32.png" />
 </svelte:head>
 
-{#if isTab}
-    <!-- Drawer fora do PageTrack para não sofrer com o stacking context do transform de swipe -->
-    <LeftPanel bind:open={$drawerOpen} />
-    <NavBar />
-    <PageTrack />
-{:else}
-    {@render children()}
+{#if showTabsLayer}
+    <!-- Tab layer: always mounted beneath stacked screens so swipe-to-close
+         reveals the live tab. Drawer outside PageTrack to avoid its
+         transform stacking context. -->
+    <div class="tabs-layer" class:stacked={$stackedScreenOpen}>
+        <LeftPanel bind:open={$drawerOpen} />
+        <NavBar />
+        <PageTrack />
+    </div>
 {/if}
-
-{#if $needRefresh}
-	<div class="pwa-update-toast" role="alert" aria-live="polite">
-		<div class="pwa-update-card">
-			<span class="pwa-update-text">{$t('pwa.updateAvailable')}</span>
-			<div class="pwa-update-actions">
-				<button class="pwa-update-btn pwa-reload" onclick={applyUpdate} aria-label={$t('pwa.reload')}>
-					<RefreshCw size={16} />
-					<span>{$t('pwa.reload')}</span>
-				</button>
-				<button class="pwa-update-btn pwa-dismiss" onclick={dismissUpdate} aria-label={$t('pwa.dismiss')}>
-					<X size={16} />
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
+{@render children()}
 
 <style>
-	.pwa-update-toast {
-		position: fixed;
-		left: 50%;
-		bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
-		transform: translateX(-50%);
-		z-index: 9999;
-		width: min(92vw, 28rem);
-		pointer-events: auto;
-		animation: pwa-toast-in 0.22s ease-out;
+	.tabs-layer.stacked {
+		pointer-events: none;
 	}
 
-	.pwa-update-card {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.75rem;
-		padding: 0.625rem 0.875rem;
-		border-radius: 0.75rem;
-		background: color-mix(in oklch, var(--color-base-100, #fff) 92%, transparent);
-		border: 1px solid color-mix(in oklch, var(--color-accent, #888) 35%, transparent);
-		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
-		backdrop-filter: blur(8px);
-	}
-
-	.pwa-update-text {
-		font-size: 0.875rem;
-		line-height: 1.2;
-		color: var(--color-base-content, #111);
-		flex: 1 1 auto;
-		min-width: 0;
-	}
-
-	.pwa-update-actions {
-		display: flex;
-		align-items: center;
-		gap: 0.375rem;
-		flex-shrink: 0;
-	}
-
-	.pwa-update-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		border: none;
-		border-radius: 0.5rem;
-		padding: 0.4rem 0.6rem;
-		font-size: 0.8125rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: background 0.15s ease, opacity 0.15s ease;
-	}
-
-	.pwa-reload {
-		background: var(--color-accent, #888);
-		color: var(--color-accent-content, #fff);
-	}
-	.pwa-reload:hover { filter: brightness(1.08); }
-
-	.pwa-dismiss {
-		background: transparent;
-		color: var(--color-base-content, #111);
-		opacity: 0.6;
-	}
-	.pwa-dismiss:hover { opacity: 1; background: color-mix(in oklch, var(--color-base-content, #111) 8%, transparent); }
-
-	@keyframes pwa-toast-in {
-		from { opacity: 0; transform: translate(-50%, 0.6rem); }
-		to   { opacity: 1; transform: translate(-50%, 0); }
+	/* Desktop: stacked screens are normal pages with the sidebar visible,
+	   so the tab layer steps aside entirely. */
+	@media (min-width: 768px) {
+		.tabs-layer.stacked {
+			display: none;
+		}
 	}
 </style>

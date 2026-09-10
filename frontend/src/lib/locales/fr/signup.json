@@ -14,5 +14,9 @@
   "registering": "Inscription en cours...",
   "done": "Terminé",
   "instanceLabel": "Instance",
-  "instancePlaceholder": "ex. bergamota.net.br"
+  "instancePlaceholder": "ex. bergamota.net.br",
+  "usernameTaken": "Cet identifiant est déjà utilisé",
+  "emailTaken": "Cet e-mail est déjà enregistré",
+  "missingFields": "Remplissez tous les champs requis",
+  "serverError": "Erreur serveur. Réessayez sous peu."
 }

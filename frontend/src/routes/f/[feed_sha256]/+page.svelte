@@ -12,6 +12,8 @@ import LoaderCircle from '@lucide/svelte/icons/loader-circle';
  import { apiFetch } from '$lib/api';
  import { feedBustNeeded, clearBustFlag } from '$lib/stores/feedCache';
  import { syncFeedItemTags, type TagRef } from '$lib/utils/syncFeedTags';
+ import ScreenShell from '$lib/components/ScreenShell.svelte';
+ import { closeScreen } from '$lib/utils/screenStack';
 
  type Mode = 'recommendations' | 'recents';
 
@@ -408,16 +410,15 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
     <div class="feed-header feed-header--skeleton" aria-hidden="true">
         <div class="sk-circle fh-icon-sk"></div>
         <div class="fh-meta">
-            <div class="sk-bar" style="width:160px; height:18px; border-radius:6px"></div>
-            <div class="sk-bar" style="width:100px; height:11px; border-radius:4px; margin-top:8px; opacity:.6"></div>
-            <div class="sk-bar" style="width:220px; height:10px; border-radius:4px; margin-top:10px; opacity:.4"></div>
+            <div class="sk-bar" style="width:160px; height:18px; border-radius: 6px"></div> <div class="sk-bar" style="width:100px; height:11px; border-radius: var(--ui-radius-xs); margin-top:8px; opacity:.6"></div>
+            <div class="sk-bar" style="width:220px; height:10px; border-radius: var(--ui-radius-xs); margin-top:10px; opacity:.4"></div>
         </div>
-        <div class="sk-bar fh-btn-sk" style="width:88px; height:34px; border-radius:10px; flex-shrink:0"></div>
     </div>
 {/snippet}
 
 <!-- ── Markup ──────────────────────────────────────── -->
 
+<ScreenShell>
 <div
     class="page-root"
     bind:this={pageRootEl}
@@ -440,7 +441,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
 
         <!-- Back navigation -->
         <header class="top-header">
-            <button class="back-btn" onclick={() => history.back()} aria-label="{$t('feed.back', { default: 'Back' })}">
+            <button class="back-btn" onclick={() => closeScreen()} aria-label="{$t('feed.back', { default: 'Back' })}">
                 <ArrowLeft size={20} />
             </button>
         </header>
@@ -510,25 +511,6 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
                         </p>
                     {/if}
                 </div>
-
-                <!-- Follow / Unfollow -->
-                <button
-                    class="follow-btn"
-                    class:follow-btn--following={followed}
-                    disabled={followLoading}
-                    onclick={toggleFollow}
-                    aria-label={followed ? $t('feed.unfollowFeed') : $t('feed.followFeed')}
-                >
-                    {#if followLoading}
-                        <span class="loading loading-spinner loading-xs"></span>
-                    {:else if followed}
-                        <Check size={13} strokeWidth={2.5} />
-                        <span>{$t('feed.following')}</span>
-                    {:else}
-                        <Plus size={13} strokeWidth={2.5} />
-                        <span>{$t('feed.follow')}</span>
-                    {/if}
-                </button>
             </header>
         {:else if infoError}
             <div class="header-error">
@@ -558,6 +540,25 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
                     <span>{$t('feed.recents')}</span>
                 </button>
             </div>
+
+            <!-- Follow / Unfollow -->
+            <button
+                class="follow-btn"
+                class:follow-btn--following={followed}
+                disabled={followLoading}
+                onclick={toggleFollow}
+                aria-label={followed ? $t('feed.unfollowFeed') : $t('feed.followFeed')}
+            >
+                {#if followLoading}
+                    <span class="loading loading-spinner loading-xs"></span>
+                {:else if followed}
+                    <Check size={13} strokeWidth={2.5} />
+                    <span>{$t('feed.following')}</span>
+                {:else}
+                    <Plus size={13} strokeWidth={2.5} />
+                    <span>{$t('feed.follow')}</span>
+                {/if}
+            </button>
         </div>
 
         <!-- Posts -->
@@ -596,6 +597,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
 
     </div>
 </div>
+</ScreenShell>
 
 <style>
 /* ── Pull-to-refresh ────────────────────────── */
@@ -655,7 +657,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
         justify-content: center;
         background: transparent;
         border: none;
-        border-radius: 40px;
+        border-radius: var(--ui-radius-full);
         padding: 8px;
         cursor: pointer;
         color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
@@ -685,7 +687,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
         flex-shrink: 0;
         width: 52px;
         height: 52px;
-        border-radius: 14px;
+        border-radius: var(--ui-radius);
         overflow: hidden;
         background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
         display: flex;
@@ -725,11 +727,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
     .fh-icon-sk {
         width: 52px !important;
         height: 52px !important;
-        border-radius: 14px !important;
-    }
-
-    .fh-btn-sk {
-        border-radius: 10px !important;
+        border-radius: var(--ui-radius) !important;
     }
 
     /* ── Feed Meta ───────────────────────────────────────────── */
@@ -780,7 +778,7 @@ font-family: var(--font-page-title);
         text-transform: uppercase;
         letter-spacing: 0.05em;
         padding: 1px 5px;
-        border-radius: 4px;
+        border-radius: var(--ui-radius-xs);
         background: color-mix(in oklch, var(--color-base-200) 80%, transparent);
         color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
     }
@@ -818,7 +816,7 @@ font-family: var(--font-page-title);
         align-items: center;
         gap: 5px;
         padding: 7px 14px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: 1.5px solid var(--color-accent);
         background: var(--color-accent);
         color: var(--color-base-100);
@@ -830,8 +828,9 @@ font-family: var(--font-page-title);
             color 150ms ease,
             border-color 150ms ease;
         white-space: nowrap;
-        align-self: flex-start;
-        margin-top: 2px;
+        align-self: center;
+        margin-top: 0;
+        margin-left: auto;
     }
 
     .follow-btn:hover:not(:disabled) {
@@ -876,7 +875,7 @@ font-family: var(--font-page-title);
     .header-error__retry {
         margin-left: auto;
         padding: 4px 12px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: 1px solid
             color-mix(in oklch, var(--color-error, #e74c3c) 40%, transparent);
         background: transparent;
@@ -911,7 +910,7 @@ touch-action: pan-y;
     .mode-pill {
         display: flex;
         background: var(--color-base-200);
-        border-radius: 13px;
+        border-radius: calc(var(--ui-radius-sm) + 3px);
         padding: 3px;
         gap: 2px;
         flex-shrink: 0;
@@ -922,7 +921,7 @@ touch-action: pan-y;
         align-items: center;
         gap: 5px;
         padding: 6px 14px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: none;
         background: transparent;
         font-size: 13px;
@@ -979,7 +978,7 @@ touch-action: pan-y;
     .sk-bar,
     .sk-circle,
     .sk-dot {
-        border-radius: 4px;
+        border-radius: var(--ui-radius-xs);
         background: linear-gradient(
             90deg,
             color-mix(in oklch, var(--color-base-300) 60%, transparent) 0%,
@@ -1000,7 +999,7 @@ touch-action: pan-y;
     .sk-circle.sk-sm {
         width: 24px;
         height: 24px;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
     }
 
     .sk-dot {
@@ -1018,7 +1017,7 @@ touch-action: pan-y;
     .sk-title {
         height: 14px;
         margin-bottom: 5px;
-        border-radius: 5px;
+        border-radius: var(--ui-radius-xs);
     }
 
     .sk-desc {
@@ -1081,7 +1080,7 @@ touch-action: pan-y;
 
     .retry-btn {
         padding: 7px 18px;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         border: 1px solid
             color-mix(in oklch, var(--color-error, #e74c3c) 40%, transparent);
         background: transparent;

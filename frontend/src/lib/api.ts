@@ -21,9 +21,10 @@ function getAcceptLanguage(): string {
 function getBaseURL(): string {
 	const inst = get(instance);
 	if (!inst) return '';
-	const instanceOrigin = `https://${inst}`;
-	if (typeof window !== 'undefined' && window.location.origin === instanceOrigin) return '';
-	return instanceOrigin;
+	// Same host (any scheme) → stay relative: http deployments must not
+	// be upgraded to https, or every API call fails.
+	if (typeof window !== 'undefined' && window.location.host === inst) return '';
+	return `https://${inst}`;
 }
 
 function getNativeToken(): string | null {

@@ -6,7 +6,6 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronUp from '@lucide/svelte/icons/chevron-up';
   import Settings from '@lucide/svelte/icons/settings';
-  import BookOpen from '@lucide/svelte/icons/book-open';
   import Globe from '@lucide/svelte/icons/globe';
   import Database from '@lucide/svelte/icons/database';
   import Blend from '@lucide/svelte/icons/blend';
@@ -17,17 +16,27 @@
   import { get } from 'svelte/store';
   import { apiFetch } from '$lib/api';
 
+  type Source = {
+    id: number;
+    outlet: string;
+    title: string;
+    url: string;
+    date?: string;
+  };
+
   type Message = {
     role: 'user' | 'assistant';
     content: string;
     id: number;
     fromFeed?: boolean;
     feedTitles?: string[];
+    sources?: Source[];
+    queries?: string[];
   };
 
   type SourceMode = 'local' | 'online' | 'mixed';
   type Scope = 'mine' | 'all';
-  type WaitingPhase = 'thinking' | 'searching' | 'reading' | 'synthesizing' | null;
+  type WaitingPhase = 'thinking' | 'planning' | 'searching' | 'reading' | 'synthesizing' | 'refining' | null;
 
   let messages = $state<Message[]>([]);
   let input = $state('');
@@ -37,7 +46,6 @@
   let idCounter = 0;
   let waitingPhase = $state<WaitingPhase>(null);
 
-  let deepReading = $state(true);
   let sourceMode = $state<SourceMode>('mixed');
   let scope = $state<Scope>('mine');
   let dropdownOpen = $state(false);
@@ -56,9 +64,11 @@
 
   let waitingMessages = $derived.by(() => ({
     thinking: get(t)('motatab.waitThinking'),
+    planning: get(t)('motatab.waitPlanning'),
     searching: get(t)('motatab.waitSearching'),
     reading: get(t)('motatab.waitReading'),
     synthesizing: get(t)('motatab.waitSynthesizing'),
+    refining: get(t)('motatab.waitRefining'),
   }));
 
   let sourceOptions = $derived.by(() => [
@@ -232,7 +242,6 @@
         body: JSON.stringify({
           message: text,
           source_mode: sourceMode,
-          deep_reading: deepReading,
           scope,
           articles,
         }),
@@ -271,6 +280,12 @@
           } else if (parsed.content) {
             const msg = messages.find((m: Message) => m.id === assistantId);
             if (msg) msg.content += parsed.content;
+          } else if (parsed.sources && Array.isArray(parsed.sources)) {
+            const msg = messages.find((m: Message) => m.id === assistantId);
+            if (msg) msg.sources = parsed.sources;
+          } else if (parsed.queries && Array.isArray(parsed.queries)) {
+            const msg = messages.find((m: Message) => m.id === assistantId);
+            if (msg) msg.queries = parsed.queries;
           } else if (parsed.error) {
             error = parsed.error;
           }
@@ -311,6 +326,11 @@
       `<pre><code>${code.trim()}</code></pre>`
     );
     html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    // Inline numbered citations → clickable badge (safe: n ≤ 99, no user input)
+    html = html.replace(/(?<!&)\[(\d{1,2})\](?!\()/g,
+      '<sup class="cite-ref">$1</sup>');
+
     html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
     html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
@@ -451,13 +471,41 @@
         </div>
 
         {#if isWaiting || isStreamingEmpty}
-         <p class="getting-data">
-          {waitingPhase ? waitingMessages[waitingPhase] ?? $t('motatab.waitThinking') : $t('motatab.waitThinking')}
-         </p>
-        {:else if isStreaming}
-         <div class="ai-prose">{@html renderMarkdownWithCursor(msg.content)}</div>
+          <p class="getting-data">
+            {waitingPhase ? waitingMessages[waitingPhase] ?? $t('motatab.waitThinking') : $t('motatab.waitThinking')}
+          </p>
         {:else}
-         <div class="ai-prose">{@html renderMarkdown(msg.content)}</div>
+          {#if msg.queries?.length}
+            <div class="queries-row">
+              <span class="queries-label">{msg.queries.length} {msg.queries.length === 1 ? $t('motatab.searchedLabel') : $t('motatab.searchedLabelPlural')}</span>
+              {#each msg.queries as q}
+                <span class="query-chip" title={q}>{q}</span>
+              {/each}
+            </div>
+          {/if}
+          <div class="ai-prose">{@html isStreaming ? renderMarkdownWithCursor(msg.content) : renderMarkdown(msg.content)}</div>
+        {/if}
+
+        {#if msg.sources?.length && !isWaiting && !isStreamingEmpty}
+          <div class="sources-rail">
+            <p class="sources-title">{$t('motatab.sourcesTitle')}</p>
+            <div class="sources-list">
+              {#each msg.sources as src (src.id)}
+                <a
+                  class="source-chip"
+                  href={src.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <span class="source-num">{src.id}</span>
+                  <span class="source-meta">
+                    <span class="source-outlet">{src.outlet}</span>
+                    <span class="source-headline">{src.title}</span>
+                  </span>
+                </a>
+              {/each}
+            </div>
+          </div>
         {/if}
        </div>
       {/if}
@@ -508,19 +556,6 @@
           </button>
           {/each}
         </div>
-
-        <div class="dropdown-divider"></div>
-
-        <button
-          class="dropdown-item"
-          onclick={() => { deepReading = !deepReading; }}
-        >
-          <BookOpen size={15} />
-          <span class="dropdown-item-label">{$t('motatab.deepReading')}</span>
-          <span class="dropdown-toggle {deepReading ? 'dropdown-toggle--on' : 'dropdown-toggle--off'}">
-            {deepReading ? $t('motatab.on') : $t('motatab.off')}
-          </span>
-        </button>
 
         <div class="dropdown-divider"></div>
 
@@ -644,7 +679,7 @@
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: 40px;
+  border-radius: var(--ui-radius-full);
   padding: 8px;
   cursor: pointer;
   color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
@@ -700,7 +735,7 @@
  }
  .chat-scroll::-webkit-scrollbar { width: 4px; }
  .chat-scroll::-webkit-scrollbar-track { background: transparent; }
- .chat-scroll::-webkit-scrollbar-thumb { background: color-mix(in oklch, var(--color-accent) 20%, transparent); border-radius: 4px; }
+ .chat-scroll::-webkit-scrollbar-thumb { background: color-mix(in oklch, var(--color-accent) 20%, transparent); border-radius: var(--ui-radius-xs); }
 
  .chat-inner {
   padding-top: 20px;
@@ -736,7 +771,7 @@
   max-width: min(85%, 560px);
   background: color-mix(in oklch, var(--color-accent) 8%, transparent);
   border: 1px solid color-mix(in oklch, var(--color-accent) 20%, transparent);
-  border-radius: 16px 16px 4px 16px;
+  border-radius: var(--ui-radius-lg) var(--ui-radius-lg) var(--ui-radius-xs) var(--ui-radius-lg);
   padding: 12px 14px;
   word-break: break-word;
  }
@@ -781,7 +816,7 @@
   max-width: min(80%, 520px);
   background: var(--color-base-200);
   color: var(--color-base-content);
-  border-radius: 16px 16px 4px 16px;
+  border-radius: var(--ui-radius-lg) var(--ui-radius-lg) var(--ui-radius-xs) var(--ui-radius-lg);
   padding: 10px 16px;
   font-size: 0.9rem;
   line-height: 1.55;
@@ -793,6 +828,36 @@
  .ai-block { padding: 4px 0 8px; max-width: 100%; }
  .ai-header { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
  .ai-label { font-size: 11.5px; font-weight: 700; color: var(--color-accent); letter-spacing: 0.04em; text-transform: uppercase; }
+
+ /* ── Executed-queries chips ───────────────────────────── */
+ .queries-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-bottom: 10px;
+ }
+ .queries-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+ }
+ .query-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 260px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
+  border: 1px solid color-mix(in oklch, var(--color-base-300) 70%, transparent);
+  font-size: 11.5px;
+  color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+ }
 
  /* ── AI Prose ────────────────────────────────────────── */
  .ai-prose { font-size: 0.925rem; line-height: 1.78; color: var(--color-base-content); }
@@ -813,16 +878,103 @@
  .ai-prose :global(hr) { border: none; border-top: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); margin: 1.1em 0; }
  .ai-prose :global(a) { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
  .ai-prose :global(a:hover) { opacity: 0.75; }
- .ai-prose :global(code) { background: color-mix(in oklch, var(--color-accent) 9%, transparent); border: 1px solid color-mix(in oklch, var(--color-accent) 20%, transparent); border-radius: 5px; padding: 1px 6px; font-size: 0.83em; font-family: 'JetBrains Mono', monospace; color: var(--color-accent); }
- .ai-prose :global(pre) { background: var(--color-base-200); border: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); border-radius: 10px; padding: 1em 1.2em; overflow-x: auto; margin: 0.75em 0; font-size: 0.83em; line-height: 1.6; }
+ .ai-prose :global(code) { background: color-mix(in oklch, var(--color-accent) 9%, transparent); border: 1px solid color-mix(in oklch, var(--color-accent) 20%, transparent); border-radius: var(--ui-radius-xs); padding: 1px 6px; font-size: 0.83em; font-family: 'JetBrains Mono', monospace; color: var(--color-accent); }
+ .ai-prose :global(pre) { background: var(--color-base-200); border: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); border-radius: var(--ui-radius-sm); padding: 1em 1.2em; overflow-x: auto; margin: 0.75em 0; font-size: 0.83em; line-height: 1.6; }
  .ai-prose :global(pre code) { background: transparent; border: none; padding: 0; color: var(--color-base-content); font-size: 1em; }
- .ai-prose :global(.md-table-wrap) { overflow-x: auto; margin: 0.75em 0; border-radius: 10px; border: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); }
+ .ai-prose :global(.md-table-wrap) { overflow-x: auto; margin: 0.75em 0; border-radius: var(--ui-radius-sm); border: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); }
  .ai-prose :global(table) { width: 100%; border-collapse: collapse; font-size: 0.88em; }
  .ai-prose :global(thead) { background: color-mix(in oklch, var(--color-base-200) 80%, transparent); }
  .ai-prose :global(th) { padding: 8px 12px; font-weight: 600; font-size: 0.85em; letter-spacing: 0.02em; text-transform: uppercase; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); border-bottom: 1.5px solid color-mix(in oklch, var(--color-base-300) 80%, transparent); }
  .ai-prose :global(td) { padding: 7px 12px; border-bottom: 1px solid color-mix(in oklch, var(--color-base-300) 50%, transparent); vertical-align: top; }
  .ai-prose :global(tr:last-child td) { border-bottom: none; }
  .ai-prose :global(tbody tr:hover) { background: color-mix(in oklch, var(--color-base-200) 40%, transparent); }
+
+ /* ── Inline citation badge ────────────────────────────── */
+ .ai-prose :global(.cite-ref) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35em;
+  height: 1.35em;
+  padding: 0 0.25em;
+  margin: 0 1px;
+  background: color-mix(in oklch, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+  border: 1px solid color-mix(in oklch, var(--color-accent) 25%, transparent);
+  border-radius: var(--ui-radius-xs);
+  font-size: 0.68em;
+  font-weight: 700;
+  vertical-align: super;
+  line-height: 1;
+  user-select: none;
+ }
+
+ /* ── Sources rail ─────────────────────────────────────── */
+ .sources-rail {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in oklch, var(--color-base-300) 60%, transparent);
+ }
+ .sources-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+  margin: 0 0 8px;
+ }
+ .sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+ }
+ .source-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--ui-radius-sm);
+  border: 1px solid color-mix(in oklch, var(--color-base-300) 70%, transparent);
+  background: color-mix(in oklch, var(--color-base-200) 45%, transparent);
+  text-decoration: none;
+  transition: background 130ms, border-color 130ms;
+ }
+ .source-chip:hover {
+  background: color-mix(in oklch, var(--color-accent) 8%, transparent);
+  border-color: color-mix(in oklch, var(--color-accent) 35%, transparent);
+ }
+ .source-num {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: var(--ui-radius-xs);
+  background: color-mix(in oklch, var(--color-accent) 15%, transparent);
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 700;
+ }
+ .source-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+ }
+ .source-outlet {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+ }
+ .source-headline {
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: color-mix(in oklch, var(--color-base-content) 75%, transparent);
+ }
 
  /* ── Streaming cursor ────────────────────────────────── */
  :global(.stream-cursor) {
@@ -852,7 +1004,7 @@
   color: var(--color-error);
   background: color-mix(in oklch, var(--color-error) 10%, transparent);
   border: 1px solid color-mix(in oklch, var(--color-error) 20%, transparent);
-  border-radius: 12px;
+  border-radius: var(--ui-radius);
   padding: 8px 16px;
   text-align: center;
  }
@@ -903,7 +1055,7 @@
   min-height: 46px;
   background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
   border: 1px solid var(--color-base-300);
-  border-radius: 10px;
+  border-radius: var(--ui-radius-sm);
   padding: 0 4px 0 16px;
   position: relative;
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
@@ -933,7 +1085,7 @@
   flex-shrink: 0;
   padding: 6px 8px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-sm);
   background: transparent;
   cursor: pointer;
   color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
@@ -957,7 +1109,7 @@
   min-width: 220px;
   background: var(--color-base-100);
   border: 1px solid var(--color-base-300);
-  border-radius: 12px;
+  border-radius: var(--ui-radius);
   box-shadow: 0 8px 24px color-mix(in oklch, black 16%, transparent),
               0 2px 6px color-mix(in oklch, black 8%, transparent);
   padding: 6px;
@@ -989,7 +1141,7 @@
   gap: 10px;
   padding: 8px 10px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-sm);
   background: transparent;
   cursor: pointer;
   font-size: 13.5px;
@@ -1018,23 +1170,6 @@
   color: var(--color-accent);
   flex-shrink: 0;
 }
-.dropdown-toggle {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 2px 8px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-.dropdown-toggle--on {
-  background: color-mix(in oklch, var(--color-accent) 15%, transparent);
-  color: var(--color-accent);
-}
-.dropdown-toggle--off {
-  background: var(--color-base-200);
-  color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
-}
 .dropdown-divider {
   height: 1px;
   background: var(--color-base-300);
@@ -1047,7 +1182,7 @@
   width: 36px;
   height: 36px;
   margin: 5px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-sm);
   border: none;
   display: flex;
   align-items: center;
@@ -1078,6 +1213,9 @@
 @media (max-width: 767px) {
   .footer-inner {
     padding-bottom: calc(12px + 64px + env(safe-area-inset-bottom, 0px));
+  }
+  :global([data-nav-style="deck"]) .footer-inner {
+    padding-bottom: calc(12px + var(--deck-height, 16vw) + 20px + env(safe-area-inset-bottom, 0px));
   }
 }
 

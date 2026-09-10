@@ -965,7 +965,7 @@ async function loadSubscriptions(quiet = false) {
   gap: 12px;
   background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
   border: 1px solid var(--color-base-300);
-  border-radius: 10px;
+  border-radius: var(--ui-radius-sm);
   padding: 0 16px;
   height: 46px;
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
@@ -1043,7 +1043,7 @@ async function loadSubscriptions(quiet = false) {
 	justify-content: center;
 	gap: 6px;
 	padding: 8px 12px;
-	border-radius: 10px;
+	border-radius: var(--ui-radius-sm);
 	border: 1px solid var(--color-base-300);
 	background: transparent;
 	font-size: 13px;
@@ -1079,7 +1079,7 @@ async function loadSubscriptions(quiet = false) {
 
     .sk-circle,
     .sk-bar {
-        border-radius: 4px;
+        border-radius: var(--ui-radius-xs);
         background: linear-gradient(
             90deg,
             color-mix(in oklch, var(--color-base-300) 60%, transparent) 0%,
@@ -1126,7 +1126,7 @@ async function loadSubscriptions(quiet = false) {
     .header-error__retry {
         margin-left: auto;
         padding: 4px 12px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: 1px solid color-mix(in oklch, var(--color-error, #e74c3c) 40%, transparent);
         background: transparent;
         color: var(--color-error, #e74c3c);
@@ -1167,7 +1167,7 @@ async function loadSubscriptions(quiet = false) {
         gap: 5px;
         margin-top: 6px;
         padding: 7px 14px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: 1.5px solid var(--color-accent);
         background: var(--color-accent);
         color: var(--color-base-100);
@@ -1227,7 +1227,7 @@ async function loadSubscriptions(quiet = false) {
         color: color-mix(in oklch, var(--color-base-content) 38%, transparent);
         cursor: pointer;
         padding: 0;
-        border-radius: 4px;
+        border-radius: var(--ui-radius-xs);
         transition: background 120ms ease, color 120ms ease;
     }
 
@@ -1255,7 +1255,7 @@ async function loadSubscriptions(quiet = false) {
         color: color-mix(in oklch, var(--color-accent) 80%, transparent);
         background: color-mix(in oklch, var(--color-accent) 10%, transparent);
         padding: 1px 7px;
-        border-radius: 20px;
+        border-radius: var(--ui-radius-lg);
         line-height: 1.7;
         flex-shrink: 0;
     }
@@ -1300,7 +1300,7 @@ async function loadSubscriptions(quiet = false) {
         transition: opacity 120ms ease, color 120ms ease;
         line-height: 1;
         padding: 2px 0;
-        border-radius: 3px;
+        border-radius: var(--ui-radius-xs);
     }
 
     .drag-handle:active {
@@ -1314,7 +1314,7 @@ async function loadSubscriptions(quiet = false) {
     .feed-favicon {
         width: 16px;
         height: 16px;
-        border-radius: 3px;
+        border-radius: var(--ui-radius-xs);
         object-fit: cover;
         flex-shrink: 0;
     }
@@ -1328,7 +1328,7 @@ async function loadSubscriptions(quiet = false) {
         color: var(--color-accent);
         opacity: 0.9;
         background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-        border-radius: 4px;
+        border-radius: var(--ui-radius-xs);
         flex-shrink: 0;
     }
 
@@ -1379,7 +1379,7 @@ async function loadSubscriptions(quiet = false) {
         justify-content: center;
         width: 24px;
         height: 24px;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         border: none;
         background: transparent;
         color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
@@ -1401,7 +1401,7 @@ async function loadSubscriptions(quiet = false) {
         z-index: 200;
         background: var(--color-base-100);
         border: 1px solid var(--color-base-200);
-        border-radius: 12px;
+        border-radius: var(--ui-radius);
         box-shadow:
             0 4px 6px color-mix(in oklch, black 8%, transparent),
             0 10px 30px color-mix(in oklch, black 14%, transparent);
@@ -1444,7 +1444,7 @@ async function loadSubscriptions(quiet = false) {
         font-size: 13px;
         font-weight: 500;
         color: var(--color-base-content);
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         transition: background 110ms ease;
         text-align: left;
     }
@@ -1487,7 +1487,7 @@ async function loadSubscriptions(quiet = false) {
         z-index: 110;
         background: var(--color-base-100);
         border: 1px solid var(--color-base-200);
-        border-radius: 16px;
+        border-radius: var(--ui-radius-lg);
         padding: 20px 20px 16px;
         width: min(380px, 92vw);
         box-shadow: 0 20px 60px color-mix(in oklch, black 24%, transparent);
@@ -1521,7 +1521,7 @@ font-family: var(--font-page-title);
         justify-content: center;
         width: 30px;
         height: 30px;
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         border: none;
         background: transparent;
         color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
@@ -1561,7 +1561,7 @@ font-family: var(--font-page-title);
         font-size: 13.5px;
         background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
         border: 1px solid var(--color-base-300);
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         color: var(--color-base-content);
         outline: none;
         box-sizing: border-box;
@@ -1582,7 +1582,7 @@ font-family: var(--font-page-title);
 
     .dialog-btn {
         padding: 8px 18px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;

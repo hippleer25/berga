@@ -9,12 +9,12 @@ logger = logging.getLogger(__name__)
 def user_register(x_user_data):
     username = x_user_data.username
     if not username or not username.strip():
-        return {"status": "error", "message": "Username is required"}
+        return {"status": "error", "code": "missing_fields", "message": "Username is required"}
     username = username.strip()
     if len(username) < 2 or len(username) > 50:
-        return {"status": "error", "message": "Username must be between 2 and 50 characters"}
+        return {"status": "error", "code": "invalid_username", "message": "Username must be between 2 and 50 characters"}
     if not x_user_data.password or len(x_user_data.password) < 6:
-        return {"status": "error", "message": "Password must be at least 6 characters"}
+        return {"status": "error", "code": "invalid_password", "message": "Password must be at least 6 characters"}
     email = (x_user_data.email or "").strip() or None
     full_name = (x_user_data.full_name or "").strip() or None
     logger.info("Registering user: %s", username)
@@ -42,11 +42,13 @@ def user_register(x_user_data):
                 conn.rollback()
                 err_msg = str(e)
                 if "Duplicate entry" in err_msg or "UNIQUE" in err_msg.upper():
-                    return {"status": "error", "message": "Username already taken"}
+                    if "email" in err_msg.lower():
+                        return {"status": "error", "code": "email_taken", "message": "Email already taken"}
+                    return {"status": "error", "code": "username_taken", "message": "Username already taken"}
                 logger.error("Registration error: %s", e)
-                return {"status": "error", "message": "Registration failed. Please try again."}
+                return {"status": "error", "code": "server_error", "message": "Registration failed. Please try again."}
             finally:
                 cursor.close()
     except Exception as e:
         logger.error("Registration error: %s", e)
-        return {"status": "error", "message": "Registration failed. Please try again."}
+        return {"status": "error", "code": "server_error", "message": "Registration failed. Please try again."}

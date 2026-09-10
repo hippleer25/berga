@@ -1,5 +1,7 @@
 <script lang="ts">
 import { goto } from '$app/navigation';
+import { page } from '$app/stores';
+import { onMount } from 'svelte';
 	import User from "@lucide/svelte/icons/user";
 	import Mail from "@lucide/svelte/icons/mail";
 	import Lock from "@lucide/svelte/icons/lock";
@@ -7,12 +9,13 @@ import { goto } from '$app/navigation';
 	import EyeClosed from "@lucide/svelte/icons/eye-closed";
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Globe from '@lucide/svelte/icons/globe';
+	import AlertTriangle from '@lucide/svelte/icons/triangle-alert';
 
 	import { t } from 'svelte-i18n';
 	import { get } from 'svelte/store';
 	import { apiFetch, setNativeToken } from '$lib/api';
- import { instance } from '$lib/stores/instance';
- import { auth } from '$lib/stores/auth';
+  import { instance } from '$lib/stores/instance';
+  import { checkSession, setSessionLoggedIn } from '$lib/stores/session';
 
   let instanceUrl = $state(get(instance));
   let identifier = $state("");
@@ -25,6 +28,19 @@ import { goto } from '$app/navigation';
 
   let isEmail = $derived(identifier.includes("@"));
 
+  // Only same-origin relative paths are accepted as redirect targets.
+  let returnTo = $derived.by(() => {
+    const r = $page.url.searchParams.get('returnTo');
+    return r && r.startsWith('/') && !r.startsWith('//') ? r : '/home';
+  });
+
+  onMount(async () => {
+    // Already authenticated → skip the form entirely.
+    if (await checkSession()) {
+      goto(returnTo, { replaceState: true });
+    }
+  });
+
 	let instanceTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
 		if (instanceTimer) clearTimeout(instanceTimer);
@@ -32,6 +48,15 @@ import { goto } from '$app/navigation';
 			instance.setInstance(instanceUrl);
 		}, 500);
 	});
+
+  function errorMessage(data: any): string {
+    switch (data?.code) {
+      case 'invalid_credentials': return get(t)('signin.invalidCredentials');
+      case 'missing_fields':      return get(t)('signin.missingFields');
+      case 'server_error':        return get(t)('signin.serverError');
+      default:                    return get(t)('signin.invalidCredentials');
+    }
+  }
 
   async function login() {
     loading = true;
@@ -50,15 +75,15 @@ import { goto } from '$app/navigation';
 
       const data = await response.json();
 
-if (data.status === "success") {
+      if (data.status === "success") {
 		const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
 		if (isNative && data.access_token) {
 			setNativeToken(data.access_token);
 		}
-		auth.setLoggedIn();
-		window.location.href = '/home';
+		setSessionLoggedIn();
+		goto(returnTo, { replaceState: true });
       } else {
-        message = data.message || get(t)('signin.invalidCredentials');
+        message = errorMessage(data);
       }
 
     } catch (err) {
@@ -157,7 +182,10 @@ if (data.status === "success") {
                 </div>
 
                 {#if message}
-                    <p class="error-text">{message}</p>
+                    <div class="error-alert" role="alert">
+                        <AlertTriangle size={16} class="error-icon" />
+                        <span>{message}</span>
+                    </div>
                 {/if}
 
                 <!-- Actions -->
@@ -259,7 +287,7 @@ font-family: var(--font-page-title);
         height: 44px;
         background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
         border: 1px solid var(--color-base-300);
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         padding: 0 14px;
         font-size: 14px;
         color: var(--color-base-content);
@@ -340,12 +368,29 @@ font-family: var(--font-page-title);
     }
 
     /* ── Error Message ──────────────────────────────────────── */
-    .error-text {
-        font-size: 13px;
+    .error-alert {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 14px;
+        border-radius: var(--ui-radius-sm);
+        background: color-mix(in oklch, var(--color-error) 10%, transparent);
+        border: 1px solid color-mix(in oklch, var(--color-error) 35%, transparent);
         color: var(--color-error);
-        text-align: center;
-        margin: 0;
-        padding: 4px 0;
+        font-size: 13px;
+        font-weight: 500;
+        animation: shake 0.36s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+    }
+
+    @keyframes shake {
+        10%, 90% { transform: translateX(-1px); }
+        20%, 80% { transform: translateX(2px); }
+        30%, 50%, 70% { transform: translateX(-3px); }
+        40%, 60% { transform: translateX(3px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .error-alert { animation: none; }
     }
 
     /* ── Action Buttons ─────────────────────────────────────── */
@@ -362,7 +407,7 @@ font-family: var(--font-page-title);
         justify-content: center;
         gap: 6px;
         padding: 10px 16px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: 1px solid var(--color-base-300);
         background: transparent;
         color: var(--color-base-content);

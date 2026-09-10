@@ -126,6 +126,8 @@ export const POSTCARD_PREFS = {
 	descLines: { key: 'postcard-desc-lines', min: 0, max: 6, step: 1, default: 2 },
 	titleBold: { key: 'postcard-title-bold', default: false },
 	density: { key: 'feed-density', default: 'comfortable' as Density },
+	titleSize: { key: 'postcard-title-size', min: 80, max: 150, step: 5, default: 100 },
+	descSize: { key: 'postcard-desc-size', min: 80, max: 150, step: 5, default: 100 },
 } as const;
 
 export type Density = 'compact' | 'comfortable' | 'spacious';
@@ -153,6 +155,34 @@ export function applyTitleBold(value: boolean, persist = false) {
 		value ? '700' : '500',
 	);
 	if (persist) localStorage.setItem(POSTCARD_PREFS.titleBold.key, String(value));
+}
+
+export function applyTitleSize(value: number, persist = false) {
+	const v = Math.min(POSTCARD_PREFS.titleSize.max, Math.max(POSTCARD_PREFS.titleSize.min, value));
+	document.documentElement.style.setProperty('--postcard-title-scale', String(v / 100));
+	if (persist) localStorage.setItem(POSTCARD_PREFS.titleSize.key, String(v));
+}
+
+export function applyDescSize(value: number, persist = false) {
+	const v = Math.min(POSTCARD_PREFS.descSize.max, Math.max(POSTCARD_PREFS.descSize.min, value));
+	document.documentElement.style.setProperty('--postcard-desc-scale', String(v / 100));
+	if (persist) localStorage.setItem(POSTCARD_PREFS.descSize.key, String(v));
+}
+
+export function getSavedTitleSize(): number {
+	if (typeof localStorage === 'undefined') return POSTCARD_PREFS.titleSize.default;
+	const v = Number(localStorage.getItem(POSTCARD_PREFS.titleSize.key));
+	return Number.isFinite(v) && v >= POSTCARD_PREFS.titleSize.min && v <= POSTCARD_PREFS.titleSize.max
+		? v
+		: POSTCARD_PREFS.titleSize.default;
+}
+
+export function getSavedDescSize(): number {
+	if (typeof localStorage === 'undefined') return POSTCARD_PREFS.descSize.default;
+	const v = Number(localStorage.getItem(POSTCARD_PREFS.descSize.key));
+	return Number.isFinite(v) && v >= POSTCARD_PREFS.descSize.min && v <= POSTCARD_PREFS.descSize.max
+		? v
+		: POSTCARD_PREFS.descSize.default;
 }
 
 export function applyDensity(value: Density, persist = false) {
@@ -300,6 +330,8 @@ export function initAppearance() {
 
 	applyDescLines(numPref(POSTCARD_PREFS.descLines.key, POSTCARD_PREFS.descLines.default));
 	applyTitleBold(localStorage.getItem(POSTCARD_PREFS.titleBold.key) === 'true');
+	applyTitleSize(numPref(POSTCARD_PREFS.titleSize.key, POSTCARD_PREFS.titleSize.default));
+	applyDescSize(numPref(POSTCARD_PREFS.descSize.key, POSTCARD_PREFS.descSize.default));
 	applyDensity(getSavedDensity());
 
 	applyCustomCss();

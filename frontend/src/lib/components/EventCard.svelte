@@ -127,7 +127,7 @@ import { get } from 'svelte/store';
   margin: 0 -16px;
   padding-left: 16px;
   padding-right: 16px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-xs);
 }
 .event-header:active {
   background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
@@ -193,7 +193,7 @@ font-family: var(--font-post-title);
         display: block;
         padding: 10px 12px; /* Internal padding for isolation */
         text-decoration: none;
-        border-radius: 6px;
+        border-radius: var(--ui-radius-xs);
         background: transparent;
         transition: background 120ms ease;
     }

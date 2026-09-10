@@ -11,5 +11,7 @@
   "loggingIn": "Iniciando sesión...",
   "loginBtn": "Iniciar sesión",
   "instanceLabel": "Instancia",
-  "instancePlaceholder": "ej. bergamota.net.br"
+  "instancePlaceholder": "ej. bergamota.net.br",
+  "missingFields": "Introduce tu usuario y contraseña",
+  "serverError": "Error del servidor. Inténtalo pronto de nuevo."
 }

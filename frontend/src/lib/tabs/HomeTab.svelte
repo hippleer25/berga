@@ -1192,7 +1192,7 @@ if (res.ok) {
         justify-content: center;
         background: transparent;
         border: none;
-        border-radius: 40px;
+        border-radius: var(--ui-radius-full);
         padding: 8px;
         cursor: pointer;
         color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
@@ -1218,6 +1218,9 @@ font-family: var(--font-page-title);
         margin: 0;
         line-height: 1.1;
     }
+    :global([data-welcome-bold="on"]) .welcome-title {
+        font-weight: 800;
+    }
 
     /* ── Selection bar ───────────────────────────────────────── */
     .selection-bar {
@@ -1227,7 +1230,7 @@ font-family: var(--font-page-title);
         padding: 8px 14px;
         background: var(--color-base-100);
         border: 1px solid var(--color-accent);
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         box-shadow: 0 4px 12px color-mix(in oklch, black 10%, transparent);
         margin-bottom: 12px;
         z-index: 60;
@@ -1271,7 +1274,7 @@ font-family: var(--font-page-title);
         align-items: center;
         gap: 6px;
         padding: 7px 12px;
-        border-radius: 20px;
+        border-radius: var(--ui-radius-lg);
         border: none;
         font-size: 12.5px;
         font-weight: 600;
@@ -1319,7 +1322,7 @@ font-family: var(--font-page-title);
     .mode-pill {
         display: flex;
         background: var(--color-base-200);
-        border-radius: 13px; /* Borda alterada */
+        border-radius: calc(var(--ui-radius-sm) + 3px); /* follows the controls radius */
         padding: 3px;
         gap: 2px;
         flex-shrink: 0;
@@ -1329,7 +1332,7 @@ font-family: var(--font-page-title);
         align-items: center;
         gap: 5px;
         padding: 6px 14px;
-        border-radius: 10px; /* Borda alterada */
+        border-radius: var(--ui-radius-sm); /* Borda alterada */
         border: none;
         background: transparent;
         font-size: 13px;
@@ -1352,7 +1355,7 @@ font-family: var(--font-page-title);
         align-items: center;
         gap: 5px;
         padding: 6px 12px;
-        border-radius: 10px; /* Borda alterada */
+        border-radius: var(--ui-radius-sm); /* Borda alterada */
         border: 1px solid var(--color-base-300);
         background: transparent;
         font-size: 13px;
@@ -1394,7 +1397,7 @@ font-family: var(--font-page-title);
         z-index: 9999;
         background: var(--color-base-100);
         border: 1px solid var(--color-base-300);
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         box-shadow: 0 8px 24px color-mix(in oklch, black 20%, transparent);
         padding: 4px;
         min-width: 190px;
@@ -1424,7 +1427,7 @@ font-family: var(--font-page-title);
         width: 100%; padding: 8px 10px;
         border: none; background: transparent;
         cursor: pointer; font-size: 13px; font-weight: 500;
-        color: var(--color-base-content); border-radius: 6px;
+        color: var(--color-base-content); border-radius: var(--ui-radius-xs);
         transition: background 110ms; text-align: left;
     }
     .picker-item:hover { background: var(--color-base-200); }
@@ -1433,9 +1436,9 @@ font-family: var(--font-page-title);
         color: var(--color-accent);
     }
 .picker-item-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.picker-favicon { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; flex-shrink: 0; }
+.picker-favicon { width: 14px; height: 14px; border-radius: var(--ui-radius-xs); object-fit: contain; flex-shrink: 0; }
 .picker-tag-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.picker-item--create { color: var(--color-accent); font-weight: 600; border-top: 1px solid var(--color-base-300); margin-top: 4px; border-radius: 0 0 6px 6px; }
+.picker-item--create { color: var(--color-accent); font-weight: 600; border-top: 1px solid var(--color-base-300); margin-top: 4px; border-radius: 0 0 var(--ui-radius-xs) var(--ui-radius-xs); }
 .picker-item--create:hover { background: color-mix(in oklch, var(--color-accent) 10%, transparent); }
 :global(.picker-check) { flex-shrink: 0; color: var(--color-accent); }
 :global(.picker-icon-fallback) { color: var(--color-accent); opacity: 0.6; }
@@ -1449,7 +1452,7 @@ font-family: var(--font-page-title);
         z-index: 9999;
         background: var(--color-base-100);
         border: 1px solid var(--color-base-300);
-        border-radius: 8px;
+        border-radius: var(--ui-radius-sm);
         box-shadow: 0 8px 24px color-mix(in oklch, black 20%, transparent);
         padding: 4px;
         min-width: 190px;
@@ -1479,7 +1482,7 @@ font-family: var(--font-page-title);
     .sk-publisher  { margin-bottom: 10px; }
     .sk-actions    { gap: 6px; }
     .sk-bar, .sk-circle, .sk-dot {
-        border-radius: 4px;
+        border-radius: var(--ui-radius-xs);
         background: linear-gradient(
             90deg,
             color-mix(in oklch, var(--color-base-300) 60%, transparent) 0%,
@@ -1490,10 +1493,10 @@ font-family: var(--font-page-title);
         animation: shimmer 1.6s ease-in-out infinite;
     }
     .sk-circle       { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
-    .sk-circle.sk-sm { width: 24px; height: 24px; border-radius: 6px; }
+    .sk-circle.sk-sm { width: 24px; height: 24px; border-radius: var(--ui-radius-xs); }
     .sk-dot          { width: 3px;  height: 3px;  border-radius: 50%; flex-shrink: 0; }
     .sk-bar          { height: 10px; flex-shrink: 0; }
-    .sk-title        { height: 14px; margin-bottom: 5px; border-radius: 5px; }
+    .sk-title        { height: 14px; margin-bottom: 5px; border-radius: var(--ui-radius-xs); }
     .sk-desc         { height: 11px; margin-bottom: 4px; }
     .skeleton-card:nth-child(1) .sk-bar, .skeleton-card:nth-child(1) .sk-circle { animation-delay: 0s;    }
     .skeleton-card:nth-child(2) .sk-bar, .skeleton-card:nth-child(2) .sk-circle { animation-delay: .15s; }
@@ -1519,7 +1522,7 @@ font-family: var(--font-page-title);
         font-size: 14px; text-align: center;
     }
     .retry-btn {
-        padding: 7px 18px; border-radius: 6px;
+        padding: 7px 18px; border-radius: var(--ui-radius-xs);
         border: 1px solid color-mix(in oklch, var(--color-error, #e74c3c) 40%, transparent);
         background: transparent; color: var(--color-error, #e74c3c);
         font-size: 13px; font-weight: 600; cursor: pointer; transition: background 130ms;

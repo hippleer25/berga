@@ -14,5 +14,9 @@
   "registering": "Registering...",
   "done": "Done",
   "instanceLabel": "Instance",
-  "instancePlaceholder": "e.g. bergamota.net.br"
+  "instancePlaceholder": "e.g. bergamota.net.br",
+  "usernameTaken": "This username is already taken",
+  "emailTaken": "This email is already registered",
+  "missingFields": "Fill in all the required fields",
+  "serverError": "Server error. Try again shortly."
 }

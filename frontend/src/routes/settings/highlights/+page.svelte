@@ -32,12 +32,10 @@
   <h2 class="section-title">{$t('settings.highlights')}</h2>
   <p class="section-desc">{$t('settings.highlightsDesc')}</p>
 
-  <details class="section" open>
-    <summary class="section-summary">
-      <span class="section-summary-text">{$t('settings.highlightColors')}</span>
-      <span class="section-summary-hint">{$highlightColors.length}/{MAX_COLORS}</span>
-    </summary>
-    <div class="section-body">
+  <div class="settings-group">
+    <div class="group-label">{$t('settings.highlightColors')}</div>
+    <div class="group-card">
+      <div class="group-hint">{$highlightColors.length}/{MAX_COLORS}</div>
       {#each $highlightColors as color, i}
         <div class="color-row">
           <label class="color-swatch" style="background: {hexToRgba(color, 100)};" title={color}>
@@ -66,13 +64,11 @@
         <span>{$t('settings.addColor')}</span>
       </button>
     </div>
-  </details>
+  </div>
 
-  <details class="section" open>
-    <summary class="section-summary">
-      <span class="section-summary-text">{$t('settings.highlightStyle')}</span>
-    </summary>
-    <div class="section-body">
+  <div class="settings-group">
+    <div class="group-label">{$t('settings.highlightStyle')}</div>
+    <div class="group-card">
       <div class="setting-slider-row">
         <div class="slider-head">
           <span class="setting-label">{$t('settings.highlightOpacity')}</span>
@@ -119,37 +115,37 @@
         </p>
       </div>
     </div>
-  </details>
+  </div>
 </div>
 
 <style>
   .tab-panel { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; }
   .section-title { font-size: 16px; font-weight: 700; color: var(--color-base-content); margin: 0; }
-  .section-desc { font-size: 13px; line-height: 1.45; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); margin: -8px 0 0; }
+  .section-desc { font-size: 13px; line-height: 1.45; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); margin: 0; overflow-wrap: anywhere; }
 
-  /* ── Collapsible sections ─────────────────────────────────── */
-  .section {
-    border: 1px solid var(--color-base-300);
-    border-radius: 12px;
-    overflow: hidden;
-    background: color-mix(in oklch, var(--color-base-100) 60%, transparent);
+  /* ── Flat grouped sections (Spotify style, no inner boxes) ── */
+  .settings-group { display: flex; flex-direction: column; gap: 10px; }
+  .group-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: color-mix(in oklch, var(--color-base-content) 48%, transparent);
+    padding: 4px 0 0;
   }
-  .section > summary { list-style: none; }
-  .section > summary::-webkit-details-marker { display: none; }
-  .section-summary {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 14px; cursor: pointer; user-select: none;
-    font-size: 14px; font-weight: 600; color: var(--color-base-content);
-    transition: background 130ms;
+  .group-card {
+    background: transparent;
+    border: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
-  .section-summary:hover { background: var(--color-base-200); }
-  .section-summary:active { background: color-mix(in oklch, var(--color-base-content) 6%, transparent); }
-  .section-summary-text { display: flex; align-items: center; gap: 6px; }
-  .section-summary-hint {
+  .group-hint {
     font-size: 11px; font-weight: 700; color: var(--color-accent);
     font-variant-numeric: tabular-nums; font-family: var(--font-ui);
+    padding: 8px 0 0; text-align: right;
   }
-  .section-body { padding: 4px 14px 12px; display: flex; flex-direction: column; gap: 6px; }
 
   /* ── Color rows ───────────────────────────────────────────── */
   .color-row {
@@ -157,7 +153,7 @@
     padding: 6px 0; border-bottom: 1px solid var(--color-base-300);
   }
   .color-swatch {
-    width: 34px; height: 34px; border-radius: 10px;
+    width: 34px; height: 34px; border-radius: var(--ui-radius-sm);
     border: 2px solid var(--color-base-300);
     position: relative; overflow: hidden; cursor: pointer; flex-shrink: 0;
     transition: border-color 130ms, transform 130ms;
@@ -174,7 +170,7 @@
   }
   .remove-btn {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 28px; height: 28px; border-radius: 8px; border: none;
+    width: 28px; height: 28px; border-radius: var(--ui-radius-sm); border: none;
     background: transparent; color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
     cursor: pointer; transition: all 130ms; flex-shrink: 0;
   }
@@ -185,7 +181,7 @@
 
   .action-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 8px 14px; border-radius: 10px; border: 1px solid var(--color-base-300);
+    padding: 8px 14px; border-radius: var(--ui-radius-sm); border: 1px solid var(--color-base-300);
     background: transparent; color: var(--color-base-content); cursor: pointer;
     font-size: 13px; font-weight: 600; transition: all 130ms ease;
     position: relative; overflow: hidden;
@@ -209,7 +205,7 @@
   }
   .range {
     -webkit-appearance: none; appearance: none;
-    width: 100%; height: 4px; border-radius: 999px;
+    width: 100%; height: 4px; border-radius: var(--ui-radius-full);
     background: color-mix(in oklch, var(--color-base-content) 18%, transparent);
     outline: none; cursor: pointer;
   }

@@ -12,7 +12,7 @@ def user_login(x_user_data):
     logger.info("Login attempt for user: %s", username or email)
 
     if not username and not email:
-        return {"status": "fail", "message": "Failed credentials"}
+        return {"status": "fail", "code": "missing_fields", "message": "Failed credentials"}
 
     try:
         with get_db() as conn:
@@ -35,8 +35,8 @@ def user_login(x_user_data):
                 "token_type": "bearer"
             }
         else:
-            return {"status": "fail", "message": "Failed credentials"}
+            return {"status": "fail", "code": "invalid_credentials", "message": "Failed credentials"}
 
     except Exception as e:
         logger.error("Login error: %s", e)
-        return {"status": "fail", "message": "Failed credentials"}
+        return {"status": "fail", "code": "server_error", "message": "Failed credentials"}

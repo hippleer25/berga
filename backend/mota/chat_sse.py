@@ -27,6 +27,11 @@ def _sse_error(message: str) -> str:
     return f"data: {payload}\n\n"
 
 
+def _sse_sources(sources: list[dict]) -> str:
+    payload = json.dumps({"sources": sources}, ensure_ascii=False)
+    return f"data: {payload}\n\n"
+
+
 def _sse_done() -> str:
     return "data: [DONE]\n\n"
 
@@ -36,3 +41,26 @@ class _Status:
 
     def __init__(self, phase: str):
         self.phase = phase
+
+
+class _Sources:
+    """Marker for the citation registry to be emitted as a final SSE event."""
+
+    __slots__ = ('entries',)
+
+    def __init__(self, entries: list[dict]):
+        self.entries = entries
+
+
+class _Queries:
+    """Marker for the list of search queries executed in this turn."""
+
+    __slots__ = ('queries',)
+
+    def __init__(self, queries: list[str]):
+        self.queries = queries
+
+
+def _sse_queries(queries: list[str]) -> str:
+    payload = json.dumps({"queries": queries}, ensure_ascii=False)
+    return f"data: {payload}\n\n"

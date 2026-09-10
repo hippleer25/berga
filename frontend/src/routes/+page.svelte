@@ -3,36 +3,63 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { t } from 'svelte-i18n';
-	import { apiFetch } from '$lib/api';
-	import { auth } from '$lib/stores/auth';
+	import { checkSession } from '$lib/stores/session';
 
 	let ready = $state(false);
-	let checking = $state(false);
 
 	onMount(async () => {
-		if (!browser || checking) return;
-		checking = true;
-
+		if (!browser) return;
 		try {
-			const res = await apiFetch('/api/meu-perfil', {
-				credentials: 'include'
-			});
-
-			if (res.ok) {
-				auth.setLoggedIn();
-				goto('/home');
-			} else {
-				auth.setLoggedOut();
-				ready = true;
+			const ok = await checkSession();
+			if (ok) {
+				goto('/home', { replaceState: true });
+				return;
 			}
 		} catch {
-			auth.setLoggedOut();
-			ready = true;
+			/* fall through to the landing screen */
 		}
+		ready = true;
 	});
 </script>
 
+{#if !ready}
+	<div class="splash">
+		<span class="splash-brand gloock-regular">Berga</span>
+		<span class="splash-spinner"></span>
+	</div>
+{/if}
+
 <style>
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: var(--color-base-100);
+}
+
+.splash-brand {
+  font-size: 2.4rem;
+  color: var(--color-base-content);
+}
+
+.splash-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid color-mix(in oklch, var(--color-base-content) 18%, transparent);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: splash-spin 0.8s linear infinite;
+}
+
+@keyframes splash-spin {
+  to { transform: rotate(360deg); }
+}
+
 .gloock-regular {
 font-family: var(--font-page-title);
       font-weight: 400;

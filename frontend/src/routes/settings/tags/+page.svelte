@@ -462,7 +462,7 @@ function resetForm() {
 	.tags-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 	.action-btn {
 		display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-		padding: 10px 16px; border-radius: 10px; border: 1px solid var(--color-base-300);
+		padding: 10px 16px; border-radius: var(--ui-radius-sm); border: 1px solid var(--color-base-300);
 		background: transparent; color: var(--color-base-content); cursor: pointer;
 		font-size: 13px; font-weight: 600; transition: all 130ms ease;
 		position: relative; overflow: hidden;
@@ -488,7 +488,7 @@ function resetForm() {
 	.empty-icon { color: color-mix(in oklch, var(--color-base-content) 25%, transparent); }
 	.empty-state p { font-size: 13px; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); }
 
-	.tags-list { display: flex; flex-direction: column; border: 1px solid var(--color-base-300); border-radius: 16px; overflow: hidden; }
+	.tags-list { display: flex; flex-direction: column; border: 1px solid var(--color-base-300); border-radius: var(--ui-radius-lg); overflow: hidden; }
 	.tag-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--color-base-300); cursor: pointer; transition: background 120ms ease; }
 	.tag-item:last-child { border-bottom: none; }
 	.tag-item:hover { background: color-mix(in oklch, var(--color-base-content) 4%, transparent); }
@@ -496,7 +496,7 @@ function resetForm() {
 	.tag-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 	.tag-name { font-size: 13px; font-weight: 500; color: var(--color-base-content); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.tag-layers { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: color-mix(in oklch, var(--color-base-content) 40%, transparent); flex-shrink: 0; }
-.tag-reinforcement { font-size: 9px; font-weight: 700; line-height: 1; padding: 2px 5px; border-radius: 999px; background: color-mix(in oklch, var(--color-accent) 15%, transparent); color: var(--color-accent); flex-shrink: 0; cursor: default; }
+.tag-reinforcement { font-size: 9px; font-weight: 700; line-height: 1; padding: 2px 5px; border-radius: var(--ui-radius-full); background: color-mix(in oklch, var(--color-accent) 15%, transparent); color: var(--color-accent); flex-shrink: 0; cursor: default; }
 .tag-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .tag-edit { background: transparent; border: none; cursor: pointer; color: color-mix(in oklch, var(--color-base-content) 30%, transparent); transition: color 150ms; padding: 4px; }
 .tag-edit:hover { color: var(--color-accent); }
@@ -504,24 +504,24 @@ function resetForm() {
 .tag-delete:hover { color: var(--color-error); }
 
 	.form-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; }
-	.form-card { background: var(--color-base-100); border-radius: 16px; width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+	.form-card { background: var(--color-base-100); border-radius: var(--ui-radius-lg); width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
 	.form-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--color-base-300); }
 	.form-header h3 { margin: 0; font-size: 15px; font-weight: 700; }
-	.close-btn { background: transparent; border: none; cursor: pointer; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); padding: 4px; border-radius: 6px; }
+	.close-btn { background: transparent; border: none; cursor: pointer; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); padding: 4px; border-radius: var(--ui-radius-xs); }
 	.close-btn:hover { background: var(--color-base-200); color: var(--color-base-content); }
 
 	.form-body { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
 	.form-label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); }
 	.form-label.inline { flex-direction: row; align-items: center; gap: 8px; }
 	.form-input {
-		padding: 8px 12px; border: 1px solid var(--color-base-300); border-radius: 8px;
+		padding: 8px 12px; border: 1px solid var(--color-base-300); border-radius: var(--ui-radius-sm);
 		background: var(--color-base-100); color: var(--color-base-content); font-size: 13px;
 		outline: none; transition: border-color 150ms;
 	}
 	.form-input:focus { border-color: var(--color-accent); }
 	.form-input.mono { font-family: monospace; }
 	.form-input.short { width: 56px; text-align: center; }
-	.color-input { width: 40px; height: 32px; border: 1px solid var(--color-base-300); border-radius: 6px; cursor: pointer; padding: 2px; background: transparent; }
+	.color-input { width: 40px; height: 32px; border: 1px solid var(--color-base-300); border-radius: var(--ui-radius-xs); cursor: pointer; padding: 2px; background: transparent; }
 
 	.layer-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 	.layer-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--color-base-content); }
@@ -537,7 +537,7 @@ function resetForm() {
 .toggle-label input { accent-color: var(--color-accent); }
 .toggle-text { font-size: 11px; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); }
 
-  .scope-list { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; border: 1px solid var(--color-base-300); border-radius: 8px; padding: 8px; }
+  .scope-list { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; border: 1px solid var(--color-base-300); border-radius: var(--ui-radius-sm); padding: 8px; }
   .scope-item { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; color: var(--color-base-content); }
   .scope-item input { accent-color: var(--color-accent); }
   .scope-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -549,7 +549,7 @@ function resetForm() {
   .action-btn.danger { border-color: var(--color-error); color: var(--color-error); }
   .action-btn.danger:hover { background: color-mix(in oklch, var(--color-error) 10%, transparent); }
 
-	.threshold-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--color-base-300); border-radius: 999px; outline: none; cursor: pointer; }
+	.threshold-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--color-base-300); border-radius: var(--ui-radius-full); outline: none; cursor: pointer; }
 	.threshold-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--color-accent); cursor: pointer; }
 	.threshold-slider::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--color-accent); cursor: pointer; border: none; }
 </style>

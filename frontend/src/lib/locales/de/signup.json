@@ -14,5 +14,9 @@
   "registering": "Registrierung läuft...",
   "done": "Fertig",
   "instanceLabel": "Instanz",
-  "instancePlaceholder": "z.B. bergamota.net.br"
+  "instancePlaceholder": "z.B. bergamota.net.br",
+  "usernameTaken": "Dieser Benutzername ist bereits vergeben",
+  "emailTaken": "Diese E-Mail ist bereits registriert",
+  "missingFields": "Fülle alle Pflichtfelder aus",
+  "serverError": "Serverfehler. Versuche es gleich erneut."
 }

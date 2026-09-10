@@ -8,6 +8,7 @@ import { t, locale } from 'svelte-i18n';
 	import { clearFeedCache } from '$lib/stores/feedCache';
 	import { showCoverImages, coverImagePosition, postcardDescLines } from '$lib/stores/preferences';
 	import type { TagRef } from '$lib/utils/syncFeedTags';
+	import { sanitizeInlineHtml } from '$lib/utils/sanitize';
 
 type TagEntry = { tag_id: number; name: string; color?: string; source: string };
 type UserTag = { id: number; name: string; color?: string };
@@ -162,7 +163,7 @@ $effect(() => {
         onToggleSelect?.(item);
     }
 
-    // ── Voting ────────────────────────────────────────────────────────────────
+    // ── Voting (optimistic) ────────────────────────────────────────────────
     async function sendVote(type: 'like' | 'dislike') {
         if (!item.item_id) return;
         if (type === 'like'    && likeLoading)    return;
@@ -170,6 +171,18 @@ $effect(() => {
 
         if (type === 'like')    likeLoading    = true;
         else                    dislikeLoading = true;
+
+        const prevLiked = liked;
+        const prevDisliked = disliked;
+
+        // Optimistic: paint the button now, revert only on failure.
+        if (type === 'like') {
+            liked = !liked;
+            if (liked) disliked = false;
+        } else {
+            disliked = !disliked;
+            if (disliked) liked = false;
+        }
 
         try {
             const res = await apiFetch(`/api/feed/${item.item_id}/${type}`, {
@@ -180,16 +193,10 @@ $effect(() => {
 
             if (res.status === 401) { window.location.replace('/'); return; }
             if (!res.ok) throw new Error(`Error ${res.status}`);
-
-            if (type === 'like') {
-                liked    = !liked;
-                if (liked) disliked = false;
-            } else {
-                disliked = !disliked;
-                if (disliked) liked = false;
-            }
         } catch (err) {
             console.error(`Vote ${type} failed:`, err);
+            liked = prevLiked;
+            disliked = prevDisliked;
         } finally {
             if (type === 'like')    likeLoading    = false;
             else                    dislikeLoading = false;
@@ -340,13 +347,6 @@ onMount(() => {
         (event.currentTarget as HTMLImageElement).style.display = 'none';
     }
 
-    // Strips HTML to ensure CSS line-clamp works perfectly on 2 lines
-    function stripHtml(html: string): string {
-        let text = html.replace(/<br\s*[\/]?>/gi, ' '); // Converts <br> to space
-        text = text.replace(/<[^>]+>/g, ''); // Removes all other tags
-        return text.replace(/\s{2,}/g, ' ').trim(); // Removes multiple spaces
-    }
-
 	// ── Cover image helpers ─────────────────────────────────────────────────
 	let showCover = $derived($showCoverImages && !!item.image_url);
 	let coverPos = $derived($coverImagePosition);
@@ -429,7 +429,7 @@ onMount(() => {
 		<!-- Description -->
 		{#if item.description && $postcardDescLines > 0}
 			<p class="description" style="--desc-lines: {$postcardDescLines};">
-				{stripHtml(item.description)}
+				{@html sanitizeInlineHtml(item.description)}
 			</p>
 		{/if}
 
@@ -465,32 +465,22 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
       <footer class="actions-row">
         <button
           onclick={handleLike}
-          disabled={likeLoading}
           class="action-btn"
           class:action-active={liked}
           aria-label={liked ? $t('postcard.unlike') : $t('postcard.like')}
           aria-pressed={liked}
         >
-          {#if likeLoading}
-            <span class="loading loading-spinner loading-xs"></span>
-          {:else}
-            <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
-          {/if}
+          <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
         </button>
 
 <button
     onclick={handleDislike}
-    disabled={dislikeLoading}
     class="action-btn"
     class:action-active={disliked}
     aria-label={disliked ? $t('postcard.undoDislike') : $t('postcard.dislike')}
     aria-pressed={disliked}
     >
-    {#if dislikeLoading}
-    <span class="loading loading-spinner loading-xs"></span>
-    {:else}
     <ThumbsDown size={15} fill={disliked ? 'currentColor' : 'none'} />
-    {/if}
     </button>
 
 	<div class="tag-assign-wrap" onclick={(e) => e.stopPropagation()}>
@@ -642,7 +632,7 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
 	/* ── Cover images ────────────────────────────────────────── */
 	.cover-image {
 		object-fit: cover;
-		border-radius: 8px;
+		border-radius: var(--ui-radius-sm);
 		flex-shrink: 0;
 	}
 	.cover-image--right {
@@ -724,8 +714,8 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
 .title-link {
 display: block;
 font-family: var(--font-post-title);
-        font-size: 16px;
-        font-weight: var(--postcard-title-weight, 700);
+        font-size: calc(16px * var(--postcard-title-scale, 1));
+        font-weight: var(--postcard-title-weight, 500);
         line-height: 1.4;
         margin-bottom: 6px;
         color: var(--color-base-content);
@@ -746,7 +736,7 @@ font-family: var(--font-post-title);
 	/* ── Description ─────────────────────────────────────────── */
 	.description {
 		font-family: var(--font-article-body);
-		font-size: 13.5px;
+		font-size: calc(13.5px * var(--postcard-desc-scale, 1));
 		font-weight: 400; /* Regular weight is better for long body text */
 		line-height: 1.5;
 		letter-spacing: var(--article-letter-spacing, normal);
@@ -770,7 +760,7 @@ font-family: var(--font-post-title);
 	font-weight: 600;
 	letter-spacing: 0.02em;
 	padding: 2px 7px;
-	border-radius: 999px;
+	border-radius: var(--ui-radius-full);
 	border: none;
 	background: color-mix(in oklch, var(--chip-color) 14%, transparent);
 	color: var(--chip-color);
@@ -804,7 +794,7 @@ font-family: var(--font-post-title);
         justify-content: center;
         width: 30px;
         height: 30px;
-        border-radius: 6px; /* Less rounded, more robust */
+        border-radius: var(--ui-radius-xs); /* Less rounded, more robust */
         border: none;
         background: transparent;
         color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
@@ -823,6 +813,12 @@ font-family: var(--font-post-title);
 /* Like/Dislike colors aligned with DaisyUI without being too loud */
 .action-active {
 	color: var(--color-error) !important;
+	animation: vote-pop 200ms ease;
+}
+@keyframes vote-pop {
+	0% { transform: scale(1); }
+	50% { transform: scale(1.25); }
+	100% { transform: scale(1); }
 }
 
 .action-save-active {
@@ -836,25 +832,26 @@ font-family: var(--font-post-title);
 .tag-dropdown {
     position: absolute;
     bottom: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
+    right: 0;
+    left: auto;
+    transform: none;
     z-index: 50;
     background: var(--color-base-100);
     border: 1px solid var(--color-base-300);
-    border-radius: 8px;
+    border-radius: var(--ui-radius-sm);
     box-shadow: 0 8px 24px color-mix(in oklch, black 20%, transparent);
     padding: 4px;
-    min-width: 170px;
-    max-width: 240px;
-    max-height: 260px;
+    min-width: 200px;
+    max-width: min(260px, calc(100vw - 24px));
+    max-height: 280px;
     overflow-x: hidden;
     overflow-y: auto;
     scrollbar-width: thin;
     animation: tag-drop-pop 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes tag-drop-pop {
-    from { opacity: 0; transform: translateX(-50%) translateY(4px) scale(0.97); }
-    to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    from { opacity: 0; transform: translateY(4px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .tag-dropdown-empty {
     padding: 12px;
@@ -868,14 +865,14 @@ font-family: var(--font-post-title);
     align-items: center;
     gap: 8px;
     width: 100%;
-    padding: 7px 10px;
+    padding: 9px 12px;
     border: none;
     background: transparent;
     cursor: pointer;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--color-base-content);
-    border-radius: 6px;
+    border-radius: var(--ui-radius-xs);
     transition: background 110ms;
     text-align: left;
 }
@@ -893,7 +890,7 @@ font-family: var(--font-post-title);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
 	padding: 1px 5px;
-	border-radius: 4px;
+	border-radius: var(--ui-radius-xs);
 	background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
 	color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
 }

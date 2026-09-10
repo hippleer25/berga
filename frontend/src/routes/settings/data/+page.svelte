@@ -136,7 +136,7 @@ import { t } from 'svelte-i18n';
 	.btn-group { display: flex; gap: 8px; }
 	.action-btn {
 		display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-		padding: 10px 16px; border-radius: 10px; border: 1px solid var(--color-base-300);
+		padding: 10px 16px; border-radius: var(--ui-radius-sm); border: 1px solid var(--color-base-300);
 		background: transparent; color: var(--color-base-content); cursor: pointer;
 		font-size: 13px; font-weight: 600; transition: all 130ms ease;
 		position: relative; overflow: hidden;

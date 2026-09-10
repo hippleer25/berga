@@ -11,5 +11,7 @@
   "loggingIn": "Entrando...",
   "loginBtn": "Entrar",
   "instanceLabel": "Instância",
-  "instancePlaceholder": "ex. bergamota.net.br"
+  "instancePlaceholder": "ex. bergamota.net.br",
+  "missingFields": "Digite seu usuário e senha",
+  "serverError": "Erro no servidor. Tente novamente em breve."
 }

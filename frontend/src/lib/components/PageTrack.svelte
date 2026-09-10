@@ -1,35 +1,26 @@
 <script lang="ts">
 import { afterNavigate, replaceState } from '$app/navigation';
 import { swipeOffset, swipeDragging, activeTabIdx, navVisible } from '$lib/stores/swipe';
+import { orderedTabs, TAB_LOADERS, type TabId } from '$lib/config/tabs';
 import { onMount } from 'svelte';
 import type { Component } from 'svelte';
 
-type TabLoader = () => Promise<{ default: Component }>;
+const HOME_ID: TabId = 'home';
 
-const TABS = ['/followers', '/home', '/events', '/mota'] as const;
-const N = TABS.length;
-const HOME_IDX = 1;
+let tabComponents = $state<Record<string, Component | null>>({});
+let tabReady = $state<Record<string, boolean>>({});
 
-const tabLoaders: TabLoader[] = [
-  () => import('$lib/tabs/FollowersTab.svelte'),
-  () => import('$lib/tabs/HomeTab.svelte'),
-  () => import('$lib/tabs/EventsTab.svelte'),
-  () => import('$lib/tabs/MotaTab.svelte'),
-];
-
-let tabComponents = $state<(Component | null)[]>(Array(N).fill(null));
-let tabReady = $state<boolean[]>(Array(N).fill(false));
-
-async function loadTab(idx: number) {
-  if (tabReady[idx]) return;
-  const mod = await tabLoaders[idx]();
-  tabComponents[idx] = mod.default;
-  tabReady[idx] = true;
+async function loadTab(id: TabId) {
+  if (tabReady[id]) return;
+  const mod = await TAB_LOADERS[id]();
+  tabComponents[id] = mod.default;
+  tabReady[id] = true;
 }
 
 let trackEl: HTMLElement;
 
 let activeIdx = $state(0);
+let activeTabId = $state<TabId>('home');
 let isDragging = $state(false);
 let dragPx = $state(0);
 let locked = false;
@@ -44,7 +35,8 @@ const FLING_VEL = 0.4;
 const FLING_MIN_PX = 30;
 
 function tabTx(pos: number) {
-  return `translateX(${(-pos * 100) / N}%)`;
+  const n = $orderedTabs.length || 1;
+  return `translateX(${(-pos * 100) / n}%)`;
 }
 
 function snapTo(idx: number, animated: boolean) {
@@ -54,30 +46,46 @@ function snapTo(idx: number, animated: boolean) {
 }
 
 onMount(async () => {
+  const tabs = $orderedTabs;
   const path = window.location.pathname;
-  const idx = TABS.findIndex(t => path === t || path.startsWith(t + '/'));
+  const idx = tabs.findIndex(t => path === t.href || path.startsWith(t.href + '/'));
   activeIdx = Math.max(0, idx);
+  activeTabId = tabs[activeIdx].id;
   activeTabIdx.set(activeIdx);
   snapTo(activeIdx, false);
-  await loadTab(activeIdx);
-  for (let i = 0; i < N; i++) {
-    if (i !== activeIdx) loadTab(i);
+  await loadTab(activeTabId);
+  for (const t of tabs) {
+    if (t.id !== activeTabId) loadTab(t.id);
   }
 });
 
 afterNavigate(async ({ to }) => {
   if (swipeNav) { swipeNav = false; return; }
   if (!to) return;
-  const idx = TABS.findIndex(
-    t => to.url.pathname === t || to.url.pathname.startsWith(t + '/')
+  const tabs = $orderedTabs;
+  const idx = tabs.findIndex(
+    t => to.url.pathname === t.href || to.url.pathname.startsWith(t.href + '/')
   );
   if (idx >= 0) {
-    await loadTab(idx);
+    await loadTab(tabs[idx].id);
     if (idx !== activeIdx) {
       activeIdx = idx;
+      activeTabId = tabs[idx].id;
       activeTabIdx.set(idx);
       snapTo(idx, true);
     }
+  }
+});
+
+// ── Reorder: keep the active panel under the finger when tab order changes ──
+$effect(() => {
+  const tabs = $orderedTabs;
+  if (locked || isDragging || !trackEl) return;
+  const newIdx = tabs.findIndex(t => t.id === activeTabId);
+  if (newIdx >= 0 && newIdx !== activeIdx) {
+    activeIdx = newIdx;
+    activeTabIdx.set(newIdx);
+    snapTo(newIdx, false);
   }
 });
 
@@ -89,7 +97,7 @@ afterNavigate(async ({ to }) => {
 
     // Restore NavBar when leaving Home tab
     $effect(() => {
-        if (activeIdx !== HOME_IDX) navVisible.set(true);
+        if (activeTabId !== HOME_ID) navVisible.set(true);
     });
 
     // ── Touch handlers ────────────────────────────────────────────────────────
@@ -141,8 +149,9 @@ function onTouchMove(e: TouchEvent) {
         lastT = now;
 
         const w    = W();
+        const n    = $orderedTabs.length;
         const canP = activeIdx > 0;
-        const canN = activeIdx < N - 1;
+        const canN = activeIdx < n - 1;
 
         const raw = ((dx > 0 && !canP) || (dx < 0 && !canN))
             ? dx * 0.12
@@ -166,6 +175,7 @@ function onTouchMove(e: TouchEvent) {
                             //   Pill is at its drag position WITH transition restored.
 
         const w         = W();
+        const n         = $orderedTabs.length;
         const finalDrag = dragPx;
         const finalVel  = velPxMs;
 
@@ -174,34 +184,22 @@ function onTouchMove(e: TouchEvent) {
 
         const prevIdx = activeIdx;
         let newIdx    = activeIdx;
-        if      ((finalDrag < -(w * 0.5) || isFlingLeft)  && activeIdx < N - 1) newIdx = activeIdx + 1;
+        if      ((finalDrag < -(w * 0.5) || isFlingLeft)  && activeIdx < n - 1) newIdx = activeIdx + 1;
         else if ((finalDrag >  (w * 0.5) || isFlingRight) && activeIdx > 0)     newIdx = activeIdx - 1;
 
         // ── Pill fix ──────────────────────────────────────────────────────────
         //
-        // The problem:
-        //   If we change swipeOffset and activeTabIdx in the same render frame,
-        //   the browser sees the pill jump from "drag position, no transition"
-        //   to "new tab, transition enabled" — all at once, so no animation.
-        //
-        // The fix — two-frame approach:
-        //   Frame 1 (already happened above when isDragging=false):
-        //     • .dragging removed  →  CSS transition is restored on the pill
-        //     • swipeOffset still has the drag value
-        //     • effectiveIndex = oldTabIdx - dragOffset  (pill is at drag position)
-        //
-        //   Frame 2 (requestAnimationFrame below):
-        //     • activeTabIdx → newIdx
-        //     • swipeOffset  → 0  (dragPx = 0)
-        //     • effectiveIndex = newIdx - 0 = newIdx
-        //     • Browser sees the `left` value change while transition is active
-        //       → pill slides smoothly from drag position to destination ✓
+        // Two-frame approach so the NavBar pill animates from its drag position
+        // to the destination tab instead of jumping:
+        //   Frame 1 (isDragging=false above): transition restored, offset kept.
+        //   Frame 2 (rAF): activeTabIdx → newIdx, offset → 0 → pill slides.
         //
   requestAnimationFrame(async () => {
     activeIdx = newIdx;
+    activeTabId = $orderedTabs[newIdx].id;
     activeTabIdx.set(newIdx);
     dragPx = 0; // $effect propagates swipeOffset=0
-    await loadTab(newIdx);
+    await loadTab(activeTabId);
   });
 
   // Animate the page track in parallel
@@ -212,7 +210,7 @@ function onTouchMove(e: TouchEvent) {
   await wait(dur + 30);
 
   swipeNav = true;
-  replaceState(TABS[newIdx], {});
+  replaceState($orderedTabs[newIdx].href, {});
         trackEl.style.transition = 'none';
         locked = false;
     }
@@ -241,39 +239,17 @@ function onTouchMove(e: TouchEvent) {
     ontouchmove={onTouchMove}
     ontouchend={onTouchEnd}
 >
-<div class="track" bind:this={trackEl}>
-  <div class="panel" class:panel-active={activeIdx === 0}>
-{#if tabReady[0] && tabComponents[0]}
-			{@const Tab0 = tabComponents[0]}
-			<Tab0 />
-    {:else}
-      <div class="tab-loader"></div>
-    {/if}
-  </div>
-  <div class="panel" class:panel-active={activeIdx === 1} onscroll={handleHomeScroll}>
-{#if tabReady[1] && tabComponents[1]}
-			{@const Tab1 = tabComponents[1]}
-			<Tab1 />
-		{:else}
-			<div class="tab-loader"></div>
-		{/if}
-	</div>
-	<div class="panel" class:panel-active={activeIdx === 2}>
-		{#if tabReady[2] && tabComponents[2]}
-			{@const Tab2 = tabComponents[2]}
-			<Tab2 />
-		{:else}
-			<div class="tab-loader"></div>
-		{/if}
-	</div>
-	<div class="panel" class:panel-active={activeIdx === 3}>
-		{#if tabReady[3] && tabComponents[3]}
-			{@const Tab3 = tabComponents[3]}
-			<Tab3 />
-    {:else}
-      <div class="tab-loader"></div>
-    {/if}
-  </div>
+<div class="track" style="--n: {$orderedTabs.length}" bind:this={trackEl}>
+  {#each $orderedTabs as def, i (def.id)}
+    <div class="panel" class:panel-active={activeIdx === i} onscroll={def.id === HOME_ID ? handleHomeScroll : undefined}>
+      {#if tabReady[def.id] && tabComponents[def.id]}
+        {@const TabComp = tabComponents[def.id]}
+        <TabComp />
+      {:else}
+        <div class="tab-loader"></div>
+      {/if}
+    </div>
+  {/each}
 </div>
 </div>
 
@@ -286,13 +262,13 @@ function onTouchMove(e: TouchEvent) {
 
     .track {
         display: flex;
-        width: calc(100% * 4);
+        width: calc(100% * var(--n, 4));
         height: 100%;
     }
 
     .panel {
         flex-shrink: 0;
-        width: calc(100% / 4);
+        width: calc(100% / var(--n, 4));
         height: 100%;
         overflow-y: auto;
         overflow-x: hidden;

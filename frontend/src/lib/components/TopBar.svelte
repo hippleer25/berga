@@ -106,7 +106,7 @@
         <div
             class="search-overlay"
             onclick={(e) => e.stopPropagation()}
-            style="background: color-mix(in oklch, var(--color-base-100) 82%, transparent); backdrop-filter: blur(20px);"
+            style="background: var(--glass-bg); backdrop-filter: var(--glass-blur);"
         >
             <div class="search-overlay-inner">
                 <div class="search-input-wrapper">
@@ -143,9 +143,9 @@
         isolation: isolate;
         transform: translateY(0);
         transition: transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
-        background: color-mix(in oklch, var(--color-base-100) 82%, transparent);
-        backdrop-filter: blur(20px) saturate(165%);
-        -webkit-backdrop-filter: blur(20px) saturate(165%);
+        background: var(--glass-bg);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
     }
     .top-bar--hidden {
         transform: translateY(-110%);
@@ -174,7 +174,7 @@
         justify-content: center;
         width: 36px;
         height: 36px;
-        border-radius: 10px;
+        border-radius: var(--ui-radius-sm);
         border: 1.5px solid var(--color-primary);
         background: var(--color-base-100);
         color: var(--color-base-content);
