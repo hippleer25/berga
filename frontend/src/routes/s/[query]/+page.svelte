@@ -9,6 +9,7 @@
 import { get } from 'svelte/store';
     import { apiFetch } from '$lib/api';
     import { syncFeedItemTags, type TagRef } from '$lib/utils/syncFeedTags';
+    import { subscriptionChanged } from '$lib/stores/subscription';
     import ScreenShell from '$lib/components/ScreenShell.svelte';
 
 type Tab = 'articles' | 'feeds';
@@ -27,10 +28,21 @@ type Tab = 'articles' | 'feeds';
     // ── User tags ──────────────────────────────────────────────────────────
     let tagList = $state<Array<{ id: number; name: string; color?: string }>>([]);
 
-    // ── Feeds state ────────────────────────────────────────────────────────
+    // ── Followed feeds state ───────────────────────────────────────────────
+    interface SubscribedFeed {
+        feed_sha256: string;
+        url: string;
+        title: string;
+        icon: string | null;
+    }
+    let subscriptions = $state<SubscribedFeed[]>([]);
+    let subsLoading = $state(false);
+
+    // ── Online feed search state ───────────────────────────────────────────
     let feedResults = $state<any[]>([]);
     let feedLoading = $state(false);
     let feedError   = $state('');
+    let onlineDone  = $state(false);
 
     // ── Modal state ────────────────────────────────────────────────────────
     let modalFeed = $state<{ title: string; url: string } | null>(null);
@@ -59,13 +71,52 @@ type Tab = 'articles' | 'feeds';
 
     onMount(loadUserTags);
 
+    // Followed feeds matching the query (case-insensitive substring on title/url)
+    let matchedSubs = $derived.by(() => {
+        const q = decodeURIComponent($page.params.query ?? '').trim().toLowerCase();
+        if (!q) return [];
+        return subscriptions.filter(
+            (f) => f.title.toLowerCase().includes(q) || f.url.toLowerCase().includes(q)
+        );
+    });
+
+    async function loadSubscriptions() {
+        subsLoading = true;
+        try {
+            const res = await apiFetch('/api/list-subscriptions', { credentials: 'include' });
+            if (res.status === 401) { window.location.replace('/'); return; }
+            if (res.ok) {
+                const data = await res.json();
+                subscriptions = (data.feeds ?? []).map((f: any) => ({
+                    feed_sha256: f.feed_sha256 ?? '',
+                    url: f.url ?? '',
+                    title: f.title || f.url || '',
+                    icon: f.icon ?? null
+                }));
+            }
+        } catch { /* non-critical */ }
+        subsLoading = false;
+    }
+
+    // Reload subscriptions after a feed is followed elsewhere (e.g. the modal)
+    onMount(() => {
+        const unsub = subscriptionChanged.subscribe((n) => {
+            if (n === 0) return; // initial store value, not an actual change
+            loadSubscriptions();
+        });
+        return unsub;
+    });
+
     // ── Lifecycle ──────────────────────────────────────────────────────────
 $effect(() => {
         const query = decodeURIComponent($page.params.query ?? '');
         searchQuery = query; // Atualiza o input se a URL mudar
+        feedResults = [];
+        feedError   = '';
+        onlineDone  = false;
         if (query) {
             runArticleSearch(query);
-            runFeedSearch(query);
+            loadSubscriptions();
         }
     });
 
@@ -98,6 +149,7 @@ const res = await apiFetch(
 
     async function runFeedSearch(query: string) {
         feedLoading = true;
+        onlineDone = false;
         feedError   = '';
         feedResults = [];
         try {
@@ -113,6 +165,7 @@ const res = await apiFetch(
             feedError = err.message || get(t)('search.discoveryFailed');
         }
         feedLoading = false;
+        onlineDone = true;
     }
 
     // ── Modal functions ────────────────────────────────────────────────────
@@ -195,38 +248,72 @@ const res = await apiFetch(
 
             <!-- ── Feeds tab ─────────────────────────────────────────────── -->
             {:else}
-                {#if feedLoading}
+                {#if subsLoading}
                     <div class="state-center">
                         <span class="loading loading-spinner loading-lg"></span>
                     </div>
-                {:else if feedError}
-                    <div class="state-error">{feedError}</div>
-{:else if feedResults.length === 0}
-			<div class="state-center">
-				<p class="state-empty">
-					{$t('search.noFeedResults')} <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
-				</p>
-				<p class="state-hint">{$t('search.tryDifferentQuery')}</p>
-			</div>
                 {:else}
-                    <p class="results-meta">
-                        {feedResults.length} {feedResults.length !== 1 ? $t('search.feeds') : $t('search.feed')} {$t('search.foundFor')}
-                        <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
-                    </p>
-                    {#each feedResults as feed, i}
-                        <div class="feed-card" class:best={i === 0}>
-                            {#if i === 0}
-                                <span class="best-badge">{$t('search.bestMatch')}</span>
-                            {/if}
-                            <p class="feed-title">{feed.title}</p>
-                            <a class="feed-url" href={feed.url} target="_blank" rel="noopener noreferrer">
-                                {feed.url}
+                    {#if matchedSubs.length > 0}
+                        <p class="section-label">{$t('search.yourFeeds')}</p>
+                        {#each matchedSubs as sub (sub.feed_sha256)}
+                            <a class="sub-row" href={`/f/${sub.feed_sha256}`}>
+                                {#if sub.icon}
+                                    <img class="sub-icon" src={sub.icon} alt="" loading="lazy" />
+                                {:else}
+                                    <span class="sub-fallback">RSS</span>
+                                {/if}
+                                <span class="sub-info">
+                                    <span class="sub-title">{sub.title}</span>
+                                    <span class="sub-url">{sub.url}</span>
+                                </span>
                             </a>
-                            <div class="feed-actions">
-                                <button class="btn-follow" onclick={() => openModal(feed)}>{$t('search.follow')}</button>
+                        {/each}
+                    {/if}
+
+                    <div class="online-divider">
+                        <span class="divider-line"></span>
+                        {#if feedLoading}
+                            <span class="divider-label">
+                                <span class="mini-spinner"></span>
+                                {$t('search.searchingOnline')}
+                            </span>
+                        {:else}
+                            <button class="btn-search-online" onclick={() => runFeedSearch(searchQuery.trim())}>
+                                {$t('search.searchOnline')}
+                            </button>
+                        {/if}
+                        <span class="divider-line"></span>
+                    </div>
+
+                    {#if feedError}
+                        <div class="state-error">{feedError}</div>
+                    {:else if feedResults.length > 0}
+                        <p class="results-meta">
+                            {feedResults.length} {feedResults.length !== 1 ? $t('search.feedsCount') : $t('search.feed')} {$t('search.foundFor')}
+                            <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
+                        </p>
+                        {#each feedResults as feed, i}
+                            <div class="feed-card" class:best={i === 0}>
+                                {#if i === 0}
+                                    <span class="best-badge">{$t('search.bestMatch')}</span>
+                                {/if}
+                                <p class="feed-title">{feed.title}</p>
+                                <a class="feed-url" href={feed.url} target="_blank" rel="noopener noreferrer">
+                                    {feed.url}
+                                </a>
+                                <div class="feed-actions">
+                                    <button class="btn-follow" onclick={() => openModal(feed)}>{$t('search.follow')}</button>
+                                </div>
                             </div>
+                        {/each}
+                    {:else if onlineDone && !feedLoading}
+                        <div class="state-center">
+                            <p class="state-empty">
+                                {$t('search.noFeedResults')} <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
+                            </p>
+                            <p class="state-hint">{$t('search.tryDifferentQuery')}</p>
                         </div>
-                    {/each}
+                    {/if}
                 {/if}
             {/if}
 
@@ -371,6 +458,142 @@ const res = await apiFetch(
     .query-label {
         font-weight: 600;
         color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+    }
+
+    /* ── Followed feed rows ──────────────────────────────────────────────── */
+    .section-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+        padding: 14px 0 4px;
+        margin: 0;
+    }
+
+    .sub-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 0;
+        text-decoration: none;
+        border-bottom: 1px solid var(--color-base-300);
+        transition: background 0.15s;
+    }
+    .sub-row:hover {
+        background: color-mix(in oklch, var(--color-base-content) 4%, transparent);
+        margin: 0 -16px;
+        padding-left: 16px;
+        padding-right: 16px;
+        border-radius: var(--ui-radius-xs);
+    }
+    .sub-row:active {
+        background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    }
+
+    .sub-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: var(--ui-radius-xs);
+        flex-shrink: 0;
+        object-fit: cover;
+        background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    }
+
+    .sub-fallback {
+        width: 28px;
+        height: 28px;
+        border-radius: var(--ui-radius-xs);
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 800;
+        color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+        background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+    }
+
+    .sub-info {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+    }
+
+    .sub-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--color-base-content);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        transition: color 140ms;
+    }
+    .sub-row:hover .sub-title {
+        color: var(--color-accent);
+    }
+
+    .sub-url {
+        font-size: 11px;
+        color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* ── Online search divider ───────────────────────────────────────────── */
+    .online-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 18px 0;
+    }
+
+    .divider-line {
+        flex: 1;
+        height: 1px;
+        background: var(--color-base-300);
+    }
+
+    .divider-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+        white-space: nowrap;
+    }
+
+    .mini-spinner {
+        width: 12px;
+        height: 12px;
+        border: 2px solid color-mix(in oklch, var(--color-base-content) 15%, transparent);
+        border-top-color: var(--color-accent);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .btn-search-online {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 6px 14px;
+        border-radius: var(--ui-radius-full);
+        border: 1px solid var(--color-base-300);
+        background: transparent;
+        cursor: pointer;
+        color: var(--color-base-content);
+        white-space: nowrap;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .btn-search-online:hover {
+        background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+        border-color: color-mix(in oklch, var(--color-accent) 60%, transparent);
+        color: var(--color-accent);
     }
 
     /* ── Feed cards ───────────────────────────────────────────────────────── */

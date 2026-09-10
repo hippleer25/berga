@@ -2,6 +2,7 @@
 	"title": "Follow feed",
 	"discovering": "Discovering feeds…",
 	"searching": "Searching for feeds…",
+	"syncing": "Subscribed. Loading articles…",
 	"tryAgain": "Try again",
 	"followingTitle": "Following!",
 	"done": "Done",

@@ -21,6 +21,7 @@
 	const { feed, mode = 'discover', onclose }: Props = $props();
 
 	let status = $state<ModalStatus>('loading');
+	let syncing = $state(false);
 	let feeds = $state<string[]>([]);
 	let selectedUrl = $state('');
 	let error = $state('');
@@ -95,8 +96,21 @@
 		searchFeeds(query);
 	}
 
+	async function parseSelectedFeed() {
+		// Non-fatal: the subscription already succeeded; content syncs on cron otherwise
+		try {
+			await apiFetch('/api/feed/parse-single', {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ url: selectedUrl })
+			});
+		} catch { /* ignore */ }
+	}
+
 	async function followFeed() {
 		status = 'loading';
+		syncing = true;
 		try {
 			const res = await apiFetch('/api/feed-add', {
 				method: 'POST',
@@ -107,12 +121,14 @@
 			if (!res.ok) throw new Error(`${get(t)('followfeedmodal.followFailed')} (${res.status})`);
 			const data = await res.json();
 			if (data.status === 'error') throw new Error(data.message);
-			status = 'success';
 			notifySubscriptionChanged();
+			await parseSelectedFeed();
+			status = 'success';
 		} catch (err: any) {
 			error = err.message || get(t)('followfeedmodal.followFailed');
 			status = 'error';
 		}
+		syncing = false;
 	}
 
 	function handleRetry() {
@@ -152,7 +168,13 @@
 			{#if status === 'loading'}
 				<div class="state-center">
 					<span class="spinner"></span>
-					<p class="state-hint">{mode === 'search' || cameFromSearch ? $t('followfeedmodal.searching') : $t('followfeedmodal.discovering')}</p>
+					<p class="state-hint">
+						{#if syncing}
+							{$t('followfeedmodal.syncing')}
+						{:else}
+							{mode === 'search' || cameFromSearch ? $t('followfeedmodal.searching') : $t('followfeedmodal.discovering')}
+						{/if}
+					</p>
 				</div>
 
 			<!-- Error -->
