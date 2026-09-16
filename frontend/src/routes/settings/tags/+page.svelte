@@ -293,7 +293,7 @@ function resetForm() {
             <span class="tag-name">{tag.name}</span>
             <span class="tag-layers">{layerIcons(tag)}</span>
             {#if tag.centroid_manual_count > 0}
-              <span class="tag-reinforcement" title={$t('tags.reinforcementTooltip', { count: tag.centroid_manual_count })}>
+              <span class="tag-reinforcement" title={$t('tags.reinforcementTooltip', { values: { count: tag.centroid_manual_count } })}>
                 {tag.centroid_manual_count}
               </span>
             {/if}
@@ -312,7 +312,9 @@ function resetForm() {
 	{/if}
 
 	{#if showForm}
+		<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 		<div class="form-overlay" onclick={() => { showForm = false; resetForm(); }}>
+<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 <div class="form-card" onclick={(e) => e.stopPropagation()}>
   <div class="form-header">
 					<h3>{editingTag ? $t('tags.editTag') : $t('tags.createTag')}</h3>
@@ -344,9 +346,7 @@ function resetForm() {
 
         {#if formLayers.feed}
           <div class="layer-section">
-            <label class="form-label">
-              <span>{$t('tags.feedScope')}</span>
-            </label>
+            <span class="form-label">{$t('tags.feedScope')}</span>
             <div class="scope-list">
               {#each feeds as f (f.feed_sha256)}
                 <label class="scope-item">
@@ -361,9 +361,7 @@ function resetForm() {
 
         {#if formLayers.folder}
           <div class="layer-section">
-            <label class="form-label">
-              <span>{$t('tags.folderScope')}</span>
-            </label>
+            <span class="form-label">{$t('tags.folderScope')}</span>
             <div class="scope-list">
               {#each folders as f (f.id)}
                 <label class="scope-item">
@@ -435,8 +433,10 @@ function resetForm() {
 	{/if}
 
 {#if deleteConfirmId !== null}
+  <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
   <div class="form-overlay" onclick={() => { deleteConfirmId = null; }}>
-    <div class="form-card confirm-card" onclick={(e) => e.stopPropagation()}>
+    <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+<div class="form-card confirm-card" onclick={(e) => e.stopPropagation()}>
       <p class="confirm-text">{$t('tags.deleteConfirm')}</p>
       <div class="confirm-actions">
         <button class="action-btn" use:ripple onclick={() => { deleteConfirmId = null; }}>{$t('tags.cancel')}</button>
@@ -457,7 +457,7 @@ function resetForm() {
 	.error-text { font-size: 12px; color: var(--color-error); margin-top: 4px; }
 
 	.tags-header { display: flex; align-items: flex-start; gap: 12px; }
-	.tags-icon { color: var(--color-accent); margin-top: 2px; flex-shrink: 0; }
+	.tags-header :global(.tags-icon) { color: var(--color-accent); margin-top: 2px; flex-shrink: 0; }
 
 	.tags-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 	.action-btn {
@@ -485,7 +485,7 @@ function resetForm() {
 	.loading-state { display: flex; justify-content: center; padding: 32px; }
 
 	.empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px; text-align: center; }
-	.empty-icon { color: color-mix(in oklch, var(--color-base-content) 25%, transparent); }
+	.empty-state :global(.empty-icon) { color: color-mix(in oklch, var(--color-base-content) 25%, transparent); }
 	.empty-state p { font-size: 13px; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); }
 
 	.tags-list { display: flex; flex-direction: column; border: 1px solid var(--color-base-300); border-radius: var(--ui-radius-lg); overflow: hidden; }

@@ -109,3 +109,21 @@ history_summary: |
   Preserve: topics discussed, key facts/numbers mentioned, decisions,
   unresolved questions, and any named articles/sources. Maximum ~150 words.
   Respond with a plain paragraph, no markdown.
+
+self_check: |
+  You are Mota's answer validator. Given the user's question and the list of
+  collected sources (titles only), judge whether the evidence is likely
+  SUFFICIENT to answer with concrete, specific facts (numbers, dates, names).
+
+  Reply with ONLY this JSON, no prose:
+  {"sufficient": true|false, "query": "..."|null, "vertical": "news"|"web"}
+
+  - sufficient=false ONLY when a key dimension of the question clearly has
+    no related source (e.g. question asks for the result AND the vote
+    counting, but no source looks like it covers it).
+  - When not sufficient, provide ONE short search query (user's language)
+    targeting the missing piece. Prefer vertical "news" for current facts
+    and "web" for background.
+  - Do NOT flag gaps out of caution when sources plausibly cover the
+    question. Being sufficient is the common case. Never invent queries for
+    topics already present in the source list.

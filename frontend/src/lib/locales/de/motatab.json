@@ -16,6 +16,8 @@
   "waitSynthesizing": "Informationen werden zusammengeführt…",
   "waitRefining": "Suche wird verfeinert…",
   "sourcesTitle": "Quellen",
+  "thinkingTitle": "Gedanken",
+  "thinkingRunning": "Denkt nach…",
   "searchedLabel": "Suche ausgeführt",
   "searchedLabelPlural": "Suchen ausgeführt",
   "feedPrompt": "Bitte lies und fasse die Artikel zusammen, die ich aus meinem Nachrichten-Feed ausgewählt habe.",

@@ -2,19 +2,10 @@
   "articles": "Artikel",
   "feeds": "Feeds",
   "noArticleResults": "Keine Ergebnisse für",
-	"noFeedResults": "Keine Feeds gefunden für",
-	"tryDifferentQuery": "Versuche einen anderen Suchbegriff.",
   "result": "Ergebnis",
   "results": "Ergebnisse",
-  "feed": "Feed",
-  "feedsCount": "Feeds",
+  "for": "für",
   "yourFeeds": "Deine Feeds",
   "searchOnline": "Feed online suchen",
-  "searchingOnline": "Suche online nach Feeds…",
-  "for": "für",
-  "foundFor": "gefunden für",
-  "bestMatch": "Beste Übereinstimmung",
-  "follow": "+ Folgen",
-  "searchFailed": "Suche fehlgeschlagen",
-  "discoveryFailed": "Feed-Erkennung fehlgeschlagen"
+  "searchFailed": "Suche fehlgeschlagen"
 }

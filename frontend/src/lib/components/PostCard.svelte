@@ -60,8 +60,11 @@ let {
     userTags?: UserTag[];
 }>();
 
+// svelte-ignore state_referenced_locally
 let liked = $state(item.liked ?? false);
+// svelte-ignore state_referenced_locally
 let disliked = $state(item.disliked ?? false);
+// svelte-ignore state_referenced_locally
 let saved = $state(item.saved ?? false);
 $effect(() => {
 	item.liked;
@@ -235,6 +238,7 @@ async function toggleSave(e: MouseEvent) {
 }
 
 // ── Tag assignment ──────────────────────────────────────────────────────
+// svelte-ignore state_referenced_locally
 let localTags = $state<TagEntry[]>(tags);
 $effect(() => {
 	tags;
@@ -357,6 +361,7 @@ onMount(() => {
 </script>
 
 
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events -->
 <article
     class="post-card"
     class:is-selected={selected}
@@ -483,6 +488,7 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
     <ThumbsDown size={15} fill={disliked ? 'currentColor' : 'none'} />
     </button>
 
+	<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 	<div class="tag-assign-wrap" onclick={(e) => e.stopPropagation()}>
 		<button
 			onclick={toggleTagDropdown}
@@ -499,6 +505,7 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
 			{/if}
 		</button>
 		{#if tagDropdownOpen}
+			<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 			<div class="tag-dropdown" onclick={(e) => e.stopPropagation()}>
 {#if userTags.length === 0}
 				<p class="tag-dropdown-empty">{$t('postcard.noTagsYet')}</p>
@@ -723,6 +730,7 @@ font-family: var(--font-post-title);
         transition: color 140ms;
         display: -webkit-box;
         -webkit-line-clamp: 3;
+        line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
     }
@@ -744,6 +752,7 @@ font-family: var(--font-post-title);
 		margin-bottom: 8px;
 		display: -webkit-box;
 		-webkit-line-clamp: var(--desc-lines, 2);
+		line-clamp: var(--desc-lines, 2);
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 	}
@@ -882,7 +891,7 @@ font-family: var(--font-post-title);
 .tag-dropdown-item--auto:hover { background: transparent; }
 .tag-dropdown-item-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.tag-check { flex-shrink: 0; color: var(--color-accent); }
+.tag-dropdown-item :global(.tag-check) { flex-shrink: 0; color: var(--color-accent); }
 .tag-auto-badge {
 	flex-shrink: 0;
 	font-size: 9px;

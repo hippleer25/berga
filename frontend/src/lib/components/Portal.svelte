@@ -1,7 +1,7 @@
 <script lang="ts">
  import { onMount } from 'svelte';
 
- let { children }: { children: () => import('svelte').Snippet } = $props();
+ let { children }: { children: import('svelte').Snippet } = $props();
  let host: HTMLDivElement;
 
   onMount(() => {

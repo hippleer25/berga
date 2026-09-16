@@ -1005,6 +1005,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 					<Tag size={16} />
 				</button>
 				{#if tagDropdownOpen}
+					<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 					<div class="tag-dropdown" onclick={(e) => e.stopPropagation()}>
 						{#if userTags.filter(ut => !articleTags.some(at => at.tag_id === ut.id)).length === 0}
 							<p class="tag-dropdown-empty">{$t('article.allTagsAssigned')}</p>
@@ -1293,6 +1294,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 
                     </article>
 
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events -->
                 <div class="article-body" class:align-justify={bodyAlign === 'justify'} class:align-center={bodyAlign === 'center'} class:align-right={bodyAlign === 'right'} bind:this={articleBodyEl} onmouseup={onArticleBodyMouseup} onclick={onArticleBodyClick} onkeydown={() => {}} role="application">
                     {@html readerData.content_html}
                 </div>
@@ -1333,7 +1335,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 
     <!-- ── Highlight Selection Toolbar ─────────────────────── -->
     {#if highlightMenu}
-        <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
         <div
             class="hl-toolbar"
             style="left: {highlightMenu.x}px; top: {highlightMenu.y}px;"
@@ -1357,7 +1359,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 
     <!-- ── Highlight Delete Popover ─────────────────────────── -->
     {#if highlightPopover}
-        <!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
         <div
             class="hl-popover"
             style="left: {highlightPopover.x}px; top: {highlightPopover.y}px;"
@@ -2084,7 +2086,7 @@ font-family: var(--font-post-title);
 
     .iframe-blocked { flex: 1; display: flex; align-items: center; justify-content: center; padding: 3rem 1.5rem; }
     .blocked-content { display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 24rem; gap: 8px; }
-    .blocked-icon { color: var(--color-warning); margin-bottom: 8px; }
+    .blocked-content :global(.blocked-icon) { color: var(--color-warning); margin-bottom: 8px; }
     .blocked-title { font-size: 1.1rem; font-weight: 700; color: var(--color-base-content); margin: 0; }
     .blocked-body { font-size: 0.9rem; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); margin: 0; line-height: 1.6; }
     .blocked-link {

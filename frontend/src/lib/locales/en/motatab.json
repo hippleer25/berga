@@ -16,6 +16,8 @@
   "waitSynthesizing": "Synthesizing information…",
   "waitRefining": "Refining the search…",
   "sourcesTitle": "Sources",
+  "thinkingTitle": "Thoughts",
+  "thinkingRunning": "Thinking…",
   "searchedLabel": "search executed",
   "searchedLabelPlural": "searches executed",
   "feedPrompt": "Please read and summarize the articles I selected from my news feed.",

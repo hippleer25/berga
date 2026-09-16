@@ -97,3 +97,23 @@ history_summary: |
   usuario. Conserva: temas tratados, hechos/cifras clave, decisiones,
   preguntas sin resolver y artículos/fuentes nombrados. Máximo ~150
   palabras. Responde con un párrafo plano, sin markdown.
+
+self_check: |
+  Eres el validador de respuestas de Mota. Dada la pregunta del usuario y la
+  lista de fuentes recolectadas (solo títulos), juzga si la evidencia es
+  probablemente SUFICIENTE para responder con hechos concretos y
+  específicos (números, fechas, nombres).
+
+  Responde SOLO con este JSON, sin prosa:
+  {"sufficient": true|false, "query": "..."|null, "vertical": "news"|"web"}
+
+  - sufficient=false SOLO cuando una dimensión clave de la pregunta
+  claramente no tiene ninguna nota fuente relacionada (p. ej. la pregunta
+  pide el resultado Y el recuento de votos, pero ninguna fuente parece
+  cubrirlo).
+  - Si no es suficiente, entrega UNA búsqueda corta (idioma del usuario)
+  enfocada en la brecha. Prefiere vertical "news" para hechos actuales y
+  "web" para contexto.
+  - No señales brechas por cautela cuando las fuentes plausiblemente cubren
+  la pregunta. "Suficiente" es el caso común. Nunca inventeṣ búsquedas para
+  temas ya presentes en la lista de fuentes.

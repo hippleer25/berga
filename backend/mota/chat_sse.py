@@ -61,6 +61,20 @@ class _Queries:
         self.queries = queries
 
 
+class _Thinking:
+    """Marker: provider reasoning_content chunk for the visible thinking panel."""
+
+    __slots__ = ('text',)
+
+    def __init__(self, text: str):
+        self.text = text
+
+
+def _sse_thinking(text: str) -> str:
+    payload = json.dumps({"thinking": text}, ensure_ascii=False)
+    return f"data: {payload}\n\n"
+
+
 def _sse_queries(queries: list[str]) -> str:
     payload = json.dumps({"queries": queries}, ensure_ascii=False)
     return f"data: {payload}\n\n"

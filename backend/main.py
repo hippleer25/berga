@@ -575,6 +575,8 @@ def search(query: str, limit: int = 10, threshold: float = 0.0, user=Depends(get
 @app.get("/api/discover")
 async def discover_feeds(url: str, user=Depends(get_current_user)):
     found = await feeds(url, crawl_depth=1)
+    if not found:
+        found = await search_feed_online.discover_site_feeds_via_search(url)
     return {"feeds": found}
 
 

@@ -28,6 +28,7 @@ _VALID_PROMPT_NAMES = frozenset({
     "general",
     "resume",
     "history_summary",
+    "self_check",
 })
 
 _cache: dict[str, dict[str, str]] = {}

@@ -2,19 +2,10 @@
   "articles": "Artículos",
   "feeds": "Feeds",
   "noArticleResults": "No hay resultados para",
-	"noFeedResults": "No se encontraron feeds para",
-	"tryDifferentQuery": "Intenta con un término de búsqueda diferente.",
   "result": "resultado",
   "results": "resultados",
-  "feed": "feed",
-  "feedsCount": "feeds",
+  "for": "para",
   "yourFeeds": "Tus feeds",
   "searchOnline": "Buscar feed en línea",
-  "searchingOnline": "Buscando feeds en línea…",
-  "for": "para",
-  "foundFor": "encontrado para",
-  "bestMatch": "Mejor coincidencia",
-  "follow": "+ Seguir",
-  "searchFailed": "La búsqueda falló",
-  "discoveryFailed": "La búsqueda de feeds falló"
+  "searchFailed": "La búsqueda falló"
 }

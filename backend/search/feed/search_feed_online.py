@@ -1,10 +1,13 @@
 from ddgs import DDGS
-from ddgs.exceptions import DDGSException
 from urllib.parse import urlparse
 from i18n.locale_map import ddg_region
 import logging
 
 logger = logging.getLogger(__name__)
+
+# The "duckduckgo" backend is frequently blocked server-side ("No results found"
+# for every query). "auto" rotates providers; explicit fallbacks on top of it.
+_BACKENDS = ("auto", "brave", "bing")
 
 BLACKLIST = {
     "wikipedia.org",
@@ -39,20 +42,52 @@ def score_result(r: dict) -> int:
     return score
 
 def discover_online(query: str):
-	try:
-		return _ddg_search(query)
-	except DDGSException:
-		return []
+    try:
+        return _ddg_search(query)
+    except Exception as e:
+        logger.warning("[FEED-DISCOVER] online search failed for %r: %s", query, e)
+        return []
+
+async def discover_site_feeds_via_search(url: str, max_pages: int = 3) -> list:
+    """Fallback for SPA / bot-guarded sites whose homepage exposes no feed links:
+    search the web for pages on the domain that list its feeds (e.g. an RSS
+    directory page) and extract the feed URLs from those pages."""
+    from search.feed.search_feed_urls import feeds as find_feed_urls
+
+    domain = urlparse(url).netloc.replace("www.", "")
+    if not domain:
+        return []
+
+    pages = discover_online(f"site:{domain} rss feed")
+    found: list = []
+    for page in pages[:max_pages]:
+        try:
+            page_feeds = await find_feed_urls(page["url"], crawl_depth=0)
+            found.extend(f for f in page_feeds if f not in found)
+        except Exception as e:
+            logger.warning("[FEED-DISCOVER] fallback crawl failed for %s: %s", page["url"], e)
+    if found:
+        logger.info("[FEED-DISCOVER] search fallback found %d feeds for %s", len(found), domain)
+    return found
 
 def _ddg_search(query: str):
-    results = DDGS().text(
-        query,
-        region=ddg_region(),
-        safesearch='off',
-        timelimit=None,
-        max_results=10,
-        backend="duckduckgo"
-    )
+    results = None
+    for backend in _BACKENDS:
+        try:
+            results = DDGS().text(
+                query,
+                region=ddg_region(),
+                safesearch='off',
+                timelimit=None,
+                max_results=10,
+                backend=backend
+            )
+        except Exception as e:
+            logger.warning("[FEED-DISCOVER] backend=%s failed for %r: %s", backend, query, e)
+            results = None
+            continue
+        if results:
+            break
 
     if not results:
         return []

@@ -408,7 +408,7 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
 		{#each group.feeds as feed (feed.feed_sha256)}
 			<div
 				class="feed-row"
-				role="listitem"
+				role="button"
 style="padding-left: {28 + indent}px;"
 				draggable={true}
 				ondragstart={(e) => onDragStart(e, 'feed', feed.feed_sha256!, groupKey)}

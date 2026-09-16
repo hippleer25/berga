@@ -16,6 +16,8 @@
   "waitSynthesizing": "Synthèse des informations…",
   "waitRefining": "Affinement de la recherche…",
   "sourcesTitle": "Sources",
+  "thinkingTitle": "Réflexions",
+  "thinkingRunning": "Réflexion…",
   "searchedLabel": "recherche exécutée",
   "searchedLabelPlural": "recherches exécutées",
   "feedPrompt": "Veuillez lire et résumer les articles que j'ai sélectionnés dans mon flux d'actualités.",

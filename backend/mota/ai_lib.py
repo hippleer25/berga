@@ -10,6 +10,7 @@ import os
 os.environ.setdefault('LITELLM_LOG', 'WARNING')
 
 import asyncio
+import hashlib
 import logging
 import random
 import time
@@ -45,6 +46,19 @@ _TIER_FALLBACK: dict[str, str | None] = {
 # ------------------------------------------------------------------
 # Configuração de modelos e credenciais
 # ------------------------------------------------------------------
+
+def _session_headers(config: dict) -> dict:
+    """
+    Provider-specific headers. opencode zen (Console Go) refuses requests
+    without `x-opencode-session`; we send a fresh random id per LLM call so
+    the call is fully stateless on their side (all context/memory lives in
+    the messages we send, avoiding duplicated provider-side chat memory).
+    """
+    api_base = (config.get("api_base") or "").lower()
+    if "opencode" in api_base:
+        sess = hashlib.sha256(os.urandom(32)).hexdigest()
+        return {"x-opencode-session": f"berga-{sess}"}
+    return {}
 
 def _get_model_config(usage: LLMUsage) -> dict:
     prefix = usage.upper()
@@ -130,6 +144,7 @@ def generate_text(
                 api_key=config.get("api_key"),
                 api_base=config.get("api_base"),
                 timeout=DEFAULT_TIMEOUT,
+                extra_headers=_session_headers(config),
             )
             content = response.choices[0].message.content
             if usage_out is not None:
@@ -188,6 +203,7 @@ def mota_text_stream(
             api_key=config.get("api_key"),
             api_base=config.get("api_base"),
             timeout=DEFAULT_TIMEOUT,
+            extra_headers=_session_headers(config),
         )
         for chunk in response:
             content = chunk.choices[0].delta.content if chunk.choices else None
@@ -247,6 +263,7 @@ def call_llm_with_tools(
         "api_key": config.get("api_key"),
         "api_base": config.get("api_base"),
         "timeout": DEFAULT_TIMEOUT,
+        "extra_headers": _session_headers(config),
     }
 
     # Only add tool_choice if the caller explicitly requested it.
@@ -291,6 +308,7 @@ def call_llm_messages_with_tools(
         "api_key": config.get("api_key"),
         "api_base": config.get("api_base"),
         "timeout": DEFAULT_TIMEOUT,
+        "extra_headers": _session_headers(config),
     }
     if tool_choice is not None:
         kwargs["tool_choice"] = tool_choice
@@ -303,8 +321,83 @@ def call_llm_messages_with_tools(
 
 
 # ------------------------------------------------------------------
-# Streaming with message history
+# Streaming with message history (typed deltas: answer / thinking)
 # ------------------------------------------------------------------
+
+def stream_llm_deltas(
+    messages: list[dict],
+    model: str | None = None,
+    max_tokens: int = 2048,
+    temperature: float = 0.3,
+    usage: LLMUsage = "chatbot",
+    auto_continue: int = 0,
+) -> Generator[tuple[str, str], None, None]:
+    """
+    Streams a completion as typed deltas:
+      ("thinking", text) — provider reasoning_content (None em modelos sem thinking)
+      ("answer",   text) — conteúdo final da resposta
+
+    Auto-continuation: if the model hits the output cap (finish_reason
+    == "length"), up to `auto_continue` extra calls append the partial
+    answer and continue seamlessly.
+
+    Never raises network errors materially — errors are logged and the
+    stream simply ends (callers persist what they got).
+    """
+    config = _get_model_config(usage)
+    if model:
+        config["model"] = model
+
+    active_messages = list(messages)
+    remaining_continue = max(0, int(auto_continue))
+
+    while True:
+        partial_answer = ""
+        try:
+            response = completion(
+                model=config["model"],
+                messages=active_messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+                api_key=config.get("api_key"),
+                api_base=config.get("api_base"),
+                timeout=DEFAULT_TIMEOUT,
+                extra_headers=_session_headers(config),
+                stream_options={"include_usage": True},
+            )
+            finish_reason = None
+            for chunk in response:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    content = getattr(delta, "content", None)
+                    reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                    if content:
+                        partial_answer += content
+                        yield ("answer", content)
+                    if reasoning:
+                        yield ("thinking", reasoning)
+                    fr = getattr(chunk.choices[0], "finish_reason", None)
+                    if fr:
+                        finish_reason = fr
+        except Exception as e:
+            logger.error(f"[AI_LIB] Streaming error ({config.get('model')}): {e}")
+            break
+
+        truncated = finish_reason == "length" and partial_answer.strip()
+        if not (truncated and remaining_continue > 0):
+            break
+
+        remaining_continue -= 1
+        active_messages = active_messages + [
+            {"role": "assistant", "content": partial_answer},
+            {
+                "role": "user",
+                "content": "Continue exatamente de onde parou — não repita nada já escrito, sem novo preâmbulo.",
+            },
+        ]
+        logger.info(f"[AI_LIB] Output cap atingido — auto-continuação ({remaining_continue} restantes)")
+
 
 def stream_llm_response(
     messages: list[dict],
@@ -313,30 +406,10 @@ def stream_llm_response(
     temperature: float = 0.3,
     usage: LLMUsage = "chatbot",
 ) -> Generator[str, None, None]:
-    config = _get_model_config(usage)
-
-    if model:
-        config["model"] = model
-
-    try:
-        response = completion(
-            model=config["model"],
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            stream=True,
-            api_key=config.get("api_key"),
-            api_base=config.get("api_base"),
-            timeout=DEFAULT_TIMEOUT,
-        )
-        for chunk in response:
-            content = chunk.choices[0].delta.content if chunk.choices else None
-            if content:
-                yield content
-
-    except Exception as e:
-        logger.error(f"[AI_LIB] Error streaming LLM ({config.get('model')}): {e}")
-        raise
+    """Legacy compatibility wrapper — plain answer text only."""
+    for kind, text in stream_llm_deltas(messages, model, max_tokens, temperature, usage):
+        if kind == "answer":
+            yield text
 
 
 # ------------------------------------------------------------------
@@ -372,6 +445,7 @@ async def agenerate_text(
                 api_key=config.get("api_key"),
                 api_base=config.get("api_base"),
                 timeout=DEFAULT_TIMEOUT,
+                extra_headers=_session_headers(config),
             )
             content = response.choices[0].message.content
             return content.strip() if content else None

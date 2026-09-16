@@ -10,6 +10,7 @@
   import Database from '@lucide/svelte/icons/database';
   import Blend from '@lucide/svelte/icons/blend';
   import Newspaper from '@lucide/svelte/icons/newspaper';
+  import Brain from '@lucide/svelte/icons/brain';
   import Check from '@lucide/svelte/icons/check';
   import { pendingMotaPosts } from '$lib/stores/swipe';
   import { t } from 'svelte-i18n';
@@ -32,6 +33,8 @@
     feedTitles?: string[];
     sources?: Source[];
     queries?: string[];
+    thinking?: string;
+    thinkingCollapsed?: boolean;
   };
 
   type SourceMode = 'local' | 'online' | 'mixed';
@@ -53,7 +56,7 @@
   let textareaRef: HTMLTextAreaElement;
   let scrollContainer: HTMLElement;
   let messagesEnd: HTMLDivElement;
-  let dropdownRef: HTMLElement;
+  let dropdownRef = $state<HTMLElement>();
 
   let chatAbort: AbortController | null = null;
 
@@ -114,17 +117,13 @@
     }
     document.addEventListener('click', handleClickOutside);
 
-    // bfcache eligibility: abort in-flight chat stream when the page is hidden.
-    const onVisibilityHidden = () => {
-      if (document.visibilityState === 'hidden') abortChat();
-    };
+    // bfcache eligibility: abort in-flight chat stream only on real page
+    // unload — hiding the tab (switching windows) must NOT kill the stream.
     const onPageHide = () => abortChat();
-    document.addEventListener('visibilitychange', onVisibilityHidden);
     window.addEventListener('pagehide', onPageHide);
 
     return () => {
       document.removeEventListener('click', handleClickOutside);
-      document.removeEventListener('visibilitychange', onVisibilityHidden);
       window.removeEventListener('pagehide', onPageHide);
       abortChat();
     };
@@ -277,9 +276,18 @@
 
           if (parsed.status) {
             waitingPhase = parsed.status;
+          } else if (parsed.thinking) {
+            const msg = messages.find((m: Message) => m.id === assistantId);
+            if (msg) msg.thinking = (msg.thinking || '') + parsed.thinking;
           } else if (parsed.content) {
             const msg = messages.find((m: Message) => m.id === assistantId);
-            if (msg) msg.content += parsed.content;
+            if (msg) {
+              msg.content += parsed.content;
+              // Auto-collapse the thinking panel once the answer starts
+              if (msg.thinking && !msg.thinkingCollapsed && msg.content.trim()) {
+                msg.thinkingCollapsed = true;
+              }
+            }
           } else if (parsed.sources && Array.isArray(parsed.sources)) {
             const msg = messages.find((m: Message) => m.id === assistantId);
             if (msg) msg.sources = parsed.sources;
@@ -470,11 +478,31 @@
          <span class="ai-label">Mota</span>
         </div>
 
-        {#if isWaiting || isStreamingEmpty}
+        {#if (isWaiting || isStreamingEmpty) && !msg.thinking}
           <p class="getting-data">
             {waitingPhase ? waitingMessages[waitingPhase] ?? $t('motatab.waitThinking') : $t('motatab.waitThinking')}
           </p>
         {:else}
+          {#if msg.thinking}
+            <div class="thinking-box" class:thinking-box--live={isLast && loading && !msg.thinkingCollapsed}>
+              <button
+                class="thinking-toggle"
+                onclick={() => { msg.thinkingCollapsed = !msg.thinkingCollapsed; }}
+                aria-expanded={!msg.thinkingCollapsed}
+              >
+                <Brain size={13} />
+                <span class="thinking-title">
+                  {isLast && loading && !msg.content
+                    ? $t('motatab.thinkingRunning')
+                    : $t('motatab.thinkingTitle')}
+                </span>
+                <ChevronDown size={13} class="thinking-chevron {msg.thinkingCollapsed ? 'rot' : ''}" />
+              </button>
+              {#if !msg.thinkingCollapsed}
+                <div class="thinking-body">{msg.thinking}</div>
+              {/if}
+            </div>
+          {/if}
           {#if msg.queries?.length}
             <div class="queries-row">
               <span class="queries-label">{msg.queries.length} {msg.queries.length === 1 ? $t('motatab.searchedLabel') : $t('motatab.searchedLabelPlural')}</span>
@@ -483,7 +511,9 @@
               {/each}
             </div>
           {/if}
-          <div class="ai-prose">{@html isStreaming ? renderMarkdownWithCursor(msg.content) : renderMarkdown(msg.content)}</div>
+          {#if msg.content || !isLast}
+            <div class="ai-prose">{@html isStreaming ? renderMarkdownWithCursor(msg.content) : renderMarkdown(msg.content)}</div>
+          {/if}
         {/if}
 
         {#if msg.sources?.length && !isWaiting && !isStreamingEmpty}
@@ -829,6 +859,58 @@
  .ai-header { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
  .ai-label { font-size: 11.5px; font-weight: 700; color: var(--color-accent); letter-spacing: 0.04em; text-transform: uppercase; }
 
+ /* ── Thinking panel (provider reasoning, DeepSeek-web style) ── */
+ .thinking-box {
+  margin-bottom: 10px;
+  border: 1px solid color-mix(in oklch, var(--color-base-300) 70%, transparent);
+  border-radius: var(--ui-radius-sm);
+  background: color-mix(in oklch, var(--color-base-200) 45%, transparent);
+  overflow: hidden;
+ }
+ .thinking-box--live {
+  border-color: color-mix(in oklch, var(--color-accent) 35%, transparent);
+ }
+ .thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+ }
+ .thinking-toggle:hover {
+  color: var(--color-base-content);
+ }
+ .thinking-box--live .thinking-title {
+  color: var(--color-accent);
+  animation: fadePulse 1.8s ease-in-out infinite;
+ }
+ .thinking-box :global(.thinking-chevron) {
+  margin-left: auto;
+  transition: transform 150ms ease;
+  flex-shrink: 0;
+ }
+ .thinking-box :global(.thinking-chevron.rot) {
+  transform: rotate(-90deg);
+ }
+ .thinking-body {
+  padding: 2px 12px 10px 30px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+  max-height: 260px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+ }
+
  /* ── Executed-queries chips ───────────────────────────── */
  .queries-row {
   display: flex;
@@ -1166,7 +1248,7 @@
 .dropdown-item-label {
   flex: 1;
 }
-.dropdown-check {
+.dropdown-item :global(.dropdown-check) {
   color: var(--color-accent);
   flex-shrink: 0;
 }

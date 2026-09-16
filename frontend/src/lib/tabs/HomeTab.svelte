@@ -196,8 +196,8 @@ const PTR_WHEEL_IDLE_MS = 160;
 		flushPending();
 	});
 
-	const navCleanup = afterNavigate(({ from, to }) => {
-		if (!from) return;
+	afterNavigate(({ from, to }) => {
+		if (!from || !to) return;
 		const fromIsTab = TAB_ROUTES.some(r => from.url.pathname === r);
 		const toIsHome = to.url.pathname === '/home';
 		if (toIsHome && !fromIsTab) {
@@ -210,7 +210,6 @@ const PTR_WHEEL_IDLE_MS = 160;
 		wheelTarget.removeEventListener('wheel', onWheelPull as EventListener);
 		if (ptrWheelTimer) clearTimeout(ptrWheelTimer);
 		unsub();
-		navCleanup?.destroy();
 		destroyViewTracker();
 		viewObserver?.disconnect();
 	};
@@ -755,6 +754,7 @@ if (res.ok) {
     </div>
 {/snippet}
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
     class="page-root"
     bind:this={pageRootEl}
@@ -792,6 +792,7 @@ if (res.ok) {
 
         <!-- Selection bar -->
         {#if $selectionMode}
+            <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
             <div class="selection-bar" transition:slide={{ duration: 220 }} onclick={() => { if (bulkTagPickerOpen) bulkTagPickerOpen = false; }}>
                 <button class="sel-cancel-btn" onclick={clearSelection} aria-label="{$t('hometab.cancelSelection')}">
                     <X size={17} />
@@ -835,6 +836,7 @@ if (res.ok) {
         <span>{$t('hometab.tagSelected')}</span>
         </button>
         {#if bulkTagPickerOpen}
+        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
         <div class="bulk-tag-dropdown" onclick={(e) => e.stopPropagation()}>
         {#if tagList.length === 0}
         <p class="picker-empty">{$t('hometab.noTagsYet')}</p>
@@ -866,7 +868,8 @@ if (res.ok) {
 {/if}
 
 <!-- Filter bar -->
-        <div class="filter-bar" ontouchstart={(e) => { filterBarAxis = null; filterBarStartX = e.touches[0].clientX; filterBarStartY = e.touches[0].clientY; }} ontouchmove={(e) => { if (filterBarAxis === 'v') return; const el = e.currentTarget as HTMLElement; const dx = e.touches[0].clientX - filterBarStartX; const dy = e.touches[0].clientY - filterBarStartY; if (!filterBarAxis) { if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; filterBarAxis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'; if (filterBarAxis === 'v') return; } const canScrollLeft = el.scrollLeft > 0; const canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1; const swipingRight = dx > 0; const swipingLeft = dx < 0; 		if ((swipingRight && canScrollLeft) || (swipingLeft && canScrollRight)) {
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="filter-bar" ontouchstart={(e) => { filterBarAxis = null; filterBarStartX = e.touches[0].clientX; filterBarStartY = e.touches[0].clientY; }} ontouchmove={(e) => { if (filterBarAxis === 'v') return; const el = e.currentTarget as HTMLElement; const dx = e.touches[0].clientX - filterBarStartX; const dy = e.touches[0].clientY - filterBarStartY; if (!filterBarAxis) { if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; filterBarAxis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'; if (filterBarAxis === 'v') return; } const canScrollLeft = el.scrollLeft > 0; const canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1; const swipingRight = dx > 0; const swipingLeft = dx < 0; 		if ((swipingRight && canScrollLeft) || (swipingLeft && canScrollRight)) {
 				e.stopPropagation();
 				e.preventDefault();
 			} }} ontouchend={() => { filterBarAxis = null; }}>
@@ -1150,13 +1153,13 @@ if (res.ok) {
         font-weight: 500;
         color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
     }
-    .ptr-icon {
+    .ptr-indicator :global(.ptr-icon) {
         color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
     }
-    .ptr-icon-active {
+    .ptr-indicator :global(.ptr-icon-active) {
         color: var(--color-accent);
     }
-    .spin {
+    .ptr-indicator :global(.spin) {
         animation: rot 0.8s linear infinite;
         color: var(--color-accent);
     }

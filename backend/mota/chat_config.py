@@ -27,6 +27,10 @@ SYNTHESIS_OUTPUT_TOKENS = int(os.getenv("SYNTHESIS_OUTPUT_TOKENS", "1024"))
 # ("expect_brief": true) — a couple of sentences.
 SYNTHESIS_BRIEF_OUTPUT_TOKENS = int(os.getenv("SYNTHESIS_BRIEF_OUTPUT_TOKENS", "384"))
 
+# Seamless continuations when synthesis hits finish_reason=length
+# (max_tokens cap). 1 = one continue call per turn; 0 disables.
+SYNTHESIS_MAX_CONTINUATIONS = int(os.getenv("SYNTHESIS_MAX_CONTINUATIONS", "1"))
+
 POSTS_PER_QUERY_LOCAL_ONLINE = {
     1: 6,
     2: 4,
@@ -42,6 +46,10 @@ POSTS_PER_QUERY_MIXED = {
 # ── Agent loop ────────────────────────────────────────────────────────────────
 # How many tool-decision rounds the bounded agent loop may run (1 = single shot).
 AGENT_MAX_ROUNDS = int(os.getenv("AGENT_MAX_ROUNDS", "2"))
+
+# Self-check pass after evidence collection (routing tier): validates claims
+# vs evidence and may trigger ONE gap-driven extra search before synthesis.
+ENABLE_SELF_CHECK = bool(int(os.getenv("ENABLE_SELF_CHECK", "1")))
 
 # Total token budget available for accumulated tool results (across all rounds).
 # When exceeded the loop stops collecting evidence and moves to synthesis.

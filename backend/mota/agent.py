@@ -21,15 +21,18 @@ import json
 import logging
 from typing import Iterator, Optional
 
-from mota.ai_lib import call_llm_messages_with_tools, stream_llm_response
+from mota.ai_lib import call_llm_messages_with_tools, stream_llm_deltas
 from mota.chat_config import (
     AGENT_MAX_ROUNDS,
+    ENABLE_SELF_CHECK,
     AGENT_TOOL_CONTEXT_TOKEN_BUDGET,
     ENABLE_WIKI,
+    SYNTHESIS_MAX_CONTINUATIONS,
     SYNTHESIS_OUTPUT_TOKENS,
     SYNTHESIS_BRIEF_OUTPUT_TOKENS,
 )
-from mota.chat_sse import _Status, _Sources, _Queries
+from mota.chat_sse import _Status, _Sources, _Queries, _Thinking
+from mota.ai_lib import generate_text
 from mota.chat_tool_parser import (
     _parse_tool_arguments,
     _serialize_assistant_message,
@@ -260,6 +263,57 @@ def _plan_context(plan: dict) -> str:
     )
 
 
+def _evidence_self_check(plan, user_message, registry, usage_out=None) -> Optional[dict]:
+    """
+    One cheap ROUTING-tier check: does the collected evidence (registry
+    titles) look sufficient to answer? On insufficiency returns a single
+    gap-driven search query. Never raises. Skips silently on failure.
+    """
+    try:
+        block = registry.prompt_block()
+        if not block:
+            return {"sufficient": False, "query": plan.get("standalone_query"), "vertical": "news"}
+        payload = (
+            f"Pergunta: {user_message}\n\n"
+            f"Fontes coletadas até agora:\n{block}\n\n"
+            "Responda APENAS com o JSON pedido."
+        )
+        raw = generate_text(
+            prompt=payload,
+            system_prompt=get_prompt("self_check"),
+            usage="routing",
+            max_tokens=160,
+            temperature=0.0,
+            usage_out=usage_out if usage_out is not None else {},
+        )
+        if not raw:
+            return None
+        # Parse (tolerating fences/minor malformation)
+        text = raw.strip()
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end > start:
+            text = text[start:end + 1]
+        import json as _json
+        try:
+            parsed = _json.loads(text)
+        except _json.JSONDecodeError:
+            from json_repair import repair_json
+            try:
+                parsed = _json.loads(repair_json(text))
+            except Exception:
+                return None
+        if not isinstance(parsed, dict):
+            return None
+        sufficient = bool(parsed.get("sufficient"))
+        gap = str(parsed.get("query") or "").strip()
+        vertical = "web" if str(parsed.get("vertical", "news")).lower() == "web" else "news"
+        logger.info(f"[AGENT] SELF_CHECK: sufficient={sufficient} gap={gap!r}")
+        return {"sufficient": sufficient, "query": gap or None, "vertical": vertical}
+    except Exception as e:
+        logger.warning(f"[AGENT] SELF_CHECK falhou: {e}")
+        return None
+
+
 def _direct_plan_search(
     plan: dict,
     feed_filter: Optional[list[str]],
@@ -381,6 +435,11 @@ def run_agent(
             logger.error(f"[AGENT] Resposta malformada: {e}")
             break
 
+        # Provider-native reasoning → visible thinking stream
+        _rc = getattr(message, "reasoning_content", None)
+        if _rc:
+            yield _Thinking(str(_rc))
+
         _u = getattr(response, "usage", None)
         if _u:
             loop_usage_tokens += int(getattr(_u, "total_tokens", 0) or 0)
@@ -465,6 +524,24 @@ def run_agent(
             got_articles = True
         evidence_blocks.append(_truncate_content(text, 6000))
 
+    # ── Self-check: claims vs evidência (1 busca extra no máximo) ─────────────
+    if ENABLE_SELF_CHECK and not plan.get("expect_brief"):
+        yield _Status("refining")
+        verdict = _evidence_self_check(plan, user_message, registry, usage_out=usage_out)
+        if verdict and not verdict.get("sufficient") and verdict.get("query"):
+            gap_query = str(verdict["query"])
+            logger.info(f"[AGENT] SELF_CHECK detectou lacuna → busca extra: {gap_query!r}")
+            executed_queries.append(gap_query)
+            text, arts = _dispatch_tool(
+                "topic_search",
+                {"query": gap_query, "vertical": verdict.get("vertical", "news")},
+                plan, feed_filter, source_mode, registry, publisher_affinity,
+            )
+            if arts:
+                got_articles = True
+            if text:
+                evidence_blocks.append(text.strip())
+
     # ── Transparência: queries efetivamente executadas nesta rodada ───────────
     seen_q: set[str] = set()
     deduped_queries = [q for q in executed_queries if q and not (q in seen_q or seen_q.add(q))]
@@ -492,13 +569,17 @@ def run_agent(
         if plan.get("expect_brief")
         else SYNTHESIS_OUTPUT_TOKENS
     )
-    for chunk in stream_llm_response(
+    for kind, text in stream_llm_deltas(
         synthesis_msgs,
         max_tokens=output_budget,
         usage="synthesis",
+        auto_continue=SYNTHESIS_MAX_CONTINUATIONS,
     ):
-        answer_text += chunk
-        yield chunk
+        if kind == "thinking":
+            yield _Thinking(text)
+        elif text:
+            answer_text += text
+            yield text
 
     sources_payload = registry.sse_payload(answer_text)
     if sources_payload:

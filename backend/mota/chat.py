@@ -20,11 +20,14 @@ os.environ.setdefault('LITELLM_LOG', 'WARNING')
 import logging
 from typing import Iterator, Optional
 
-from mota.ai_lib import stream_llm_response
-from mota.chat_config import SYNTHESIS_OUTPUT_TOKENS
+from mota.ai_lib import stream_llm_deltas, stream_llm_response
+from mota.chat_config import (
+    SYNTHESIS_OUTPUT_TOKENS,
+    SYNTHESIS_MAX_CONTINUATIONS,
+)
 from mota.chat_sse import (
     _sse_event, _sse_status, _sse_error, _sse_done, _sse_sources, _sse_queries,
-    _Status, _Sources, _Queries,
+    _sse_thinking, _Status, _Sources, _Queries, _Thinking,
 )
 from mota.chat_classifier import is_simple_message
 from mota.chat_search import (
@@ -198,9 +201,17 @@ def _handle_direct_articles(
     ]
 
     answer_text = ""
-    for chunk in stream_llm_response(messages, max_tokens=SYNTHESIS_OUTPUT_TOKENS, usage="synthesis"):
-        answer_text += chunk
-        yield chunk
+    for kind, text in stream_llm_deltas(
+        messages,
+        max_tokens=SYNTHESIS_OUTPUT_TOKENS,
+        usage="synthesis",
+        auto_continue=SYNTHESIS_MAX_CONTINUATIONS,
+    ):
+        if kind == "thinking":
+            yield _Thinking(text)
+        elif text:
+            answer_text += text
+            yield text
 
     sources_payload = registry.sse_payload(answer_text)
     if sources_payload:
@@ -309,6 +320,8 @@ def receive(chat_request, user) -> Iterator[str]:
                 yield _sse_status(chunk.phase)
             elif isinstance(chunk, _Queries):
                 yield _sse_queries(chunk.queries)
+            elif isinstance(chunk, _Thinking):
+                yield _sse_thinking(chunk.text)
             elif isinstance(chunk, _Sources):
                 sources_to_persist = [e for e in chunk.entries if e.get("url")]
                 yield _sse_sources(chunk.entries)
@@ -317,18 +330,28 @@ def receive(chat_request, user) -> Iterator[str]:
                 if event:
                     yield event
                     assistant_chunks.append(chunk)
+    except GeneratorExit:
+        # Client disconnected mid-stream (page close, navigation). Persist
+        # whatever streamed so the turn is not lost server-side.
+        _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_persist)
+        raise
     except Exception as e:
         logger.error(f"[CHAT] ✗ Erro não tratado: {e}", exc_info=True)
         yield _sse_error(str(e))
 
-    if user_id:
-        user_message = chat_request.message
-        conversation.save_turn(user_id, "user", user_message)
-        if assistant_chunks:
-            assistant_response = "".join(assistant_chunks)
-            if assistant_response.strip():
-                conversation.save_turn(
-                    user_id, "assistant", assistant_response, sources=sources_to_persist
-                )
-
+    _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_persist)
     yield _sse_done()
+
+
+def _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_persist) -> None:
+    """Shares the same persistence for normal completion and client disconnects."""
+    if not user_id:
+        return
+    user_message = chat_request.message
+    conversation.save_turn(user_id, "user", user_message)
+    if assistant_chunks:
+        assistant_response = "".join(assistant_chunks)
+        if assistant_response.strip():
+            conversation.save_turn(
+                user_id, "assistant", assistant_response, sources=sources_to_persist
+            )

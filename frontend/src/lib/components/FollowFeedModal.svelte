@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import { get } from 'svelte/store';
+	import { X } from '@lucide/svelte';
 	import { notifySubscriptionChanged } from '$lib/stores/subscription';
 	import { apiFetch } from '$lib/api';
 
@@ -143,26 +144,23 @@
 	}
 
 	function handleBackdrop(e: MouseEvent) {
-		if ((e.target as HTMLElement).classList.contains('overlay')) onclose();
+		if ((e.target as HTMLElement).classList.contains('dialog-backdrop')) onclose();
 	}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="overlay" onclick={handleBackdrop}>
-	<div class="box">
-		<button class="close" onclick={onclose}>✕</button>
+<div class="dialog-backdrop" onclick={handleBackdrop} aria-hidden="true"></div>
+<div class="dialog" role="dialog" aria-modal="true" aria-label="{$t('followfeedmodal.title')}">
+	<div class="dialog-header">
+		<p class="dialog-title">{$t('followfeedmodal.title')}</p>
+		<button class="dialog-close" onclick={onclose} aria-label="{$t('followfeedmodal.cancel')}">
+			<X size={16} strokeWidth={2} />
+		</button>
+	</div>
+	<p class="dialog-sub">{feed.title}</p>
 
-		<!-- Header -->
-		<div class="modal-header">
-			<span class="modal-icon">📡</span>
-			<div class="modal-title-group">
-				<p class="modal-label">{$t('followfeedmodal.title')}</p>
-				<p class="modal-site-title">{feed.title}</p>
-			</div>
-		</div>
-
-		<div class="modal-body">
+	<div class="modal-body">
 
 			<!-- Loading -->
 			{#if status === 'loading'}
@@ -183,9 +181,9 @@
 					<span class="error-icon">⚠</span>
 					<p class="error-msg">{error}</p>
 					<div class="error-actions">
-						<button class="btn-primary" onclick={handleRetry}>{$t('followfeedmodal.tryAgain')}</button>
+						<button class="dialog-btn dialog-btn--primary" onclick={handleRetry}>{$t('followfeedmodal.tryAgain')}</button>
 						{#if !cameFromSearch && !lastSearchQuery}
-							<button class="btn-ghost" onclick={fallbackToSearch}>{$t('followfeedmodal.searchInstead')}</button>
+							<button class="dialog-btn dialog-btn--ghost" onclick={fallbackToSearch}>{$t('followfeedmodal.searchInstead')}</button>
 						{/if}
 					</div>
 				</div>
@@ -196,7 +194,7 @@
 					<span class="success-icon">✓</span>
 					<p class="success-title">{$t('followfeedmodal.followingTitle')}</p>
 					<p class="state-hint">{selectedUrl}</p>
-					<button class="btn-ghost" onclick={onclose}>{$t('followfeedmodal.done')}</button>
+					<button class="dialog-btn dialog-btn--ghost" onclick={onclose}>{$t('followfeedmodal.done')}</button>
 				</div>
 
 			<!-- Search results (online discover) -->
@@ -216,6 +214,7 @@
 								<button
 									class="search-option"
 									role="option"
+									aria-selected="false"
 									onclick={() => selectSearchResult(result)}
 								>
 									<span class="search-option-dot"></span>
@@ -269,108 +268,138 @@
 						{/if}
 					{/if}
 
-					<div class="modal-actions">
+					<div class="dialog-actions">
 						{#if cameFromSearch && searchResults.length > 0}
-							<button class="btn-ghost" onclick={() => { status = 'search'; error = ''; }}>{$t('followfeedmodal.backToResults')}</button>
+							<button class="dialog-btn dialog-btn--ghost" onclick={() => { status = 'search'; error = ''; }}>{$t('followfeedmodal.backToResults')}</button>
 						{/if}
-						<button class="btn-ghost" onclick={onclose}>{$t('followfeedmodal.cancel')}</button>
-						<button class="btn-primary" onclick={followFeed}>{$t('followfeedmodal.follow')}</button>
+						<button class="dialog-btn dialog-btn--ghost" onclick={onclose}>{$t('followfeedmodal.cancel')}</button>
+						<button class="dialog-btn dialog-btn--primary" onclick={followFeed}>{$t('followfeedmodal.follow')}</button>
 					</div>
 				</div>
 			{/if}
 
 		</div>
-	</div>
 </div>
 
 <style>
-	.overlay {
+	/* ── App dialog pattern (matches FollowersTab dialogs) ───── */
+	.dialog-backdrop {
 		position: fixed;
 		inset: 0;
-		z-index: 999;
-		background: rgba(0, 0, 0, 0.5);
-		backdrop-filter: blur(2px);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 16px;
-		animation: fade-in 0.15s ease;
+		background: color-mix(in oklch, black 30%, transparent);
+		z-index: 100;
+		animation: fade-in 160ms ease both;
 	}
 
 	@keyframes fade-in {
 		from { opacity: 0; }
-		to { opacity: 1; }
+		to   { opacity: 1; }
 	}
 
-	.box {
-		background: var(--color-base-100, white);
-		border: 1px solid color-mix(in oklch, var(--color-base-content, #000) 10%, transparent);
+	.dialog {
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		z-index: 110;
+		background: var(--color-base-100);
+		border: 1px solid var(--color-base-200);
 		border-radius: var(--ui-radius-lg);
-		width: 100%;
-		max-width: 420px;
-		box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
-		position: relative;
-		overflow: hidden;
-		animation: slide-up 0.18s ease;
+		padding: 20px 20px 16px;
+		width: min(380px, 92vw);
+		box-shadow: 0 20px 60px color-mix(in oklch, black 24%, transparent);
+		animation: dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
 	}
 
-	@keyframes slide-up {
-		from { transform: translateY(12px); opacity: 0; }
-		to { transform: translateY(0); opacity: 1; }
+	@keyframes dialog-in {
+		from { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
+		to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 	}
 
-	.close {
-		position: absolute;
-		top: 12px;
-		right: 12px;
-		background: none;
-		border: none;
-		cursor: pointer;
-		font-size: 14px;
-		color: color-mix(in oklch, var(--color-base-content, #000) 40%, transparent);
-		padding: 4px 6px;
-		border-radius: var(--ui-radius-xs);
-		transition: background 0.15s, color 0.15s;
-		z-index: 1;
-	}
-
-	.close:hover {
-		background: color-mix(in oklch, var(--color-base-content, #000) 8%, transparent);
-		color: var(--color-base-content, #000);
-	}
-
-	.modal-header {
+	.dialog-header {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		padding: 16px 44px 12px 16px;
-		border-bottom: 1px solid color-mix(in oklch, var(--color-base-content, #000) 8%, transparent);
+		justify-content: space-between;
+		margin-bottom: 6px;
 	}
 
-	.modal-icon { font-size: 22px; flex-shrink: 0; }
-
-	.modal-title-group { flex: 1; min-width: 0; }
-
-	.modal-label {
-		font-size: 11px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.07em;
-		color: color-mix(in oklch, var(--color-base-content, #000) 40%, transparent);
+	.dialog-title {
+		font-family: var(--font-page-title);
+		font-size: 1.15rem;
+		font-weight: 400;
+		letter-spacing: -0.01em;
+		color: var(--color-base-content);
 		margin: 0;
 	}
 
-	.modal-site-title {
-		font-size: 14px;
-		font-weight: 700;
-		color: var(--color-base-content, #000);
-		margin: 0;
+	.dialog-close {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 30px;
+		border-radius: var(--ui-radius-sm);
+		border: none;
+		background: transparent;
+		color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+		cursor: pointer;
+		transition: background 130ms ease, color 130ms ease;
+	}
+
+	.dialog-close:hover {
+		background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+		color: var(--color-base-content);
+	}
+
+	.dialog-sub {
+		font-size: 12.5px;
+		color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+		margin: 0 0 14px;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
-	.modal-body { padding: 16px; }
+	.dialog-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+	}
+
+	.dialog-btn {
+		padding: 8px 18px;
+		border-radius: var(--ui-radius-sm);
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+		border: none;
+		transition: background 120ms ease, opacity 120ms ease;
+	}
+
+	.dialog-btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.dialog-btn--ghost {
+		background: transparent;
+		color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+	}
+
+	.dialog-btn--ghost:hover {
+		background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+	}
+
+	.dialog-btn--primary {
+		background: var(--color-accent);
+		color: var(--color-base-100);
+	}
+
+	.dialog-btn--primary:not(:disabled):hover {
+		opacity: 0.88;
+	}
+
+	.modal-body { padding: 0; }
 
 	.state-center {
 		display: flex;
@@ -633,42 +662,5 @@
 		font-size: 11px;
 		color: var(--color-base-content, #000);
 		word-break: break-all;
-	}
-
-	.modal-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 8px;
-		padding-top: 4px;
-	}
-
-	.btn-primary {
-		font-size: 13px;
-		font-weight: 700;
-		padding: 8px 20px;
-		border-radius: var(--ui-radius-full);
-		border: none;
-		background: var(--color-primary, #3b82f6);
-		color: var(--color-primary-content, #fff);
-		cursor: pointer;
-		transition: opacity 0.15s;
-	}
-
-	.btn-primary:hover { opacity: 0.85; }
-
-	.btn-ghost {
-		font-size: 13px;
-		font-weight: 600;
-		padding: 8px 16px;
-		border-radius: var(--ui-radius-full);
-		border: 1px solid color-mix(in oklch, var(--color-base-content, #000) 15%, transparent);
-		background: none;
-		color: var(--color-base-content, #000);
-		cursor: pointer;
-		transition: background 0.15s;
-	}
-
-	.btn-ghost:hover {
-		background: color-mix(in oklch, var(--color-base-content, #000) 6%, transparent);
 	}
 </style>

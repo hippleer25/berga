@@ -51,6 +51,7 @@ import LoaderCircle from '@lucide/svelte/icons/loader-circle';
   user_feed_subscription: string;
 };
 let feedInfo = $state<FeedInfoRaw | null>(null);
+let headerIconBroken = $state(false);
   let infoLoading = $state(true);
   let infoError = $state('');
 
@@ -185,6 +186,7 @@ function getDomain(url: string) {
             if (!res.ok) throw new Error(`${get(t)('feed.loadInfoError')} (${res.status})`);
             const data: FeedInfoRaw = await res.json();
     feedInfo = data;
+    headerIconBroken = false;
     followed = data.user_feed_subscription === 'Subscribed';
     subscriberCount = data.total_users ?? 0;
         } catch (e: any) {
@@ -419,6 +421,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
 <!-- ── Markup ──────────────────────────────────────── -->
 
 <ScreenShell>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
     class="page-root"
     bind:this={pageRootEl}
@@ -452,17 +455,13 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
         {:else if feedInfo}
             <header class="feed-header">
                 <!-- Icon -->
-                <div class="fh-icon-wrap">
+                <div class="fh-icon-wrap" class:fh-icon-wrap--fallback={headerIconBroken}>
                     {#if feedInfo.feed_icon}
                         <img
                             src={feedInfo.feed_icon}
                             alt={feedInfo.feed_title}
                             class="fh-icon"
-                            onerror={(e) => {
-                                const img = e.target as HTMLImageElement;
-                                img.style.display = 'none';
-                                img.parentElement?.classList.add('fh-icon-wrap--fallback');
-                            }}
+                            onerror={() => { headerIconBroken = true; }}
                         />
                         <span class="fh-icon-fallback" aria-hidden="true">
                             <Rss size={22} strokeWidth={1.8} />
@@ -521,7 +520,8 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
         {/if}
 
         <!-- Mode selector -->
-        <div class="filter-bar" ontouchstart={(e) => e.stopPropagation()} ontouchmove={(e) => e.stopPropagation()} ontouchend={(e) => e.stopPropagation()}>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="filter-bar" ontouchstart={(e) => e.stopPropagation()} ontouchmove={(e) => e.stopPropagation()} ontouchend={(e) => e.stopPropagation()}>
             <div class="mode-pill" role="group" aria-label="{$t('feed.filterMode', { default: 'Feed mode' })}">
                 <button
                     class="mode-btn"
@@ -621,7 +621,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
         font-weight: 500;
         color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
     }
-    .spin {
+    .ptr-indicator :global(.spin) {
         animation: rot 0.8s linear infinite;
         color: var(--color-accent);
     }
@@ -720,7 +720,10 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
         opacity: 0.45;
     }
 
-    .fh-icon-wrap--fallback .fh-icon-fallback {
+    .fh-icon-wrap--fallback .fh-icon {
+        display: none;
+    }
+    .fh-icon-wrap--fallback :global(.fh-icon-fallback) {
         position: static;
     }
 
@@ -799,6 +802,7 @@ font-family: var(--font-page-title);
         margin: 4px 0 0;
         display: -webkit-box;
         -webkit-line-clamp: 2;
+        line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
     }

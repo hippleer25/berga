@@ -40,7 +40,7 @@ import { t } from 'svelte-i18n';
 			const res = await apiFetch('/api/opml-import', { method: 'POST', credentials: 'include', body: formData });
 			if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || data.message || `${get(t)('settings.serverError').replace('{status}', res.status)}`);
+      throw new Error(data.detail || data.message || get(t)('settings.serverError', { values: { status: res.status } }));
 			}
 			importStatus = 'success';
 			setTimeout(() => (importStatus = 'idle'), 3000);
@@ -59,7 +59,7 @@ import { t } from 'svelte-i18n';
 			const res = await apiFetch('/api/parse-user-all', { method: 'POST', credentials: 'include' });
 			if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || data.message || `${get(t)('settings.serverError').replace('{status}', res.status)}`);
+      throw new Error(data.detail || data.message || get(t)('settings.serverError', { values: { status: res.status } }));
 			}
 			fetchStatus = 'success';
 			setTimeout(() => (fetchStatus = 'idle'), 3000);
@@ -76,7 +76,7 @@ import { t } from 'svelte-i18n';
 			const res = await apiFetch('/api/cluster/refresh', { method: 'POST', credentials: 'include' });
 			if (!res.ok) {
 				const data = await res.json().catch(() => ({}));
-				throw new Error(data.detail || data.message || `${get(t)('settings.serverError').replace('{status}', res.status)}`);
+				throw new Error(data.detail || data.message || get(t)('settings.serverError', { values: { status: res.status } }));
 			}
 			clusterStatus = 'success';
 			setTimeout(() => (clusterStatus = 'idle'), 3000);

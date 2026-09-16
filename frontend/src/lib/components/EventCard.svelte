@@ -229,6 +229,7 @@ font-family: var(--font-post-title);
         color: color-mix(in oklch, var(--color-base-content) 70%, transparent); /* Lighter text */
         display: -webkit-box;
         -webkit-line-clamp: 2;
+        line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
     }

@@ -38,12 +38,6 @@ type Tab = 'articles' | 'feeds';
     let subscriptions = $state<SubscribedFeed[]>([]);
     let subsLoading = $state(false);
 
-    // ── Online feed search state ───────────────────────────────────────────
-    let feedResults = $state<any[]>([]);
-    let feedLoading = $state(false);
-    let feedError   = $state('');
-    let onlineDone  = $state(false);
-
     // ── Modal state ────────────────────────────────────────────────────────
     let modalFeed = $state<{ title: string; url: string } | null>(null);
 
@@ -111,9 +105,6 @@ type Tab = 'articles' | 'feeds';
 $effect(() => {
         const query = decodeURIComponent($page.params.query ?? '');
         searchQuery = query; // Atualiza o input se a URL mudar
-        feedResults = [];
-        feedError   = '';
-        onlineDone  = false;
         if (query) {
             runArticleSearch(query);
             loadSubscriptions();
@@ -147,33 +138,12 @@ const res = await apiFetch(
         articleLoading = false;
     }
 
-    async function runFeedSearch(query: string) {
-        feedLoading = true;
-        onlineDone = false;
-        feedError   = '';
-        feedResults = [];
-        try {
-const res = await apiFetch(
-      `/api/online-discover?query=${encodeURIComponent(query)}`,
-      { credentials: 'include' }
-    );
-            if (res.status === 401) { window.location.replace('/'); return; }
-            if (!res.ok) throw new Error(`${get(t)('search.discoveryFailed')} (${res.status})`);
-            const data = await res.json();
-            feedResults = data.candidates ?? data.feed ?? [];
-        } catch (err: any) {
-            feedError = err.message || get(t)('search.discoveryFailed');
-        }
-        feedLoading = false;
-        onlineDone = true;
-    }
-
-    // ── Modal functions ────────────────────────────────────────────────────
-    function openModal(feed: { title: string; url: string }) {
-        modalFeed = feed;
-    }
-
-    function closeModal() {
+        // ── Modal functions ────────────────────────────────────────────────────
+    // Opens the standard follow-feed modal in search mode (same flow as
+    // FollowersTab → Add feed → search by name)
+    function openSearchModal() {
+        modalFeed = { title: searchQuery.trim(), url: '' };
+    }    function closeModal() {
         modalFeed = null;
 }
 </script>
@@ -201,6 +171,7 @@ const res = await apiFetch(
         </header>
 
         <!-- Tab bar -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="tab-bar" ontouchstart={(e) => e.stopPropagation()} ontouchmove={(e) => e.stopPropagation()} ontouchend={(e) => e.stopPropagation()}>
             <div class="mode-pill" role="group" aria-label="Search tabs">
                 <button
@@ -272,48 +243,11 @@ const res = await apiFetch(
 
                     <div class="online-divider">
                         <span class="divider-line"></span>
-                        {#if feedLoading}
-                            <span class="divider-label">
-                                <span class="mini-spinner"></span>
-                                {$t('search.searchingOnline')}
-                            </span>
-                        {:else}
-                            <button class="btn-search-online" onclick={() => runFeedSearch(searchQuery.trim())}>
-                                {$t('search.searchOnline')}
-                            </button>
-                        {/if}
+                        <button class="btn-search-online" onclick={openSearchModal}>
+                            {$t('search.searchOnline')}
+                        </button>
                         <span class="divider-line"></span>
                     </div>
-
-                    {#if feedError}
-                        <div class="state-error">{feedError}</div>
-                    {:else if feedResults.length > 0}
-                        <p class="results-meta">
-                            {feedResults.length} {feedResults.length !== 1 ? $t('search.feedsCount') : $t('search.feed')} {$t('search.foundFor')}
-                            <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
-                        </p>
-                        {#each feedResults as feed, i}
-                            <div class="feed-card" class:best={i === 0}>
-                                {#if i === 0}
-                                    <span class="best-badge">{$t('search.bestMatch')}</span>
-                                {/if}
-                                <p class="feed-title">{feed.title}</p>
-                                <a class="feed-url" href={feed.url} target="_blank" rel="noopener noreferrer">
-                                    {feed.url}
-                                </a>
-                                <div class="feed-actions">
-                                    <button class="btn-follow" onclick={() => openModal(feed)}>{$t('search.follow')}</button>
-                                </div>
-                            </div>
-                        {/each}
-                    {:else if onlineDone && !feedLoading}
-                        <div class="state-center">
-                            <p class="state-empty">
-                                {$t('search.noFeedResults')} <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
-                            </p>
-                            <p class="state-hint">{$t('search.tryDifferentQuery')}</p>
-                        </div>
-                    {/if}
                 {/if}
             {/if}
 
@@ -325,7 +259,7 @@ const res = await apiFetch(
 
 <!-- ── Follow Feed Modal ───────────────────────────────────────────────── -->
 {#if modalFeed}
-    <FollowFeedModal feed={modalFeed} onclose={closeModal} />
+    <FollowFeedModal feed={modalFeed} mode="search" onclose={closeModal} />
 {/if}
 
 <style>
@@ -376,12 +310,12 @@ const res = await apiFetch(
     .search-input::placeholder { color: color-mix(in oklch, var(--color-base-content) 35%, transparent); }
     .search-input::-webkit-search-cancel-button { display: none; }
 
-    .search-icon {
+    .search-wrap :global(.search-icon) {
         flex-shrink: 0;
         color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
         transition: color 180ms ease;
     }
-    .search-wrap:focus-within .search-icon { color: var(--color-accent); }
+    .search-wrap:focus-within :global(.search-icon) { color: var(--color-accent); }
 
     /* ── Tab bar (Pill Style) ──────────────────────────────── */
 .tab-bar {
@@ -438,12 +372,6 @@ const res = await apiFetch(
 	padding: 0 16px;
 	color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
 	font-size: 15px;
-	margin: 0;
-}
-
-.state-hint {
-	font-size: 13px;
-	color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
 	margin: 0;
 }
 
@@ -556,27 +484,6 @@ const res = await apiFetch(
         background: var(--color-base-300);
     }
 
-    .divider-label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 12px;
-        color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
-        white-space: nowrap;
-    }
-
-    .mini-spinner {
-        width: 12px;
-        height: 12px;
-        border: 2px solid color-mix(in oklch, var(--color-base-content) 15%, transparent);
-        border-top-color: var(--color-accent);
-        border-radius: 50%;
-        animation: spin 0.7s linear infinite;
-        flex-shrink: 0;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
     .btn-search-online {
         font-size: 12px;
         font-weight: 600;
@@ -591,86 +498,6 @@ const res = await apiFetch(
     }
 
     .btn-search-online:hover {
-        background: color-mix(in oklch, var(--color-accent) 10%, transparent);
-        border-color: color-mix(in oklch, var(--color-accent) 60%, transparent);
-        color: var(--color-accent);
-    }
-
-    /* ── Feed cards ───────────────────────────────────────────────────────── */
-    .feed-card {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        padding: 14px 0;
-        border-bottom: 1px solid var(--color-base-300);
-        transition: background 0.15s;
-    }
-
-.feed-card:hover {
-  background: color-mix(in oklch, var(--color-base-content) 4%, transparent);
-  margin: 0 -16px;
-  padding-left: 16px;
-  padding-right: 16px;
-  border-radius: var(--ui-radius-xs);
-}
-.feed-card:active {
-  background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
-}
-
-    .feed-card.best {
-        border-left: 3px solid var(--color-accent); /* Yellow for Best Match */
-        padding-left: 13px; /* Compensar a borda */
-    }
-
-    .best-badge {
-        font-size: 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--color-accent);
-        margin-bottom: 2px;
-    }
-
-.feed-title {
-font-family: var(--font-post-title);
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--color-base-content);
-  margin: 0;
-  transition: color 140ms;
-}
-.feed-card:hover .feed-title {
-  color: var(--color-accent);
-}
-
-    .feed-url {
-        font-size: 12px;
-        color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
-        text-decoration: none;
-        word-break: break-all;
-    }
-
-.feed-url:hover {
-  color: var(--color-accent);
-}
-
-    .feed-actions { margin-top: 6px; }
-
-    .btn-follow {
-        font-size: 12px;
-        font-weight: 600;
-        padding: 4px 14px;
-        border-radius: var(--ui-radius-sm);
-        border: 1px solid var(--color-base-300);
-        background: transparent;
-        cursor: pointer;
-        color: var(--color-base-content);
-        transition: background 0.15s, border-color 0.15s;
-    }
-
-    .btn-follow:hover {
         background: color-mix(in oklch, var(--color-accent) 10%, transparent);
         border-color: color-mix(in oklch, var(--color-accent) 60%, transparent);
         color: var(--color-accent);

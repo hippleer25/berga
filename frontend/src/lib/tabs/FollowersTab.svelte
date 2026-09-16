@@ -598,6 +598,7 @@ async function loadSubscriptions(quiet = false) {
                     {@const isOver        = dragOverKey === groupKey}
                     {@const indent        = group.depth * 14}
 
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <div
                         class="folder-block"
                         class:drag-over={isOver}
@@ -652,6 +653,7 @@ async function loadSubscriptions(quiet = false) {
                         {#if folderExpanded && group.feeds.length > 0}
                             <ul class="feed-list">
                                 {#each group.feeds as feed (feed.feed_sha256)}
+                                    <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
                                     <li
                                         class="feed-row"
                                         style="padding-left: {22 + indent}px;"
@@ -846,6 +848,7 @@ async function loadSubscriptions(quiet = false) {
         {/if}
         <div class="dialog-input-row">
             <Folder size={14} strokeWidth={2} class="dialog-input-icon" />
+            <!-- svelte-ignore a11y_autofocus -->
             <input
                 class="dialog-input"
                 type="text"

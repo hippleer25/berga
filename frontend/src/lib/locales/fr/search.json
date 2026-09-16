@@ -2,19 +2,10 @@
   "articles": "Articles",
   "feeds": "Flux",
   "noArticleResults": "Aucun résultat pour",
-	"noFeedResults": "Aucun flux trouvé pour",
-	"tryDifferentQuery": "Essayez un terme de recherche différent.",
   "result": "résultat",
   "results": "résultats",
-  "feed": "flux",
-  "feedsCount": "flux",
+  "for": "pour",
   "yourFeeds": "Vos flux",
   "searchOnline": "Rechercher un flux en ligne",
-  "searchingOnline": "Recherche de flux en ligne…",
-  "for": "pour",
-  "foundFor": "trouvé pour",
-  "bestMatch": "Meilleure correspondance",
-  "follow": "+ Suivre",
-  "searchFailed": "La recherche a échoué",
-  "discoveryFailed": "La découverte des flux a échoué"
+  "searchFailed": "La recherche a échoué"
 }

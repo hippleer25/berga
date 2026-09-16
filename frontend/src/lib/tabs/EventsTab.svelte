@@ -142,12 +142,12 @@ function handleSearch(e: Event) {
     .search-input::placeholder { color: color-mix(in oklch, var(--color-base-content) 35%, transparent); }
     .search-input::-webkit-search-cancel-button { display: none; }
 
-    .search-icon {
+    .search-wrap :global(.search-icon) {
         flex-shrink: 0; /* Prevents the magnifying glass from shrinking or being hidden */
         color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
         transition: color 180ms ease;
     }
-    .search-wrap:focus-within .search-icon { color: var(--color-accent); }
+    .search-wrap:focus-within :global(.search-icon) { color: var(--color-accent); }
 
     /* ── Events Section ────────────────────────────────── */
     .events-section {
