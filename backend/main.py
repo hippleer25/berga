@@ -189,7 +189,16 @@ class ChatRequest(BaseModel):
     scope: Literal["mine", "all"] = "mine"
     folder_id: str | None = None
     feed_sha256: str | None = None
+    session_id: int | None = None
     articles: list[ArticleInput] = []
+
+
+class SessionRenameRequest(BaseModel):
+    title: str
+
+
+class ChatClearRequest(BaseModel):
+    session_id: int | None = None
 
 
 class HighlightRequest(BaseModel):
@@ -743,10 +752,81 @@ def mota_chat(chat_request: ChatRequest, request: Request, user: dict = Depends(
 
 
 @app.post("/api/chat/clear")
-def mota_chat_clear(user: dict = Depends(get_current_user)):
+def mota_chat_clear(payload: ChatClearRequest | None = None, user: dict = Depends(get_current_user)):
     from mota import conversation
-    success = conversation.clear(user["id"])
+    session_id = (payload.session_id if payload else None)
+    success = conversation.clear(user["id"], session_id)
     return {"status": "ok" if success else "error"}
+
+
+# ── Mota chat sessions ────────────────────────────────────────────────────────
+
+@app.get("/api/chat/sessions")
+def mota_sessions_list(user: dict = Depends(get_current_user)):
+    """List the user's chat sessions, most recent interaction first (max 50)."""
+    from mota import chat_sessions
+
+    def _serialize(row: dict) -> dict:
+        updated = row.get("updated_at")
+        created = row.get("created_at")
+        try:
+            items = int(row.get("message_count") or 0)
+        except Exception:
+            items = 0
+        return {
+            "id": int(row["id"]),
+            "title": row.get("title"),
+            "fallback_title": row.get("fallback_title"),
+            "message_count": items,
+            "created_at": created.isoformat() if hasattr(created, "isoformat") else None,
+            "updated_at": updated.isoformat() if hasattr(updated, "isoformat") else None,
+        }
+
+    rows = chat_sessions.list_sessions(user["id"])
+    return {"sessions": [_serialize(r) for r in rows]}
+
+
+@app.get("/api/chat/sessions/{session_id}/messages")
+def mota_session_messages(session_id: int, user: dict = Depends(get_current_user)):
+    """Full turn history for one user-owned session (resume)."""
+    from mota import chat_sessions
+
+    if not chat_sessions.session_exists(user["id"], session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    messages = chat_sessions.get_messages(user["id"], session_id)
+    return {"session_id": session_id, "messages": messages}
+
+
+@app.patch("/api/chat/sessions/{session_id}")
+def mota_session_rename(
+    session_id: int,
+    payload: SessionRenameRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Rename a session (overrides the AI-generated title)."""
+    from mota import chat_sessions
+
+    if not payload.title or not payload.title.strip():
+        raise HTTPException(status_code=422, detail="Title must not be empty")
+    if len(payload.title) > 120:
+        raise HTTPException(status_code=422, detail="Title too long (max 120 chars)")
+    ok = chat_sessions.rename_session(user["id"], session_id, payload.title)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"status": "ok"}
+
+
+@app.delete("/api/chat/sessions/{session_id}")
+def mota_session_delete(session_id: int, user: dict = Depends(get_current_user)):
+    """Delete a session and its messages (cascades)."""
+    from mota import chat_sessions, conversation
+
+    ok = chat_sessions.delete_session(user["id"], session_id)
+    if ok:
+        conversation.clear(user["id"], session_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"status": "ok"}
 
 
 @app.post("/api/mota/resume/{item_id}")

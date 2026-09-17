@@ -81,6 +81,39 @@ export function pxToRem(px: number): string {
 	return `${(px / 16).toFixed(4)}rem`;
 }
 
+/* Static-weight families only ship fixed faces (see @font-face in app.css).
+   Requesting an intermediate weight (e.g. 600 on PT Sans, which has only
+   400/700) makes the browser fall through to the next heavier face — 700,
+   i.e. full Bold. Constrain the weight to faces that actually exist. */
+const STATIC_FONT_WEIGHTS: Partial<Record<FontName, number[]>> = {
+	'Barlow': [400, 500, 600, 700],
+	'PT Sans': [400, 700],
+	'PT Serif': [400, 700],
+	'Gloock': [400],
+	'Atkinson Hyperlegible': [400, 700],
+	'Spectral': [400, 500, 600, 700],
+};
+
+export function allowedFontWeights(fontName: string): number[] {
+	const { min, max, step } = ARTICLE_TYPOGRAPHY.fontWeight;
+	const staticList = STATIC_FONT_WEIGHTS[fontName as FontName];
+	if (staticList) {
+		const within = staticList.filter(w => w >= min && w <= max);
+		return within.length ? within : [400];
+	}
+	const full: number[] = [];
+	for (let w = min; w <= max; w += step) full.push(w);
+	return full;
+}
+
+/* Snap to the closest available face at or below the requested weight */
+export function snapFontWeight(fontName: string, value: number): number {
+	const list = allowedFontWeights(fontName);
+	if (list.includes(value)) return value;
+	const below = list.filter(w => w <= value);
+	return below.length ? below[below.length - 1] : list[0];
+}
+
 export function applyFontSize(value: number, persist = false) {
 	document.documentElement.style.setProperty('--article-font-size', pxToRem(value));
 	if (persist) localStorage.setItem(ARTICLE_TYPOGRAPHY.fontSize.key, String(value));
@@ -321,7 +354,7 @@ export function initAppearance() {
 
 	const t = ARTICLE_TYPOGRAPHY;
 	applyFontSize(numPref(t.fontSize.key, t.fontSize.default));
-	applyFontWeight(numPref(t.fontWeight.key, t.fontWeight.default));
+	applyFontWeight(snapFontWeight(getSavedFont('article-body'), numPref(t.fontWeight.key, t.fontWeight.default)));
 	applyLetterSpacing(numPref(t.letterSpacing.key, t.letterSpacing.default));
 	applyLineHeight(numPref(t.lineHeight.key, t.lineHeight.default));
 	applyArticleMaxWidth(numPref(t.maxWidth.key, t.maxWidth.default));

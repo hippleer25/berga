@@ -461,6 +461,32 @@ def init_db():
             ) {_TABLE_OPTIONS}
             """)
             _add_column_if_missing(cursor, "interactions", "archived", "TINYINT(1) DEFAULT 0")
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                title VARCHAR(120) DEFAULT NULL,
+                fallback_title VARCHAR(120) DEFAULT NULL,
+                message_count INT NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                INDEX idx_chat_sessions_user_updated (user_id, updated_at)
+            ) {_TABLE_OPTIONS}
+            """)
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                session_id BIGINT NOT NULL,
+                role ENUM('user', 'assistant') NOT NULL,
+                content MEDIUMTEXT NOT NULL,
+                sources JSON DEFAULT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                INDEX idx_chat_messages_session (session_id, id)
+            ) {_TABLE_OPTIONS}
+            """)
             conn.commit()
             logger.info("Database initialised successfully")
         except Exception as e:

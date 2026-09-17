@@ -82,7 +82,7 @@ def _coerce_days(v):
         return None
 
 
-def route_message(message: str, history_digest: str = "", usage_out: dict | None = None) -> dict:
+def route_message(message: str, history_digest: str = "", usage_out: dict | None = None, session_id: str | None = None) -> dict:
     """
     Classify the message and produce a search plan. Never raises —
     returns a conservative default if the LLM or JSON fails.
@@ -111,6 +111,7 @@ def route_message(message: str, history_digest: str = "", usage_out: dict | None
             max_tokens=ROUTER_MAX_TOKENS,
             temperature=0.0,
             usage_out=usage_out if usage_out is not None else {},
+            session_id=session_id,
         )
     except Exception as e:
         logger.error(f"[ROUTER] LLM call failed: {e}", exc_info=True)

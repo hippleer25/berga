@@ -2,7 +2,6 @@
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import Send from '@lucide/svelte/icons/send';
-  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronUp from '@lucide/svelte/icons/chevron-up';
   import Settings from '@lucide/svelte/icons/settings';
@@ -12,8 +11,21 @@
   import Newspaper from '@lucide/svelte/icons/newspaper';
   import Brain from '@lucide/svelte/icons/brain';
   import Check from '@lucide/svelte/icons/check';
-  import { pendingMotaPosts } from '$lib/stores/swipe';
-  import { t } from 'svelte-i18n';
+  import MessageSquare from '@lucide/svelte/icons/message-square';
+  import Plus from '@lucide/svelte/icons/plus';
+  import X from '@lucide/svelte/icons/x';
+  import Pencil from '@lucide/svelte/icons/pencil';
+  import Trash2 from '@lucide/svelte/icons/trash-2';
+  import History from '@lucide/svelte/icons/history';
+  import Portal from '$lib/components/Portal.svelte';
+  import { pendingMotaPosts, navVisible } from '$lib/stores/swipe';
+  import {
+    chatSessions,
+    currentSessionId,
+    sessionsOpen,
+    type ChatSession,
+  } from '$lib/stores/chatSessions';
+  import { t, locale } from 'svelte-i18n';
   import { get } from 'svelte/store';
   import { apiFetch } from '$lib/api';
 
@@ -32,13 +44,14 @@
     fromFeed?: boolean;
     feedTitles?: string[];
     sources?: Source[];
+    sourcesOpen?: boolean;
     queries?: string[];
     thinking?: string;
     thinkingCollapsed?: boolean;
   };
 
   type SourceMode = 'local' | 'online' | 'mixed';
-  type Scope = 'mine' | 'all';
+  type SourcesPreset = 'feeds' | 'web' | 'both';
   type WaitingPhase = 'thinking' | 'planning' | 'searching' | 'reading' | 'synthesizing' | 'refining' | null;
 
   let messages = $state<Message[]>([]);
@@ -49,9 +62,14 @@
   let idCounter = 0;
   let waitingPhase = $state<WaitingPhase>(null);
 
-  let sourceMode = $state<SourceMode>('mixed');
-  let scope = $state<Scope>('mine');
+  let sourcesPreset = $state<SourcesPreset>('both');
   let dropdownOpen = $state(false);
+
+  let sessionsLoading = $state(false);
+  let sessionsFailed = $state(false);
+  let renamingSessionId = $state<number | null>(null);
+  let renameDraft = $state('');
+  let confirmDeleteId = $state<number | null>(null);
 
   let textareaRef: HTMLTextAreaElement;
   let scrollContainer: HTMLElement;
@@ -75,28 +93,30 @@
   }));
 
   let sourceOptions = $derived.by(() => [
-    { value: 'local' as SourceMode, label: get(t)('motatab.sourceLocal'), Icon: Database },
-    { value: 'online' as SourceMode, label: get(t)('motatab.sourceOnline'), Icon: Globe },
-    { value: 'mixed' as SourceMode, label: get(t)('motatab.sourceMixed'), Icon: Blend },
+    { value: 'feeds' as SourcesPreset, label: get(t)('motatab.sourceLocal'), labelShort: get(t)('motatab.sourceLocalShort'), Icon: Database, mode: 'local' as SourceMode, scope: 'mine' as const },
+    { value: 'web' as SourcesPreset, label: get(t)('motatab.sourceOnline'), labelShort: get(t)('motatab.sourceOnlineShort'), Icon: Globe, mode: 'online' as SourceMode, scope: 'all' as const },
+    { value: 'both' as SourcesPreset, label: get(t)('motatab.sourceMixed'), labelShort: get(t)('motatab.sourceMixedShort'), Icon: Blend, mode: 'mixed' as SourceMode, scope: 'mine' as const },
   ]);
 
   let currentSourceLabel = $derived.by(() => {
-    const opt = sourceOptions.find(o => o.value === sourceMode);
-    return opt ? opt.label : get(t)('motatab.sourceMixed');
+    const opt = sourceOptions.find(o => o.value === sourcesPreset);
+    return opt ? opt.labelShort : get(t)('motatab.sourceMixedShort');
   });
 
   const STORAGE_KEY = 'mota:messages';
+  const SESSION_KEY = 'mota:session';
+  const SESSION_ID_KEY = 'mota:session-id';
 
   function saveMessages() {
     try {
       const trimmed = messages.slice(-30);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
     } catch {}
   }
 
   function loadMessages() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -107,8 +127,32 @@
     } catch {}
   }
 
+  // A brand-new browser session starts a fresh chat: locally-stored
+  // messages are cleared, but durable sessions stay available via the
+  // Sessions overlay (MySQL, server-side).
+  function ensureFreshSession() {
+    try {
+      if (sessionStorage.getItem(SESSION_KEY)) return;
+      sessionStorage.setItem(SESSION_KEY, '1');
+      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(SESSION_ID_KEY);
+    } catch {}
+  }
+
+  function persistSessionId(id: number | null) {
+    try {
+      if (id != null) sessionStorage.setItem(SESSION_ID_KEY, String(id));
+      else sessionStorage.removeItem(SESSION_ID_KEY);
+    } catch {}
+  }
+
   onMount(() => {
-    loadMessages();
+    ensureFreshSession();
+    try {
+      const sid = sessionStorage.getItem(SESSION_ID_KEY);
+      if (sid) currentSessionId.set(parseInt(sid, 10) || null);
+    } catch {}
+    if ($currentSessionId != null) loadMessages();
 
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
@@ -117,6 +161,15 @@
     }
     document.addEventListener('click', handleClickOutside);
 
+    // Escape closes the sessions overlay
+    function handleKeydown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && $sessionsOpen) {
+        e.stopPropagation();
+        sessionsOpen.set(false);
+      }
+    }
+    document.addEventListener('keydown', handleKeydown);
+
     // bfcache eligibility: abort in-flight chat stream only on real page
     // unload — hiding the tab (switching windows) must NOT kill the stream.
     const onPageHide = () => abortChat();
@@ -124,9 +177,14 @@
 
     return () => {
       document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleKeydown);
       window.removeEventListener('pagehide', onPageHide);
       abortChat();
     };
+  });
+
+  $effect(() => {
+    persistSessionId($currentSessionId);
   });
 
   $effect(() => {
@@ -199,13 +257,132 @@
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
-  function clearChat() {
+  function newChat() {
+    abortChat();
     messages = [];
     error = '';
     idCounter = 0;
     waitingPhase = null;
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
-    apiFetch('/api/chat/clear', { method: 'POST' }).catch(() => {});
+    currentSessionId.set(null);
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
+  }
+
+  // ── Sessions manager ─────────────────────────────────────
+  function sessionTitle(s: ChatSession): string {
+    return s.title || s.fallback_title || get(t)('motatab.untitledSession');
+  }
+
+  function formatSessionDate(dateStr: string | null): string {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
+    const now = Date.now();
+    const min = Math.floor((now - date.getTime()) / 60000);
+    const h = Math.floor(min / 60);
+    const d = Math.floor(h / 24);
+    if (min < 1) return get(t)('postcard.now');
+    if (min < 60) return `${min}${get(t)('postcard.minutesShort')}`;
+    if (h < 24) return `${h}${get(t)('postcard.hoursShort')}`;
+    if (d < 7) return `${d}${get(t)('postcard.daysShort')}`;
+    const loc = get(locale) ?? 'en';
+    return date.toLocaleDateString(loc, {
+      day: '2-digit',
+      month: 'short',
+      year: new Date().getFullYear() !== date.getFullYear() ? 'numeric' : undefined,
+    });
+  }
+
+  async function openSessions() {
+    sessionsOpen.set(true);
+    await refreshSessions();
+  }
+
+  function closeSessions() {
+    sessionsOpen.set(false);
+    renamingSessionId = null;
+    confirmDeleteId = null;
+  }
+
+  async function refreshSessions() {
+    sessionsLoading = true;
+    sessionsFailed = false;
+    try {
+      const res = await apiFetch('/api/chat/sessions');
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      chatSessions.set(Array.isArray(data.sessions) ? data.sessions : []);
+    } catch {
+      sessionsFailed = true;
+    } finally {
+      sessionsLoading = false;
+    }
+  }
+
+  async function resumeSession(s: ChatSession) {
+    closeSessions();
+    abortChat();
+    try {
+      const res = await apiFetch(`/api/chat/sessions/${s.id}/messages`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      const loaded: Message[] = (Array.isArray(data.messages) ? data.messages : [])
+        .map((m: any) => {
+          const msg: Message = { role: m.role, content: m.content || '', id: idCounter++ };
+          if (m.role === 'assistant') {
+            if (Array.isArray(m.sources) && m.sources.length) msg.sources = m.sources;
+          }
+          return msg;
+        });
+      messages = loaded;
+      error = '';
+      currentSessionId.set(s.id);
+      persistSessionId(s.id);
+      saveMessages();
+      await scrollToBottom(false);
+    } catch (e: any) {
+      error = e?.message || String(e);
+    }
+  }
+
+  function startRename(s: ChatSession) {
+    renamingSessionId = s.id;
+    renameDraft = s.title || s.fallback_title || '';
+    confirmDeleteId = null;
+  }
+
+  async function submitRename() {
+    const id = renamingSessionId;
+    const title = renameDraft.trim();
+    if (id == null || !title) { renamingSessionId = null; return; }
+    try {
+      const res = await apiFetch(`/api/chat/sessions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      if (res.ok) {
+        chatSessions.update(list =>
+          list.map(s => (s.id === id ? { ...s, title } : s))
+        );
+      }
+    } catch {}
+    renamingSessionId = null;
+  }
+
+  function askDelete(id: number) {
+    renamingSessionId = null;
+    confirmDeleteId = id;
+  }
+
+  async function removeSession(id: number) {
+    confirmDeleteId = null;
+    try {
+      const res = await apiFetch(`/api/chat/sessions/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        chatSessions.update(list => list.filter(s => s.id !== id));
+        if (id === $currentSessionId) newChat();
+      }
+    } catch {}
   }
 
   function toggleDropdown(e: MouseEvent) {
@@ -235,13 +412,16 @@
         author: p.author || '',
       }));
 
+      const preset = sourceOptions.find(o => o.value === sourcesPreset) ?? sourceOptions[2];
+
       const res = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          source_mode: sourceMode,
-          scope,
+          source_mode: preset.mode,
+          scope: preset.scope,
+          session_id: $currentSessionId,
           articles,
         }),
         signal: chatAbort.signal,
@@ -274,6 +454,10 @@
           let parsed: any;
           try { parsed = JSON.parse(data); } catch { continue; }
 
+          if (parsed.session?.id != null) {
+            // Brand-new session created server-side on the first message
+            currentSessionId.set(parsed.session.id);
+          }
           if (parsed.status) {
             waitingPhase = parsed.status;
           } else if (parsed.thinking) {
@@ -420,16 +604,106 @@
 
 <div class="page-root mota-page">
 
-  <!-- ── Top Header + Welcome (in scrollable flow) ─────────── -->
+  <!-- ── Top Header (persistent) ──────────────────────────── -->
+  <header class="top-header">
+    <div class="main-content top-header-inner">
+      <div class="header-left">
+        <button class="filter-chip" onclick={openSessions} title="{$t('motatab.sessionsTitle')}">
+          <History size={13} />
+          <span class="chip-label">{$t('motatab.sessions')}</span>
+        </button>
+        <button class="filter-chip" onclick={newChat} title="{$t('motatab.newChat')}">
+          <Plus size={14} />
+          <span class="chip-label">{$t('motatab.newChat')}</span>
+        </button>
+      </div>
+      <div class="top-header-actions">
+        <button class="settings-btn" onclick={() => goto('/settings/appearance')} aria-label="Settings">
+          <Settings size={20} />
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Sessions dialog (app dialog pattern) ─────────────── -->
+  <Portal>
+    {#if $sessionsOpen}
+      <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+      <div class="dialog-backdrop" onclick={closeSessions}></div>
+      <div class="dialog sessions-dialog" role="dialog" aria-modal="true" aria-label="{$t('motatab.sessionsTitle')}">
+        <div class="dialog-header">
+          <h2 class="dialog-title">{$t('motatab.sessionsTitle')}</h2>
+          <button class="dialog-close" onclick={closeSessions} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+
+        {#if sessionsLoading && $chatSessions.length === 0}
+          <p class="dialog-sub">{$t('motatab.loadingSessions')}</p>
+        {:else if sessionsFailed}
+          <p class="dialog-sub">{$t('motatab.sessionsError')}</p>
+        {:else if $chatSessions.length === 0}
+          <div class="state-empty-wrap">
+            <MessageSquare size={28} strokeWidth={1.5} class="empty-icon" />
+            <p class="state-empty">{$t('motatab.noSessions')}</p>
+            <button class="empty-cta" onclick={() => { closeSessions(); newChat(); }}>
+              <Plus size={14} />
+              <span>{$t('motatab.newChat')}</span>
+            </button>
+          </div>
+        {:else}
+          <ul class="sessions-list">
+            {#each $chatSessions as s (s.id)}
+              <li class="session-row" class:session-row--active={s.id === $currentSessionId}>
+                {#if renamingSessionId === s.id}
+                  <input
+                    class="session-rename-input"
+                    type="text"
+                    bind:value={renameDraft}
+                    placeholder="{$t('motatab.renamePlaceholder')}"
+                    maxlength="120"
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter') submitRename();
+                      if (e.key === 'Escape') { renamingSessionId = null; e.stopPropagation(); }
+                    }}
+                  />
+                  <button class="session-action-btn session-action-btn--confirm" onclick={submitRename} title="OK">
+                    <Check size={14} />
+                  </button>
+                {:else if confirmDeleteId === s.id}
+                  <span class="session-confirm">{$t('motatab.confirmDelete')}</span>
+                  <div class="session-actions">
+                    <button class="session-action-btn session-action-btn--confirm" onclick={() => { confirmDeleteId = null; }} aria-label="{$t('motatab.deleteSession')}">
+                      <X size={14} />
+                    </button>
+                    <button class="session-action-btn session-action-btn--danger" onclick={() => removeSession(s.id)} title="{$t('motatab.confirmDelete')}">
+                      <Check size={14} />
+                    </button>
+                  </div>
+                {:else}
+                  <button class="session-main" onclick={() => resumeSession(s)} title="{$t('motatab.openSession')}">
+                    <span class="session-title">{sessionTitle(s)}</span>
+                    <time class="session-date" datetime={s.updated_at ?? undefined}>{formatSessionDate(s.updated_at)}</time>
+                  </button>
+                  <div class="session-actions">
+                    <button class="session-action-btn" onclick={() => startRename(s)} title="{$t('motatab.renameSession')}">
+                      <Pencil size={13} />
+                    </button>
+                    <button class="session-action-btn" onclick={() => askDelete(s.id)} title="{$t('motatab.deleteSession')}">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
+  </Portal>
+
   {#if !hasStarted}
   <div class="main-content">
-
-    <header class="top-header">
-      <button class="settings-btn" onclick={() => goto('/settings/appearance')} aria-label="Settings">
-        <Settings size={20} />
-      </button>
-    </header>
-
     <div class="welcome-section">
       <h1 class="welcome-title">Mota</h1>
       <p class="welcome-subtitle">{$t('motatab.subtitle')}</p>
@@ -518,23 +792,33 @@
 
         {#if msg.sources?.length && !isWaiting && !isStreamingEmpty}
           <div class="sources-rail">
-            <p class="sources-title">{$t('motatab.sourcesTitle')}</p>
-            <div class="sources-list">
-              {#each msg.sources as src (src.id)}
-                <a
-                  class="source-chip"
-                  href={src.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <span class="source-num">{src.id}</span>
-                  <span class="source-meta">
-                    <span class="source-outlet">{src.outlet}</span>
-                    <span class="source-headline">{src.title}</span>
-                  </span>
-                </a>
-              {/each}
-            </div>
+            <button
+              class="sources-toggle"
+              onclick={() => { msg.sourcesOpen = !msg.sourcesOpen; }}
+              aria-expanded={!!msg.sourcesOpen}
+            >
+              <span class="sources-title">{$t('motatab.sourcesTitle')}</span>
+              <span class="sources-count">{msg.sources.length}</span>
+              <ChevronDown size={13} class="sources-chevron {msg.sourcesOpen ? 'rot' : ''}" />
+            </button>
+            {#if msg.sourcesOpen}
+              <div class="sources-list">
+                {#each msg.sources as src (src.id)}
+                  <a
+                    class="source-chip"
+                    href={src.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span class="source-num">{src.id}</span>
+                    <span class="source-meta">
+                      <span class="source-outlet">{src.outlet}</span>
+                      <span class="source-headline">{src.title}</span>
+                    </span>
+                  </a>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/if}
        </div>
@@ -565,7 +849,7 @@
 
   <!-- ── Footer ─────────────────────────────────────────────────────── -->
   <footer class="chat-footer">
-    <div class="main-content footer-inner">
+    <div class="main-content footer-inner" class:nav-free={!$navVisible}>
 
     <div class="input-wrap">
       {#if dropdownOpen}
@@ -575,44 +859,16 @@
           {#each sourceOptions as opt (opt.value)}
           <button
             class="dropdown-item"
-            class:dropdown-item--active={sourceMode === opt.value}
-            onclick={() => { sourceMode = opt.value; }}
+            class:dropdown-item--active={sourcesPreset === opt.value}
+            onclick={() => { sourcesPreset = opt.value; }}
           >
             <opt.Icon size={15} />
             <span class="dropdown-item-label">{opt.label}</span>
-            {#if sourceMode === opt.value}
+            {#if sourcesPreset === opt.value}
             <Check size={14} class="dropdown-check" />
             {/if}
           </button>
           {/each}
-        </div>
-
-        <div class="dropdown-divider"></div>
-
-        <div class="dropdown-section">
-          <p class="dropdown-section-title">{$t('motatab.scope')}</p>
-          <button
-            class="dropdown-item"
-            class:dropdown-item--active={scope === 'mine'}
-            onclick={() => { scope = 'mine'; }}
-          >
-            <Database size={15} />
-            <span class="dropdown-item-label">{$t('motatab.scopeMine')}</span>
-            {#if scope === 'mine'}
-            <Check size={14} class="dropdown-check" />
-            {/if}
-          </button>
-          <button
-            class="dropdown-item"
-            class:dropdown-item--active={scope === 'all'}
-            onclick={() => { scope = 'all'; }}
-          >
-            <Globe size={15} />
-            <span class="dropdown-item-label">{$t('motatab.scopeAll')}</span>
-            {#if scope === 'all'}
-            <Check size={14} class="dropdown-check" />
-            {/if}
-          </button>
         </div>
       </div>
       {/if}
@@ -649,20 +905,6 @@
         </button>
       </div>
     </div>
-
-      <div class="footer-meta">
-        <p class="disclaimer-text">
-          {$t('motatab.disclaimer')}
-        </p>
-        <button
-          class="clear-btn"
-          onclick={clearChat}
-          title="{$t('motatab.newConversation')}"
-        >
-          <RotateCcw size={11} />
-          <span>{$t('motatab.clearChat')}</span>
-        </button>
-      </div>
     </div>
   </footer>
 
@@ -695,13 +937,21 @@
   }
  }
 
- /* ── Top Header (matches HomeTab) ─────────────────── */
+ /* ── Top Header (persistent) ─────────────────────── */
  .top-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
   padding-top: 12px;
   padding-bottom: 4px;
+ }
+ .top-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+ }
+ .top-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
  }
  .settings-btn {
   display: flex;
@@ -997,18 +1247,58 @@
   padding-top: 10px;
   border-top: 1px solid color-mix(in oklch, var(--color-base-300) 60%, transparent);
  }
+ .sources-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  margin-left: -4px;
+  cursor: pointer;
+  color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+  transition: color 130ms;
+ }
+ .sources-toggle:hover {
+  color: color-mix(in oklch, var(--color-base-content) 75%, transparent);
+ }
  .sources-title {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
-  margin: 0 0 8px;
+  margin: 0;
+ }
+ .sources-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-accent) 15%, transparent);
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 700;
+ }
+ .sources-rail :global(.sources-chevron) {
+  transition: transform 150ms ease;
+  flex-shrink: 0;
+ }
+ .sources-rail :global(.sources-chevron.rot) {
+  transform: rotate(180deg);
  }
  .sources-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-top: 8px;
+  animation: sourcesIn 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+ }
+ @keyframes sourcesIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
  }
  .source-chip {
   display: flex;
@@ -1252,12 +1542,6 @@
   color: var(--color-accent);
   flex-shrink: 0;
 }
-.dropdown-divider {
-  height: 1px;
-  background: var(--color-base-300);
-  margin: 4px 6px;
-}
-
 /* ── Send button ─────────────────────────────────────── */
 .send-btn {
   flex-shrink: 0;
@@ -1295,39 +1579,272 @@
 @media (max-width: 767px) {
   .footer-inner {
     padding-bottom: calc(12px + 64px + env(safe-area-inset-bottom, 0px));
+    transition: padding-bottom 320ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  /* Smart navbar hidden (Mota focus mode): the input reclaims the space.
+     Padding stays above the 48px reveal zone so it never blocks the meta row */
+  .footer-inner.nav-free {
+    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
   }
   :global([data-nav-style="deck"]) .footer-inner {
     padding-bottom: calc(12px + var(--deck-height, 16vw) + 20px + env(safe-area-inset-bottom, 0px));
   }
+  :global([data-nav-style="deck"]) .footer-inner.nav-free {
+    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
-@media (min-width: 768px) {
-  .footer-inner { padding: 16px 0; }
-}
-
- .footer-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
-  padding: 0 4px;
+ @media (min-width: 768px) {
+   .footer-inner { padding: 16px 0; }
  }
 
- .disclaimer-text {
-  font-size: 11px;
-  color: color-mix(in oklch, var(--color-base-content) 25%, transparent);
- }
+  .header-left {
+   display: flex;
+   align-items: center;
+   gap: 6px;
+  }
 
- .clear-btn {
-  display: flex; align-items: center; gap: 4px;
-  font-size: 11px; font-weight: 500;
-  color: color-mix(in oklch, var(--color-base-content) 30%, transparent);
-  background: transparent; border: none; cursor: pointer;
-  transition: color 130ms;
- }
- .clear-btn:hover {
-  color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
- }
+  /* Filter chips — same pattern as HomeTab's filter bar */
+  .filter-chip {
+   display: inline-flex; align-items: center; gap: 5px;
+   padding: 6px 12px;
+   border-radius: var(--ui-radius-sm);
+   border: 1px solid var(--color-base-300);
+   background: transparent;
+   font-size: 13px; font-weight: 500;
+   color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+   cursor: pointer;
+   transition: background 130ms, color 130ms, border-color 130ms;
+   white-space: nowrap;
+  }
+  .filter-chip:hover {
+   background: var(--color-base-200);
+   color: var(--color-base-content);
+  }
+  .chip-label {
+   overflow: hidden;
+   text-overflow: ellipsis;
+  }
+
+  /* ── Sessions dialog (app dialog pattern) ─────────────── */
+  .dialog-backdrop {
+   position: fixed; inset: 0;
+   background: color-mix(in oklch, black 30%, transparent);
+   z-index: 100;
+   animation: dialog-fade 160ms ease both;
+  }
+  .dialog {
+   position: fixed; top: 50%; left: 50%;
+   transform: translate(-50%, -50%);
+   z-index: 110;
+   background: var(--color-base-100);
+   border: 1px solid var(--color-base-200);
+   border-radius: var(--ui-radius-lg);
+   padding: 20px 20px 16px;
+   box-shadow: 0 20px 60px color-mix(in oklch, black 24%, transparent);
+   animation: dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes dialog-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes dialog-in {
+   from { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
+   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+  .dialog-header {
+   display: flex; align-items: center; justify-content: space-between;
+   margin-bottom: 6px;
+  }
+  .dialog-title {
+   font-family: var(--font-page-title);
+   font-size: 1.15rem; font-weight: 400; letter-spacing: -0.01em;
+   color: var(--color-base-content); margin: 0;
+  }
+  .dialog-close {
+   display: flex; align-items: center; justify-content: center;
+   width: 30px; height: 30px;
+   border-radius: var(--ui-radius-sm);
+   border: none; background: transparent;
+   color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+   cursor: pointer;
+   transition: background 130ms ease, color 130ms ease;
+  }
+  .dialog-close:hover {
+   background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+   color: var(--color-base-content);
+  }
+  .sessions-dialog {
+   max-height: min(70dvh, 540px);
+   display: flex;
+   flex-direction: column;
+  }
+  .dialog-header {
+   margin-bottom: 6px;
+   padding-bottom: 10px;
+   border-bottom: 1px solid color-mix(in oklch, var(--color-base-300) 35%, transparent);
+  }
+  .dialog-sub {
+   font-size: 12.5px;
+   color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+   margin: 0;
+  }
+
+  /* Rows — .feed-row conventions from the Following tab */
+  .sessions-list {
+   list-style: none;
+   margin: 0;
+   padding: 2px 0 8px;
+   overflow-y: auto;
+   scrollbar-width: thin;
+  }
+  .session-row {
+   display: flex;
+   align-items: center;
+   gap: 6px;
+   padding: 9px 2px 9px 6px;
+   border-radius: var(--ui-radius-sm);
+   border-bottom: 1px solid color-mix(in oklch, var(--color-base-300) 35%, transparent);
+   transition: background 150ms ease;
+   user-select: none;
+  }
+  .session-row:last-child { border-bottom: none; }
+  .session-row:hover {
+   background: color-mix(in oklch, var(--color-base-content) 4%, transparent);
+  }
+  .session-row:hover .session-actions { opacity: 1; }
+  .session-row--active {
+   background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+  }
+  .session-main {
+   flex: 1;
+   min-width: 0;
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   border: none;
+   background: transparent;
+   cursor: pointer;
+   padding: 0;
+   text-align: left;
+  }
+  .session-title {
+   flex: 1;
+   min-width: 0;
+   font-size: 13px;
+   font-weight: 500;
+   line-height: 1.35;
+   color: var(--color-base-content);
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+  }
+  /* .pub-date conventions from PostCard */
+  .session-date {
+   margin-left: auto;
+   flex-shrink: 0;
+   font-size: 11px;
+   white-space: nowrap;
+   color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+  }
+  .session-row--active .session-title {
+   color: var(--color-accent);
+  }
+  /* .more-btn conventions from the Following tab rows */
+  .session-actions {
+   display: flex;
+   align-items: center;
+   gap: 2px;
+   flex-shrink: 0;
+   opacity: 0;
+   transition: opacity 150ms ease;
+  }
+  .session-row:focus-within .session-actions {
+   opacity: 1;
+  }
+  @media (hover: none) {
+   .session-actions { opacity: 1; }
+  }
+  .session-action-btn {
+   display: flex; align-items: center; justify-content: center;
+   width: 24px; height: 24px;
+   border: none; border-radius: var(--ui-radius-xs);
+   background: transparent; cursor: pointer;
+   color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+   transition: background 120ms, color 120ms;
+  }
+  .session-action-btn:hover {
+   color: var(--color-base-content);
+   background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+  }
+  .session-action-btn--confirm {
+   color: var(--color-accent);
+  }
+  .session-action-btn--confirm:hover {
+   color: var(--color-accent);
+   background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+  }
+  .session-action-btn--danger {
+   color: var(--color-error);
+  }
+  .session-action-btn--danger:hover {
+   color: var(--color-error);
+   background: color-mix(in oklch, var(--color-error) 10%, transparent);
+  }
+  /* Inputs — FollowersTab dialog input conventions */
+  .session-rename-input {
+   flex: 1;
+   min-width: 0;
+   font-size: 13.5px;
+   color: var(--color-base-content);
+   background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
+   border: 1px solid var(--color-base-300);
+   border-radius: var(--ui-radius-sm);
+   padding: 8px 12px;
+   outline: none;
+   transition: border-color 130ms, background 130ms, box-shadow 130ms;
+  }
+  .session-rename-input:focus {
+   border-color: var(--color-accent);
+   background: var(--color-base-100);
+   box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 15%, transparent);
+  }
+  .session-confirm {
+   flex: 1;
+   min-width: 0;
+   font-size: 12.5px;
+   line-height: 1.35;
+   color: var(--color-error);
+   padding: 0 4px;
+  }
+
+  /* Empty state — FollowersTab .state-empty-wrap pattern */
+  .state-empty-wrap {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   justify-content: center;
+   padding: 32px 16px 36px;
+   text-align: center;
+   gap: 10px;
+  }
+  .state-empty-wrap :global(.empty-icon) {
+   color: color-mix(in oklch, var(--color-base-content) 30%, transparent);
+  }
+  .state-empty {
+   font-size: 14px;
+   color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+   margin: 0;
+  }
+  .empty-cta {
+   display: flex; align-items: center; gap: 5px;
+   margin-top: 6px;
+   padding: 7px 14px;
+   border-radius: var(--ui-radius-sm);
+   border: 1.5px solid var(--color-accent);
+   background: var(--color-accent); color: var(--color-base-100);
+   font-weight: 700; font-size: 12.5px;
+   cursor: pointer;
+   transition: opacity 150ms ease;
+  }
+  .empty-cta:hover { opacity: 0.85; }
 
  /* ── Scroll button ───────────────────────────────────── */
  .scroll-btn {

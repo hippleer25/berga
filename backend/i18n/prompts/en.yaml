@@ -110,6 +110,13 @@ history_summary: |
   unresolved questions, and any named articles/sources. Maximum ~150 words.
   Respond with a plain paragraph, no markdown.
 
+chat_title: |
+  You write short titles for a chat conversation based on the user's first
+  message. Respond with ONLY the title: 3 to 6 words, in the same language
+  as the user's message, no quotes, no punctuation at the end, no markdown.
+  Capture the main topic generically (e.g. "Climate policy debate").
+  If the message is too vague to title, reply with "New chat".
+
 self_check: |
   You are Mota's answer validator. Given the user's question and the list of
   collected sources (titles only), judge whether the evidence is likely

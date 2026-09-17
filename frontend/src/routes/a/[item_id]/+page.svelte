@@ -1878,6 +1878,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 font-family: var(--font-article-body);
 font-size: var(--article-font-size, 1.125rem);
 font-weight: var(--article-font-weight, 400);
+font-synthesis-weight: none;
 letter-spacing: var(--article-letter-spacing, normal);
 line-height: var(--article-line-height, 1.8);
         color: color-mix(in oklch, var(--color-base-content) 85%, transparent);
@@ -2018,6 +2019,15 @@ font-family: var(--font-post-title);
         margin-top: 4rem;
         padding-top: 2rem;
         border-top: 1px solid var(--color-base-300);
+        max-width: var(--article-body-max-width, var(--article-max-width, 42rem));
+        margin-left: auto;
+        margin-right: auto;
+    }
+    @media (min-width: 768px) {
+        .similar-section {
+            margin-left: max(240px, calc(50vw - var(--article-body-max-width, var(--article-max-width, 42rem)) / 2));
+            margin-right: auto;
+        }
     }
     .similar-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; color: var(--color-base-content); }
     .similar-title { font-size: 1.1rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
@@ -2036,11 +2046,15 @@ font-family: var(--font-post-title);
     .similar-item:last-child { border-bottom: none; }
     .similar-item:hover {
   background: color-mix(in oklch, var(--color-base-content) 4%, transparent);
-  margin: 0 -16px;
-  padding: 12px 16px;
   border-radius: var(--ui-radius-xs);
   border-color: transparent;
 }
+    @media (max-width: 767.98px) {
+        .similar-item:hover {
+            margin: 0 -16px;
+            padding: 12px 16px;
+        }
+    }
 .similar-item:active {
   background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
 }

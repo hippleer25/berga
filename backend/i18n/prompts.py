@@ -28,6 +28,7 @@ _VALID_PROMPT_NAMES = frozenset({
     "general",
     "resume",
     "history_summary",
+    "chat_title",
     "self_check",
 })
 

@@ -78,3 +78,17 @@ def _sse_thinking(text: str) -> str:
 def _sse_queries(queries: list[str]) -> str:
     payload = json.dumps({"queries": queries}, ensure_ascii=False)
     return f"data: {payload}\n\n"
+
+
+def _sse_session(session_id: int) -> str:
+    payload = json.dumps({"session": {"id": session_id}}, ensure_ascii=False)
+    return f"data: {payload}\n\n"
+
+
+class _Session:
+    """Marker: the session id for this conversation, emitted once at turn start."""
+
+    __slots__ = ('id',)
+
+    def __init__(self, id: int):
+        self.id = id

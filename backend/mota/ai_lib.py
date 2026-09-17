@@ -4,6 +4,11 @@ ai_lib.py
 Abstraction layer for LLM calls via LiteLLM.
 
 Supports: OpenAI, Anthropic, Mistral, NVIDIA NIM, OpenRouter, etc.
+
+Gateways exposing multiple protocol families under a single base URL
+(e.g. opencode go: chat/completions, /responses, /v1/messages) are routed
+through `mota.model_routing`, with a runtime ladder that retries the next
+protocol family when the gateway answers with a generic 500.
 """
 
 import os
@@ -21,6 +26,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 import litellm
 from litellm import completion, acompletion
+
+from mota import model_routing
 
 logger = logging.getLogger(__name__)
 
@@ -42,57 +49,57 @@ _TIER_FALLBACK: dict[str, str | None] = {
     "synthesis": "chatbot",
 }
 
+# Remembers which models already got their streaming-style warning.
+_stream_style_warned: set[str] = set()
+
 
 # ------------------------------------------------------------------
 # Configuração de modelos e credenciais
 # ------------------------------------------------------------------
 
-def _session_headers(config: dict) -> dict:
+def _session_headers(config: dict, session_id: str | None = None) -> dict:
     """
     Provider-specific headers. opencode zen (Console Go) refuses requests
-    without `x-opencode-session`; we send a fresh random id per LLM call so
-    the call is fully stateless on their side (all context/memory lives in
-    the messages we send, avoiding duplicated provider-side chat memory).
+    without `x-opencode-session`; we send a stable per-conversation id when
+    the caller provides one (chat flows) or a fresh random id otherwise
+    (stateless background calls — provider context lives in our messages).
     """
     api_base = (config.get("api_base") or "").lower()
     if "opencode" in api_base:
-        sess = hashlib.sha256(os.urandom(32)).hexdigest()
-        return {"x-opencode-session": f"berga-{sess}"}
+        if not session_id:
+            session_id = hashlib.sha256(os.urandom(32)).hexdigest()
+        return {"x-opencode-session": f"berga-{session_id}"}
     return {}
 
+
 def _get_model_config(usage: LLMUsage) -> dict:
-    prefix = usage.upper()
-    model = os.getenv(f"{prefix}_LLM_MODEL")
+    fallback = _TIER_FALLBACK.get(usage)
+    fb_prefix = fallback.upper() if fallback else None
 
-    if not model:
-        fallback = _TIER_FALLBACK.get(usage)
-        if fallback is None:
-            raise ValueError(
-                f"[AI_LIB] {prefix}_LLM_MODEL não encontrada. "
-                f"Exemplos: 'gpt-4', 'claude-3-sonnet-20240229', 'mistral/mistral-large-latest'"
-            )
-        fb_prefix = fallback.upper()
-        model = os.getenv(f"{fb_prefix}_LLM_MODEL")
+    def _creds_for(prefix: str) -> tuple[str | None, str | None, str | None]:
+        model = os.getenv(f"{prefix}_LLM_MODEL")
         if not model:
-            raise ValueError(
-                f"[AI_LIB] Nem {prefix}_LLM_MODEL nem {fb_prefix}_LLM_MODEL "
-                f"estão definidas. Defina ao menos uma."
-            )
-        api_key = os.getenv(f"{fb_prefix}_LLM_API_KEY")
-        api_base = os.getenv(f"{fb_prefix}_LLM_API_BASE")
-        effective_usage = fallback
-    else:
-        api_key = os.getenv(f"{prefix}_LLM_API_KEY")
-        api_base = os.getenv(f"{prefix}_LLM_API_BASE")
-        effective_usage = usage
+            return None, None, None
+        return model, os.getenv(f"{prefix}_LLM_API_KEY"), os.getenv(f"{prefix}_LLM_API_BASE")
 
-    if not api_key:
+    # Try the requested tier first; if its credentials are incomplete or
+    # invalid, fall back to the next tier instead of crashing the caller.
+    for prefix in [usage.upper(), fb_prefix] if fb_prefix else [usage.upper()]:
+        model, api_key, api_base = _creds_for(prefix)
+        if model and api_key:
+            effective_usage = prefix.lower()
+            break
+    else:
         raise ValueError(
-            f"[AI_LIB] Credencial não encontrada para o tier '{usage}' "
-            f"(resolvido como '{effective_usage}'). "
-            f"Defina {prefix}_LLM_API_KEY"
-            + (f" ou {_TIER_FALLBACK[usage].upper()}_LLM_API_KEY" if _TIER_FALLBACK.get(usage) else "")
-            + "."
+            f"[AI_LIB] Nenhuma credencial completa encontrada para o tier '{usage}'"
+            + (f" nem para o fallback '{fallback}'" if fallback else "")
+            + ". Verifique *_LLM_MODEL e *_LLM_API_KEY."
+        )
+
+    if effective_usage != usage:
+        logger.warning(
+            f"[AI_LIB] Tier '{usage}' sem credenciais completas — "
+            f"usando fallback '{effective_usage}'"
         )
 
     config = {"model": model}
@@ -111,6 +118,113 @@ def _get_model_config(usage: LLMUsage) -> dict:
 
 
 # ------------------------------------------------------------------
+# Protocol routing helpers (multi-surface gateways)
+# ------------------------------------------------------------------
+
+def _resolve_route(config: dict, session_id: str | None):
+    """
+    Resolve where the request should actually go.
+
+    Returns (route, headers) where route is None for plain single-protocol
+    providers, or a dict with the litellm model string / api_base / protocol
+    for multi-surface gateways. Routeinfo is used by the fallback ladder in
+    ai_lib and by call sites that need protocol-conditional parameters
+    (e.g. stream_options).
+    """
+    if not model_routing.is_opencode(config.get("api_base")):
+        return None, _session_headers(config, session_id)
+
+    bare = model_routing.bare_model_name(config["model"])
+    protocol = model_routing.resolve(bare, config.get("api_base"))
+    model_str, api_base = model_routing.litellm_target(
+        bare, protocol, config.get("api_base")
+    )
+    route = {
+        "bare": bare,
+        "protocol": protocol,
+        "model": model_str,
+        "api_base": api_base,
+        "base_api_url": config.get("api_base"),
+        "min_output": model_routing.min_output_tokens(
+            bare, config.get("api_base")
+        ),
+    }
+    headers = _session_headers(config, session_id)
+    logger.debug(f"[AI_LIB] Route {bare} → protocol={protocol}, model={model_str}")
+    return route, headers
+
+
+def _target_for(route: dict, protocol: str) -> dict:
+    """Route dict with a different protocol family (fallback ladder step)."""
+    model_str, api_base = model_routing.litellm_target(
+        route["bare"], protocol, route["base_api_url"]
+    )
+    return {**route, "protocol": protocol, "model": model_str, "api_base": api_base}
+
+
+def _floor_max_tokens(route: dict | None, max_tokens: int) -> int:
+    """Clamp max_tokens up to the model's minimum output budget.
+
+    Reasoning models on the gateway reject requests whose output budget is
+    below the provider's minimum (reasoning consumes part of it), which
+    surfaces as a deceptive "unable to complete request: max_output_tokens"
+    on EVERY protocol surface. Raising the budget avoids that whole class
+    of failure at a small extra cost for short calls (router/self-check).
+    """
+    if route is None:
+        return max_tokens
+    return max(max_tokens, int(route.get("min_output") or 0))
+
+
+def _protocol_sequence(route: dict) -> list[str]:
+    if route is None:
+        return [None]
+    seq = model_routing.protocol_sequence(route["bare"], route["base_api_url"])
+    return seq  # best-known first, then the rest of the ladder
+
+
+def _on_protocol_success(route: dict) -> None:
+    if route is not None:
+        model_routing.record(route["bare"], route["base_api_url"], route["protocol"])
+
+
+def _is_ladder_error(e: Exception) -> bool:
+    """Generic errors worth retrying under another protocol family.
+
+    The gateway's wrong-surface failure is a 500 ("Internal server error")
+    which litellm surfaces as InternalServerError/APIConnectionError.
+    Rate limits/auth errors are NOT protocol problems — re-raise as-is.
+    """
+def _is_ladder_error(e: Exception, include_timeout: bool = False) -> bool:
+    """Generic errors worth retrying under another protocol family.
+
+    The gateway's wrong-surface failure is a 500 ("Internal server error")
+    which litellm surfaces as InternalServerError/APIConnectionError.
+    Rate limits/auth errors are NOT protocol problems — re-raise as-is.
+    Timeouts only count inside the pseudo-stream fallback (a hanging
+    surface should push us to the next protocol there), never in the
+    normal retry loops — otherwise every transient hiccup would be paid
+    with up to three full timeouts.
+    """
+    if isinstance(e, (litellm.RateLimitError, litellm.AuthenticationError)):
+        return False
+    if include_timeout and isinstance(e, litellm.Timeout):
+        return True
+    if isinstance(
+        e, (litellm.InternalServerError, litellm.APIConnectionError, litellm.BadRequestError, litellm.APIError)
+    ):
+        return True
+    return False
+
+
+def _log_protocol_retry(e: Exception, model: str, next_protocol: str) -> None:
+    logger.warning(
+        f"[AI_LIB] Request failed on {model} ({type(e).__name__}: {e}) — "
+        f"retrying through protocol '{next_protocol}'"
+    )
+
+
+# ------------------------------------------------------------------
 # Text generation (non-streaming)
 # ------------------------------------------------------------------
 
@@ -123,6 +237,7 @@ def generate_text(
     usage: LLMUsage = "cluster",
     max_retries: int = 2,
     usage_out: dict | None = None,
+    session_id: str | None = None,
 ) -> str | None:
     config = _get_model_config(usage)
 
@@ -134,19 +249,40 @@ def generate_text(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
+    route, headers = _resolve_route(config, session_id)
+    max_tokens = _floor_max_tokens(route, max_tokens)
+
+    ladder_error = None
+    tokens_budget = max_tokens
+
     for attempt in range(max_retries + 1):
+        protocol_error = False
         try:
             response = completion(
-                model=config["model"],
+                model=route["model"] if route else config["model"],
                 messages=messages,
-                max_tokens=max_tokens,
+                max_tokens=tokens_budget,
                 temperature=temperature,
                 api_key=config.get("api_key"),
-                api_base=config.get("api_base"),
+                api_base=route["api_base"] if route else config.get("api_base"),
                 timeout=DEFAULT_TIMEOUT,
-                extra_headers=_session_headers(config),
+                extra_headers=headers,
             )
+            _on_protocol_success(route)
             content = response.choices[0].message.content
+
+            # Reasoning models can burn the whole output budget on
+            # reasoning, returning empty content with no exception.
+            # Retry with a much larger budget instead of failing silently.
+            if not (content and content.strip()) and attempt < max_retries:
+                tokens_budget = max(tokens_budget * 4, 2000)
+                logger.warning(
+                    f"[AI_LIB] Empty content from {config['model']} "
+                    f"(likely reasoning consumed max_tokens={max_tokens}) — "
+                    f"retrying with {tokens_budget} (attempt {attempt + 1}/{max_retries + 1})"
+                )
+                continue
+
             if usage_out is not None:
                 _u = getattr(response, "usage", None)
                 usage_out["router"] = usage_out.get("router", 0) + int(
@@ -173,8 +309,42 @@ def generate_text(
                 )
                 return None
         except Exception as e:
-            logger.error(f"[AI_LIB] Error calling LLM ({config['model']}): {e}")
-            return None
+            last_error = e
+            protocol_error = _is_ladder_error(e)
+            if not protocol_error:
+                logger.error(f"[AI_LIB] Error calling LLM ({config['model']}): {e}")
+                return None
+        if protocol_error:
+            ladder_error = last_error
+            break
+
+    # Runtime fallback: walk the protocol ladder for multi-surface gateways.
+    if route is not None and ladder_error is not None:
+        for alt in _protocol_sequence(route)[1:]:
+            step = _target_for(route, alt)
+            _log_protocol_retry(ladder_error, step["model"], alt)
+            try:
+                response = completion(
+                    model=step["model"],
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    api_key=config.get("api_key"),
+                    api_base=step["api_base"],
+                    timeout=DEFAULT_TIMEOUT,
+                    extra_headers=headers,
+                )
+                _on_protocol_success(step)
+                content = response.choices[0].message.content
+                return content.strip() if content else None
+            except Exception as e2:
+                logger.warning(
+                    f"[AI_LIB] Ladder retry also failed on {step['model']} "
+                    f"({type(e2).__name__}: {e2})"
+                )
+    elif ladder_error is None:
+        logger.error(f"[AI_LIB] Error calling LLM ({config['model']}) — unknown failure")
+    return None
 
 
 # ------------------------------------------------------------------
@@ -187,23 +357,27 @@ def mota_text_stream(
     max_tokens: int = 4096,
     temperature: float = 0.3,
     usage: LLMUsage = "chatbot",
+    session_id: str | None = None,
 ) -> Generator[str, None, None]:
     config = _get_model_config(usage)
 
     if model:
         config["model"] = model
 
+    route, headers = _resolve_route(config, session_id)
+    max_tokens = _floor_max_tokens(route, max_tokens)
+
     try:
         response = completion(
-            model=config["model"],
+            model=route["model"] if route else config["model"],
             messages=[{"role": "user", "content": prompt}],
             max_tokens=max_tokens,
             temperature=temperature,
             stream=True,
             api_key=config.get("api_key"),
-            api_base=config.get("api_base"),
+            api_base=route["api_base"] if route else config.get("api_base"),
             timeout=DEFAULT_TIMEOUT,
-            extra_headers=_session_headers(config),
+            extra_headers=headers,
         )
         for chunk in response:
             content = chunk.choices[0].delta.content if chunk.choices else None
@@ -228,6 +402,7 @@ def call_llm_with_tools(
     max_tokens: int = 1024,
     temperature: float = 0.3,
     usage: LLMUsage = "chatbot",
+    session_id: str | None = None,
 ):
     """
     Chamada não-streaming com definições de ferramentas (function calling).
@@ -254,29 +429,52 @@ def call_llm_with_tools(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    kwargs = {
-        "model": config["model"],
+    route, headers = _resolve_route(config, session_id)
+    max_tokens = _floor_max_tokens(route, max_tokens)
+
+    base_kwargs = {
         "messages": messages,
         "tools": tools,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "api_key": config.get("api_key"),
-        "api_base": config.get("api_base"),
         "timeout": DEFAULT_TIMEOUT,
-        "extra_headers": _session_headers(config),
+        "extra_headers": headers,
     }
 
     # Only add tool_choice if the caller explicitly requested it.
     # litellm.drop_params=True removes the parameter if the provider doesn't support it.
     if tool_choice is not None:
-        kwargs["tool_choice"] = tool_choice
+        base_kwargs["tool_choice"] = tool_choice
 
     try:
-        response = completion(**kwargs)
+        response = completion(
+            model=route["model"] if route else config["model"],
+            api_base=route["api_base"] if route else config.get("api_base"),
+            **base_kwargs,
+        )
+        _on_protocol_success(route)
         return response
-
     except Exception as e:
-        logger.error(f"[AI_LIB] Error calling LLM with tools ({config.get('model')}): {e}")
+        if route is not None and _is_ladder_error(e):
+            for alt in _protocol_sequence(route)[1:]:
+                step = _target_for(route, alt)
+                _log_protocol_retry(e, step["model"], alt)
+                try:
+                    response = completion(
+                        model=step["model"], api_base=step["api_base"], **base_kwargs
+                    )
+                    _on_protocol_success(step)
+                    return response
+                except Exception as e2:
+                    logger.warning(
+                        f"[AI_LIB] Ladder retry also failed on {step['model']} "
+                        f"({type(e2).__name__}: {e2})"
+                    )
+                    if not _is_ladder_error(e2):
+                        break
+        else:
+            logger.error(f"[AI_LIB] Error calling LLM with tools ({config.get('model')}): {e}")
         return None
 
 
@@ -288,6 +486,7 @@ def call_llm_messages_with_tools(
     max_tokens: int = 512,
     temperature: float = 0.2,
     usage: LLMUsage = "routing",
+    session_id: str | None = None,
 ):
     """
     Tool-calling over a full message list (multi-turn agent loop).
@@ -299,24 +498,49 @@ def call_llm_messages_with_tools(
     if model:
         config["model"] = model
 
-    kwargs = {
-        "model": config["model"],
+    route, headers = _resolve_route(config, session_id)
+    max_tokens = _floor_max_tokens(route, max_tokens)
+
+    base_kwargs = {
         "messages": messages,
         "tools": tools,
         "max_tokens": max_tokens,
         "temperature": temperature,
         "api_key": config.get("api_key"),
-        "api_base": config.get("api_base"),
         "timeout": DEFAULT_TIMEOUT,
-        "extra_headers": _session_headers(config),
+        "extra_headers": headers,
     }
     if tool_choice is not None:
-        kwargs["tool_choice"] = tool_choice
+        base_kwargs["tool_choice"] = tool_choice
 
     try:
-        return completion(**kwargs)
+        response = completion(
+            model=route["model"] if route else config["model"],
+            api_base=route["api_base"] if route else config.get("api_base"),
+            **base_kwargs,
+        )
+        _on_protocol_success(route)
+        return response
     except Exception as e:
-        logger.error(f"[AI_LIB] Error calling LLM loop with tools ({config.get('model')}): {e}")
+        if route is not None and _is_ladder_error(e):
+            for alt in _protocol_sequence(route)[1:]:
+                step = _target_for(route, alt)
+                _log_protocol_retry(e, step["model"], alt)
+                try:
+                    response = completion(
+                        model=step["model"], api_base=step["api_base"], **base_kwargs
+                    )
+                    _on_protocol_success(step)
+                    return response
+                except Exception as e2:
+                    logger.warning(
+                        f"[AI_LIB] Ladder retry also failed on {step['model']} "
+                        f"({type(e2).__name__}: {e2})"
+                    )
+                    if not _is_ladder_error(e2):
+                        break
+        else:
+            logger.error(f"[AI_LIB] Error calling LLM loop with tools ({config.get('model')}): {e}")
         return None
 
 
@@ -331,6 +555,7 @@ def stream_llm_deltas(
     temperature: float = 0.3,
     usage: LLMUsage = "chatbot",
     auto_continue: int = 0,
+    session_id: str | None = None,
 ) -> Generator[tuple[str, str], None, None]:
     """
     Streams a completion as typed deltas:
@@ -341,6 +566,9 @@ def stream_llm_deltas(
     == "length"), up to `auto_continue` extra calls append the partial
     answer and continue seamlessly.
 
+    Multi-surface gateways fall through the protocol ladder on the first
+    (token-less) attempt failure.
+
     Never raises network errors materially — errors are logged and the
     stream simply ends (callers persist what they got).
     """
@@ -348,31 +576,70 @@ def stream_llm_deltas(
     if model:
         config["model"] = model
 
+    route, headers = _resolve_route(config, session_id)
+    max_tokens = _floor_max_tokens(route, max_tokens)
+
+    # Streaming capability diagnostics: warn (once per model/process) when
+    # the tier model can't produce progressive tokens, so a "whole answer
+    # arrives at the end" report is diagnosed in one glance.
+    if route is not None and route["bare"].lower() not in _stream_style_warned:
+        style = model_routing.stream_style(route["bare"], route["base_api_url"])
+        _stream_style_warned.add(route["bare"].lower())
+        if style == "burst":
+            logger.warning(
+                f"[AI_LIB] '{route['bare']}' é um burst-streamer: o gateway bufferiza "
+                f"a geração completa e devolve tudo de uma vez — a resposta do chat "
+                f"não aparecerá progressivamente (prefira um modelo genuine-streaming "
+                f"neste tier, ex. glm/deepseek/mimo)."
+            )
+        elif style == "pseudo":
+            logger.warning(
+                f"[AI_LIB] '{route['bare']}' não faz streaming (pseudo-stream): "
+                f"uma única chamada não-streaming será feita em fallback."
+            )
+
     active_messages = list(messages)
     remaining_continue = max(0, int(auto_continue))
 
+    # Ladder state: only run while nothing has streamed yet. Once a token
+    # reached the client the surface clearly works, so errors are terminal.
+    ladder = _protocol_sequence(route)
+    ladder_idx = 0
+    streamed_anything = False
+    fallback_tried = False
+
     while True:
         partial_answer = ""
+        finish_reason = None
+        error = None
         try:
-            response = completion(
-                model=config["model"],
-                messages=active_messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=True,
-                api_key=config.get("api_key"),
-                api_base=config.get("api_base"),
-                timeout=DEFAULT_TIMEOUT,
-                extra_headers=_session_headers(config),
-                stream_options={"include_usage": True},
-            )
-            finish_reason = None
+            call_kwargs = {
+                "model": (
+                    _target_for(route, ladder[ladder_idx])["model"]
+                    if route else config["model"]
+                ),
+                "messages": active_messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": True,
+                "api_key": config.get("api_key"),
+                "api_base": (
+                    _target_for(route, ladder[ladder_idx])["api_base"]
+                    if route else config.get("api_base")
+                ),
+                "timeout": DEFAULT_TIMEOUT,
+                "extra_headers": headers,
+            }
+            if route is None or route["protocol"] == "chat":
+                call_kwargs["stream_options"] = {"include_usage": True}
+            response = completion(**call_kwargs)
             for chunk in response:
                 if chunk.choices:
                     delta = chunk.choices[0].delta
                     content = getattr(delta, "content", None)
                     reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
                     if content:
+                        streamed_anything = True
                         partial_answer += content
                         yield ("answer", content)
                     if reasoning:
@@ -380,9 +647,108 @@ def stream_llm_deltas(
                     fr = getattr(chunk.choices[0], "finish_reason", None)
                     if fr:
                         finish_reason = fr
+        except GeneratorExit:
+            # Client disconnected — strictly stop (no auto-continue calls).
+            raise
         except Exception as e:
+            error = e
             logger.error(f"[AI_LIB] Streaming error ({config.get('model')}): {e}")
+
+        if error is not None:
+            stepped = False
+            if route is not None and not streamed_anything:
+                for alt in ladder[ladder_idx + 1:]:
+                    step = _target_for(route, alt)
+                    _log_protocol_retry(error, step["model"], alt)
+                    try:
+                        call_kwargs = {
+                            "model": step["model"],
+                            "messages": active_messages,
+                            "max_tokens": max_tokens,
+                            "temperature": temperature,
+                            "stream": True,
+                            "api_key": config.get("api_key"),
+                            "api_base": step["api_base"],
+                            "timeout": DEFAULT_TIMEOUT,
+                            "extra_headers": headers,
+                        }
+                        if step["protocol"] == "chat":
+                            call_kwargs["stream_options"] = {"include_usage": True}
+                        response = completion(**call_kwargs)
+                        ladder_idx = ladder.index(alt)
+                        _on_protocol_success(step)
+                        streamed_anything = True
+                        for chunk in response:
+                            if chunk.choices:
+                                delta = chunk.choices[0].delta
+                                content = getattr(delta, "content", None)
+                                reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                                if content:
+                                    partial_answer += content
+                                    yield ("answer", content)
+                                if reasoning:
+                                    yield ("thinking", reasoning)
+                                fr = getattr(chunk.choices[0], "finish_reason", None)
+                                if fr:
+                                    finish_reason = fr
+                        error = None
+                        stepped = True
+                        break
+                    except GeneratorExit:
+                        raise
+                    except Exception as e2:
+                        logger.warning(
+                            f"[AI_LIB] Ladder retry also failed on {step['model']} "
+                            f"({type(e2).__name__}: {e2})"
+                        )
+                        if not _is_ladder_error(e2):
+                            break
+                        error = e2
+        if error is not None and not stepped:
             break
+
+        # Pseudo-stream fallback: some gateways/models answer stream requests
+        # with a single empty delta (no content at all). When nothing was
+        # streamed, retry once non-streaming on the current surface; if that
+        # also fails with a ladder-able error, walk the remaining ladder.
+        if not partial_answer and error is None and not fallback_tried:
+            fallback_tried = True
+            nonstream_kwargs = dict(call_kwargs)
+            nonstream_kwargs.pop("stream", None)
+            nonstream_kwargs.pop("stream_options", None)
+            attempts = [(ladder[ladder_idx], nonstream_kwargs)]
+            if route is not None:
+                for alt in ladder[ladder_idx + 1:]:
+                    step = _target_for(route, alt)
+                    nonstream_kwargs = dict(nonstream_kwargs)
+                    nonstream_kwargs["model"] = step["model"]
+                    nonstream_kwargs["api_base"] = step["api_base"]
+                    attempts.append((alt, nonstream_kwargs))
+            for alt, kw in attempts:
+                try:
+                    nresp = completion(**kw)
+                    msg = nresp.choices[0].message
+                    content = getattr(msg, "content", None)
+                    reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
+                    if reasoning:
+                        yield ("thinking", reasoning)
+                    if content:
+                        streamed_anything = True
+                        if alt != ladder[ladder_idx]:
+                            _on_protocol_success(_target_for(route, alt))
+                        partial_answer += content
+                        finish_reason = None
+                        yield ("answer", content)
+                        break
+                except Exception as e2:
+                    if not _is_ladder_error(e2, include_timeout=True):
+                        logger.warning(
+                            f"[AI_LIB] Non-stream fallback aborted ({config['model']}/{alt}): {e2}"
+                        )
+                        break
+                    logger.warning(
+                        f"[AI_LIB] Non-stream fallback failed ({config['model']}/{alt}) — walking ladder"
+                    )
 
         truncated = finish_reason == "length" and partial_answer.strip()
         if not (truncated and remaining_continue > 0):
@@ -405,9 +771,12 @@ def stream_llm_response(
     max_tokens: int = 2048,
     temperature: float = 0.3,
     usage: LLMUsage = "chatbot",
+    session_id: str | None = None,
 ) -> Generator[str, None, None]:
     """Legacy compatibility wrapper — plain answer text only."""
-    for kind, text in stream_llm_deltas(messages, model, max_tokens, temperature, usage):
+    for kind, text in stream_llm_deltas(
+        messages, model, max_tokens, temperature, usage, session_id=session_id
+    ):
         if kind == "answer":
             yield text
 
@@ -424,6 +793,7 @@ async def agenerate_text(
     temperature: float = 0.3,
     usage: LLMUsage = "cluster",
     max_retries: int = 2,
+    session_id: str | None = None,
 ) -> str | None:
     config = _get_model_config(usage)
 
@@ -435,17 +805,22 @@ async def agenerate_text(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
+    route, headers = _resolve_route(config, session_id)
+    max_tokens = _floor_max_tokens(route, max_tokens)
+
+    ladder_error = None
+
     for attempt in range(max_retries + 1):
         try:
             response = await acompletion(
-                model=config["model"],
+                model=route["model"] if route else config["model"],
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 api_key=config.get("api_key"),
-                api_base=config.get("api_base"),
+                api_base=route["api_base"] if route else config.get("api_base"),
                 timeout=DEFAULT_TIMEOUT,
-                extra_headers=_session_headers(config),
+                extra_headers=headers,
             )
             content = response.choices[0].message.content
             return content.strip() if content else None
@@ -466,8 +841,39 @@ async def agenerate_text(
                 )
                 return None
         except Exception as e:
+            if route is not None and _is_ladder_error(e):
+                ladder_error = e
+                break
             logger.error(f"[AI_LIB] Error calling LLM async ({config['model']}): {e}")
             return None
+
+    if route is not None and ladder_error is not None:
+        # Runtime fallback: walk the protocol ladder.
+        for alt in _protocol_sequence(route)[1:]:
+            step = _target_for(route, alt)
+            _log_protocol_retry(ladder_error, step["model"], alt)
+            try:
+                response = await acompletion(
+                    model=step["model"],
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    api_key=config.get("api_key"),
+                    api_base=step["api_base"],
+                    timeout=DEFAULT_TIMEOUT,
+                    extra_headers=headers,
+                )
+                _on_protocol_success(step)
+                content = response.choices[0].message.content
+                return content.strip() if content else None
+            except Exception as e2:
+                logger.warning(
+                    f"[AI_LIB] Ladder retry also failed on {step['model']} "
+                    f"({type(e2).__name__}: {e2})"
+                )
+                if not _is_ladder_error(e2):
+                    break
+    return None
 
 
 # ------------------------------------------------------------------

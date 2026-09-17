@@ -16,6 +16,8 @@
     migrateOldFontPref,
     applyFontSize,
     applyFontWeight,
+    allowedFontWeights,
+    snapFontWeight,
     applyLetterSpacing,
     applyLineHeight,
     applyArticleMaxWidth,
@@ -240,7 +242,7 @@
 
     // Load new prefs
     fontSize = get(articleFontSize);
-    fontWeight = get(articleFontWeight);
+    fontWeight = snapFontWeight(activeFonts['article-body'], get(articleFontWeight));
     letterSpacing = get(articleLetterSpacing);
     lineHeight = get(articleLineHeight);
     articleMaxW = get(articleMaxWidth);
@@ -361,7 +363,8 @@
     fontSize = v; applyFontSize(v, true); articleFontSize.setValue(v);
   }
   function setFontWeight(v: number) {
-    fontWeight = v; applyFontWeight(v, true); articleFontWeight.setValue(v);
+    const snapped = snapFontWeight(activeFonts['article-body'], v);
+    fontWeight = snapped; applyFontWeight(snapped, true); articleFontWeight.setValue(snapped);
   }
   function setLetterSpacing(v: number) {
     letterSpacing = v; applyLetterSpacing(v, true); articleLetterSpacing.setValue(v);
@@ -476,6 +479,12 @@
     applyFont(category, fontName, true);
     activeFonts[category] = fontName;
     openFontDropdown = null;
+    if (category === 'article-body') {
+      const snapped = snapFontWeight(fontName, fontWeight);
+      if (snapped !== fontWeight) {
+        fontWeight = snapped; applyFontWeight(snapped, true); articleFontWeight.setValue(snapped);
+      }
+    }
   }
 
   const BUILTIN_THEME_LABELS: Record<string, string> = {

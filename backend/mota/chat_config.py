@@ -72,6 +72,14 @@ HISTORY_VERBATIM_TURNS = int(os.getenv("HISTORY_VERBATIM_TURNS", "3"))
 # Max tokens per turn summary block (summarized older turns are folded into one).
 SUMMARY_CACHE_TTL_SECONDS = 3600
 
+# ── Chat session titles ──────────────────────────────────────────────────────
+# AI-generated session titles (like Claude's): a one-shot LLM call on the
+# SUMMARIZE tier after the first user turn of a session. 0 disables.
+TITLE_GENERATION_ENABLED = bool(int(os.getenv("ENABLE_CHAT_TITLES", "1")))
+# Reasoning providers may spend tokens on reasoning first, so keep room for
+# one shot; the job trims the answer down to a short single-line title.
+TITLE_MAX_TOKENS = int(os.getenv("TITLE_MAX_TOKENS", "512"))
+
 # ── Feature switches ─────────────────────────────────────────────────────────
 ENABLE_WEB_VERTICAL = bool(int(os.getenv("ENABLE_WEB_VERTICAL", "1")))
 ENABLE_WIKI = bool(int(os.getenv("ENABLE_WIKI", "1")))

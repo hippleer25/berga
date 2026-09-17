@@ -263,7 +263,7 @@ def _plan_context(plan: dict) -> str:
     )
 
 
-def _evidence_self_check(plan, user_message, registry, usage_out=None) -> Optional[dict]:
+def _evidence_self_check(plan, user_message, registry, usage_out=None, session_id=None) -> Optional[dict]:
     """
     One cheap ROUTING-tier check: does the collected evidence (registry
     titles) look sufficient to answer? On insufficiency returns a single
@@ -284,6 +284,7 @@ def _evidence_self_check(plan, user_message, registry, usage_out=None) -> Option
             usage="routing",
             max_tokens=160,
             temperature=0.0,
+            session_id=session_id,
             usage_out=usage_out if usage_out is not None else {},
         )
         if not raw:
@@ -383,6 +384,7 @@ def run_agent(
     registry: SourceRegistry,
     usage_out: Optional[dict] = None,
     publisher_affinity: Optional[dict] = None,
+    session_id: str | None = None,
 ) -> Iterator:
     """
     Bounded agent loop.
@@ -422,6 +424,7 @@ def run_agent(
                 max_tokens=512,
                 temperature=0.2,
                 usage="routing",
+                session_id=session_id,
             )
         except Exception as e:
             logger.error(f"[AGENT] Erro na chamada LLM: {e}", exc_info=True)
@@ -527,7 +530,7 @@ def run_agent(
     # ── Self-check: claims vs evidência (1 busca extra no máximo) ─────────────
     if ENABLE_SELF_CHECK and not plan.get("expect_brief"):
         yield _Status("refining")
-        verdict = _evidence_self_check(plan, user_message, registry, usage_out=usage_out)
+        verdict = _evidence_self_check(plan, user_message, registry, usage_out=usage_out, session_id=session_id)
         if verdict and not verdict.get("sufficient") and verdict.get("query"):
             gap_query = str(verdict["query"])
             logger.info(f"[AGENT] SELF_CHECK detectou lacuna → busca extra: {gap_query!r}")
@@ -574,6 +577,7 @@ def run_agent(
         max_tokens=output_budget,
         usage="synthesis",
         auto_continue=SYNTHESIS_MAX_CONTINUATIONS,
+        session_id=session_id,
     ):
         if kind == "thinking":
             yield _Thinking(text)

@@ -1,18 +1,108 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
-	import { activeTabIdx, navVisible, stackedScreenOpen } from '$lib/stores/swipe';
+	import {
+		activeTabIdx,
+		navVisible,
+		navDragOffset,
+		navDragging,
+		stackedScreenOpen
+	} from '$lib/stores/swipe';
 	import { orderedTabs } from '$lib/config/tabs';
 
 	const tabIdx = $derived($activeTabIdx);
 	const covered = $derived($stackedScreenOpen);
+
+	// ── Swipe-down-to-hide gesture (mobile only) ────────────────────────────
+	let navEl: HTMLElement;
+	const isDesktop = () => window.matchMedia('(min-width: 768px)').matches;
+
+	let tsX = 0, tsY = 0;
+	let gAxis: 'h' | 'v' | null = null;
+	let lastY = 0, lastT = 0, velY = 0;
+	let dragMoved = false;
+	let suppressNextClick = false;
+
+	// Total travel the bar needs to fully leave the screen (incl. safe-area/deck lift)
+	function barTravel() {
+		return navEl ? Math.min(140, navEl.getBoundingClientRect().height + 46) : 110;
+	}
+
+	function gestureActive() {
+		return isDesktop() || $stackedScreenOpen || !$navVisible;
+	}
+
+	function onNavTouchStart(e: TouchEvent) {
+		if (gestureActive()) return;
+		const tch = e.touches[0];
+		tsX = tch.clientX;
+		tsY = tch.clientY;
+		gAxis = null;
+		velY = 0;
+		lastY = tch.clientY;
+		lastT = e.timeStamp;
+		dragMoved = false;
+	}
+
+	function onNavTouchMove(e: TouchEvent) {
+		if (gestureActive()) return;
+		const tch = e.touches[0];
+		const dx = tch.clientX - tsX;
+		const dy = tch.clientY - tsY;
+		if (!gAxis) {
+			if (Math.abs(dx) > 6 || Math.abs(dy) > 6)
+				gAxis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+			if (gAxis !== 'v') return;
+			navDragging.set(true);
+		}
+		if (gAxis !== 'v') return;
+		e.preventDefault();
+		if (Math.abs(dy) > 4) dragMoved = true;
+		const dt = e.timeStamp - lastT;
+		if (dt > 0) velY = velY * 0.3 + ((tch.clientY - lastY) / dt) * 0.7;
+		lastY = tch.clientY;
+		lastT = e.timeStamp;
+		navDragOffset.set(Math.max(0, Math.min(barTravel(), dy)));
+	}
+
+	function onNavTouchEnd() {
+		if (gAxis !== 'v') {
+			navDragOffset.set(0);
+			navDragging.set(false);
+			gAxis = null;
+			return;
+		}
+		const dy = lastY - tsY;
+		const off = $navDragOffset;
+		// Fling down or dragged past ~40% of travel commits the hide
+		const commit = off > 24 && (dy > barTravel() * 0.4 || velY > 0.35);
+		navDragging.set(false); // restores the transition
+		suppressNextClick = commit && dragMoved;
+		navDragOffset.set(0); // springs back, or glides into the full hide
+		if (commit) navVisible.set(false);
+		gAxis = null;
+	}
+
+	function onClickCapture(e: MouseEvent) {
+		if (!suppressNextClick) return;
+		e.preventDefault();
+		e.stopPropagation();
+		suppressNextClick = false;
+	}
 </script>
 
 <!-- ── Mobile Bottom Nav ─────────────────────────────────── -->
 <nav
+	bind:this={navEl}
 	class="mobile-nav"
 	class:nav-hidden={!$navVisible}
+	class:dragging={$navDragging}
 	class:covered
+	style:--nav-drag="{$navDragOffset}px"
 	aria-label="{$t('navbar.mainNav')}"
+	onclickcapture={onClickCapture}
+	ontouchstart={onNavTouchStart}
+	ontouchmove={onNavTouchMove}
+	ontouchend={onNavTouchEnd}
 >
 	{#each $orderedTabs as tab, i (tab.id)}
 		{@const active = tabIdx === i}
@@ -70,12 +160,17 @@
 		-webkit-backdrop-filter: var(--glass-blur);
 		border-top: 1px solid var(--glass-border);
 		box-shadow: 0 -4px 20px color-mix(in oklch, black 10%, transparent);
+		transform: translateY(var(--nav-drag, 0px));
+		touch-action: none;
 		transition: transform 320ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease;
 	}
 	.mobile-nav.nav-hidden,
 	.mobile-nav.covered {
-		transform: translateY(calc(100% + env(safe-area-inset-bottom, 0px)));
+		transform: translateY(
+			calc(100% + env(safe-area-inset-bottom, 0px) + var(--nav-drag, 0px))
+		);
 	}
+	.mobile-nav.dragging { transition: none; }
 
 	/* ── Floating deck variant ────────────────────────────── */
 	:global([data-nav-style="deck"]) .mobile-nav {
@@ -94,7 +189,9 @@
 	}
 	:global([data-nav-style="deck"]) .mobile-nav.nav-hidden,
 	:global([data-nav-style="deck"]) .mobile-nav.covered {
-		transform: translateY(calc(100% + env(safe-area-inset-bottom, 0px) + 26px));
+		transform: translateY(
+			calc(100% + env(safe-area-inset-bottom, 0px) + 26px + var(--nav-drag, 0px))
+		);
 	}
 
 	@media (min-width: 768px) { .mobile-nav { display: none; } }

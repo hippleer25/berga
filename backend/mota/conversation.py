@@ -1,15 +1,19 @@
 """
-mota/conversation.py — Per-user conversation memory backed by Redis.
+mota/conversation.py — Per-session conversation memory backed by Redis + MySQL.
 
 Two layers:
-  1. Raw turn log   (`mota:conv:{user_id}`)      — JSON list of turns, 24h TTL,
-     capped at MAX_TURNS. Assistant text is stored truncated to bound memory.
-     Each assistant turn may carry `sources`, so follow-up questions like
-     "what does [3] mean?" or "that article" keep working.
+  1. Raw turn log   (`mota:conv:{user_id}:{session_id}`) — JSON list of turns,
+     24h TTL, capped at MAX_TURNS. Assistant text is stored truncated to bound
+     memory. Each assistant turn may carry `sources`, so follow-up questions
+     like "what does [3] mean?" or "that article" keep working.
   2. Prompt history (`prepare_history`)          — token-budgeted view of the
      log: the most recent HISTORY_VERBATIM_TURNS turns are kept verbatim,
      everything older is folded into a single summary block (SUMMARIZE tier,
      cached in Redis for SUMMARY_CACHE_TTL_SECONDS).
+
+MySQL (`mota/chat_sessions.py`) is the durable source of truth: when the
+Redis hot cache is empty for a session (TTL expiry, restart), it is
+re-hydrated from `chat_messages` on demand.
 """
 
 from __future__ import annotations
@@ -67,51 +71,100 @@ def _get_client() -> Optional[redis.Redis]:
     return _client
 
 
-def _key(user_id: int) -> str:
-    return f"mota:conv:{user_id}"
+def _key(user_id: int, session_id) -> str:
+    return f"mota:conv:{user_id}:{session_id}"
 
 
-def _summary_key(user_id: int) -> str:
-    return f"mota:conv:{user_id}:summary"
+def _summary_key(user_id: int, session_id) -> str:
+    return f"mota:conv:{user_id}:{session_id}:summary"
 
 
-def _sources_key(user_id: int) -> str:
-    return f"mota:conv:{user_id}:sources"
+def _sources_key(user_id: int, session_id) -> str:
+    return f"mota:conv:{user_id}:{session_id}:sources"
+
+
+# ── MySQL hydration ───────────────────────────────────────────────────────────
+
+def _hydrate_from_db(user_id: int, session_id) -> list[dict]:
+    """Load the durable turn log for a session and seed the Redis cache.
+
+    Called when the hot cache is empty but the session exists in MySQL
+    (Redis TTL expired, server restart, resume on another device).
+    Fails open with [] on any error.
+    """
+    try:
+        from mota import chat_sessions
+        turns = chat_sessions.get_messages(user_id, session_id)
+    except Exception as e:
+        logger.warning(f"[CONV] Hydration failed user={user_id} session={session_id}: {e}")
+        return []
+    if not turns:
+        return []
+    client = _get_client()
+    if client is not None:
+        try:
+            trimmed = turns[-MAX_TURNS:]
+            client.setex(
+                _key(user_id, session_id),
+                _TTL_SECONDS,
+                json.dumps(trimmed, ensure_ascii=False),
+            )
+            sources: list[dict] = []
+            for t in trimmed:
+                if t.get("role") == "assistant" and t.get("sources"):
+                    sources = t["sources"]
+            if sources:
+                client.setex(
+                    _sources_key(user_id, session_id),
+                    _TTL_SECONDS,
+                    json.dumps(sources[-_SOURCES_MAX:], ensure_ascii=False),
+                )
+        except Exception as e:
+            logger.warning(f"[CONV] Failed to seed cache from DB session={session_id}: {e}")
+    return turns
 
 
 # ── Raw turn log ──────────────────────────────────────────────────────────────
 
-def load_history(user_id: int) -> list[dict]:
-    """Load raw conversation turns for a user. Returns [] on any failure."""
+def load_history(user_id: int, session_id=None) -> list[dict]:
+    """Load raw conversation turns for a session. Returns [] on any failure.
+
+    Falls back to MySQL-backed hydration when the Redis cache is empty.
+    """
     client = _get_client()
-    if client is None:
+    if client is None or session_id is None:
         return []
     try:
-        raw = client.get(_key(user_id))
+        raw = client.get(_key(user_id, session_id))
         if not raw:
-            return []
+            return _hydrate_from_db(user_id, session_id)
         history = json.loads(raw)
         if isinstance(history, list):
             return [t for t in history if isinstance(t, dict) and t.get("role") and t.get("content")]
         return []
     except Exception as e:
-        logger.warning(f"[CONV] Failed to load history for user={user_id}: {e}")
+        logger.warning(f"[CONV] Failed to load history user={user_id} session={session_id}: {e}")
         return []
 
 
-def save_turn(user_id: int, role: str, content: str, sources: Optional[list[dict]] = None) -> None:
+def save_turn(
+    user_id: int, role: str, content: str,
+    sources: Optional[list[dict]] = None, session_id=None,
+) -> None:
     """
-    Append a turn to the user's conversation history.
+    Append a turn to the session's conversation history.
 
     Truncates assistant content to bound memory. Trims to the last
     MAX_TURNS messages. Refreshes the TTL. `sources` (assistant turns only)
     stores the numbered citation registry entries used by that answer.
+    Durable persistence to MySQL happens in chat.py (`_persist_turn`),
+    not here.
     """
     if not content or not content.strip():
         return
 
     client = _get_client()
-    if client is None:
+    if client is None or session_id is None:
         return
 
     if role == "assistant" and len(content) > _ASSISTANT_MAX_CHARS:
@@ -122,26 +175,29 @@ def save_turn(user_id: int, role: str, content: str, sources: Optional[list[dict
         turn["sources"] = sources
 
     try:
-        history = load_history(user_id)
+        history = load_history(user_id, session_id)
         history.append(turn)
         if len(history) > MAX_TURNS:
             history = history[-MAX_TURNS:]
-        client.setex(_key(user_id), _TTL_SECONDS, json.dumps(history, ensure_ascii=False))
+        client.setex(
+            _key(user_id, session_id), _TTL_SECONDS,
+            json.dumps(history, ensure_ascii=False),
+        )
     except Exception as e:
-        logger.warning(f"[CONV] Failed to save turn for user={user_id}: {e}")
+        logger.warning(f"[CONV] Failed to save turn user={user_id} session={session_id}: {e}")
 
 
-def clear(user_id: int) -> bool:
-    """Clear conversation history + summary cache + sources for a user."""
+def clear(user_id: int, session_id=None) -> bool:
+    """Clear a session's history + summary cache + sources."""
     client = _get_client()
-    if client is None:
+    if client is None or session_id is None:
         return False
     try:
-        client.delete(_key(user_id), _summary_key(user_id), _sources_key(user_id))
-        logger.info(f"[CONV] Cleared history for user={user_id}")
+        client.delete(_key(user_id, session_id), _summary_key(user_id, session_id), _sources_key(user_id, session_id))
+        logger.info(f"[CONV] Cleared history user={user_id} session={session_id}")
         return True
     except Exception as e:
-        logger.warning(f"[CONV] Failed to clear history for user={user_id}: {e}")
+        logger.warning(f"[CONV] Failed to clear history user={user_id} session={session_id}: {e}")
         return False
 
 
@@ -179,7 +235,7 @@ def _summarize_older(turns: list[dict]) -> str:
     return "\n".join(lines[-4:])[:1200]
 
 
-def prepare_history(user_id: int) -> list[dict]:
+def prepare_history(user_id: int, session_id=None) -> list[dict]:
     """
     Build the prompt-ready history message list within HISTORY_TOKEN_BUDGET.
 
@@ -187,7 +243,7 @@ def prepare_history(user_id: int) -> list[dict]:
       [{"role": "system"-equivalent summary as first user-adjacent block}, ...]
     Summary is injected as a system message at the front, labeled as context.
     """
-    history = load_history(user_id)
+    history = load_history(user_id, session_id)
     if not history:
         return []
 
@@ -208,7 +264,7 @@ def prepare_history(user_id: int) -> list[dict]:
 
     if client is not None:
         try:
-            raw = client.get(_summary_key(user_id))
+            raw = client.get(_summary_key(user_id, session_id))
             if raw:
                 cached = json.loads(raw)
                 if cached.get("fingerprint") == fingerprint:
@@ -221,7 +277,7 @@ def prepare_history(user_id: int) -> list[dict]:
         if client is not None:
             try:
                 client.setex(
-                    _summary_key(user_id),
+                    _summary_key(user_id, session_id),
                     SUMMARY_CACHE_TTL_SECONDS,
                     json.dumps({"fingerprint": fingerprint, "text": summary_text},
                                ensure_ascii=False),
@@ -234,12 +290,12 @@ def prepare_history(user_id: int) -> list[dict]:
     return messages
 
 
-def digest_for_router(user_id: int, max_chars: int = 1200) -> str:
+def digest_for_router(user_id: int, session_id=None, max_chars: int = 1200) -> str:
     """
     Compact text digest of the last few turns, used as router context.
     Returns "" when there is no history.
     """
-    history = load_history(user_id)
+    history = load_history(user_id, session_id)
     if not history:
         return ""
     lines = []
@@ -252,32 +308,35 @@ def digest_for_router(user_id: int, max_chars: int = 1200) -> str:
 
 # ── Source registry persistence ──────────────────────────────────────────────
 
-def load_sources(user_id: int) -> list[dict]:
-    """Load the most recent numbered source registry for a user."""
+def load_sources(user_id: int, session_id=None) -> list[dict]:
+    """Load the most recent numbered source registry for a session."""
     client = _get_client()
-    if client is None:
+    if client is None or session_id is None:
         return []
     try:
-        raw = client.get(_sources_key(user_id))
+        raw = client.get(_sources_key(user_id, session_id))
         if not raw:
             return []
         entries = json.loads(raw)
         return entries if isinstance(entries, list) else []
     except Exception as e:
-        logger.warning(f"[CONV] Failed to load sources for user={user_id}: {e}")
+        logger.warning(f"[CONV] Failed to load sources user={user_id} session={session_id}: {e}")
         return []
 
 
-def save_sources(user_id: int, sources: list[dict]) -> None:
+def save_sources(user_id: int, sources: list[dict], session_id=None) -> None:
     """Store the current numbered source registry (capped, TTL-refreshed)."""
     client = _get_client()
-    if client is None or not sources:
+    if client is None or session_id is None or not sources:
         return
     try:
         trimmed = sources[-_SOURCES_MAX:]
-        client.setex(_sources_key(user_id), _TTL_SECONDS, json.dumps(trimmed, ensure_ascii=False))
+        client.setex(
+            _sources_key(user_id, session_id), _TTL_SECONDS,
+            json.dumps(trimmed, ensure_ascii=False),
+        )
     except Exception as e:
-        logger.warning(f"[CONV] Failed to save sources for user={user_id}: {e}")
+        logger.warning(f"[CONV] Failed to save sources user={user_id} session={session_id}: {e}")
 
 
 # ── Daily token guardrail ────────────────────────────────────────────────────

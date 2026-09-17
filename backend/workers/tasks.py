@@ -902,6 +902,72 @@ async def refresh_auto_tags_for_users(ctx, user_ids: list[int]):
     return result
 
 
+# ── Chat session titles ───────────────────────────────────────────────────────
+
+_MAX_SEED_CHARS = 600
+
+
+def _generate_chat_title_sync(user_id: int, conversation_id: int) -> dict:
+    """One-shot LLM title for a chat session (SUMMARIZE tier). Never raises."""
+    from mota import chat_sessions
+    from mota.chat_config import TITLE_GENERATION_ENABLED, TITLE_MAX_TOKENS
+    from mota.tokens import count_tokens
+
+    if not TITLE_GENERATION_ENABLED:
+        return {"enabled": False}
+
+    session = chat_sessions.get_session(user_id, conversation_id)
+    if not session:
+        return {"ok": False, "reason": "session_gone"}
+    if session.get("title"):
+        return {"ok": False, "reason": "already_titled"}  # manual rename wins
+
+    seed = chat_sessions.get_title_seed(user_id, conversation_id)
+    if not seed:
+        seed = session.get("fallback_title")
+    if not seed:
+        return {"ok": False, "reason": "no_seed"}
+
+    seed = seed.strip()
+    not_worth = (
+        len(seed) < 8
+        or count_tokens(seed) > 60
+        or len(" ".join(seed.split())) > _MAX_SEED_CHARS
+    )
+    if not_worth:
+        # Skip the LLM — fallback title already says enough.
+        return {"ok": False, "reason": "seed_too_long_or_short"}
+
+    try:
+        from i18n.prompts import get_prompt
+        from mota.ai_lib import generate_text
+        title = generate_text(
+            seed[:_MAX_SEED_CHARS],
+            system_prompt=get_prompt("chat_title"),
+            usage="summarize",
+            max_tokens=TITLE_MAX_TOKENS,
+            temperature=0.2,
+        )
+    except Exception as e:
+        logger.warning(f"[TITLE] Generation failed session={conversation_id}: {e}")
+        title = None
+
+    if not title:
+        return {"ok": False, "reason": "llm_no_response"}
+
+    # Keep it short, single line, no wrapping quotes.
+    title = title.strip().strip('"').strip("'").splitlines()[0].strip()[:120]
+    if not title:
+        return {"ok": False, "reason": "empty_title"}
+
+    chat_sessions.set_ai_title(user_id, conversation_id, title)
+    return {"ok": True, "title": title}
+
+
+async def generate_chat_title(ctx, user_id: int, conversation_id: int):
+    return await asyncio.to_thread(_generate_chat_title_sync, user_id, conversation_id)
+
+
 # ── Worker lifecycle ───────────────────────────────────────────────────────────
 
 def _wait_for_db_sync() -> None:
@@ -943,6 +1009,7 @@ class WorkerSettings:
         reimage_all,
         refresh_auto_tags,
         refresh_auto_tags_for_users,
+        generate_chat_title,
     ]
     cron_jobs = [
         cron(refresh_stale_feeds, hour=REFRESH_CRON_HOURS, minute=0),

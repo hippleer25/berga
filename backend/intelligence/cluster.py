@@ -366,24 +366,54 @@ def _summarize_cluster(articles: list[dict]) -> str:
 
     prompt = (
         "You are a newspaper editor. "
-        "The headlines below cover the same event from this week. "
-        "Write ONE direct sentence in a journalistic headline style, "
-        "without quotation marks, maximum 20 words, in the language with most posts, "
-        "Do not use any markup or HTML tags. "
-        "Regardless of the original language of the headlines:\n\n"
-        f"{titles_text}\n\nHeadline:"
+        "The headlines below cover the same event from this week.\n\n"
+        "Task: write ONE new headline that synthesizes the shared event across ALL of them.\n"
+        "Rules:\n"
+        "- NEVER copy any single headline (or any part of one) verbatim — always synthesize.\n"
+        "- Merge the common facts; drop outlet-specific details.\n"
+        "- Direct sentence, journalistic headline style, no quotation marks.\n"
+        "- Maximum 20 words.\n"
+        "- Write in the language used by most headlines.\n"
+        "- Do not use any markup, HTML tags, or list formatting.\n\n"
+        f"{titles_text}\n\nSynthesized headline:"
     )
 
-    result = generate_text(prompt, usage="summarize", max_tokens=128, max_retries=5)
+    result = generate_text(prompt, usage="summarize", max_tokens=256, max_retries=5)
 
     if result:
         logger.info(f"[CLUSTER] Summary generated: \"{result}\"")
     else:
-        fallback = titles[0] if titles else "Untitled event"
-        logger.warning(f"[CLUSTER] LLM failed — using fallback: \"{fallback}\"")
-        result = fallback
+        logger.warning(
+            "[CLUSTER] LLM headline generation failed (returned empty/None after "
+            "retries) — falling back to first member title"
+        )
+        result = _fallback_title(articles)
 
     return result
+
+
+# Force regeneration of stored summaries on next run (one-shot escape hatch).
+CLUSTER_REGENERATE_SUMMARIES = os.getenv("CLUSTER_REGENERATE_SUMMARIES", "0") == "1"
+
+
+def _summary_is_stale(summary: str, articles: list[dict]) -> bool:
+    """True when the stored summary is just a copy of a member title (or
+    a generic placeholder) — i.e. a previous fallback, not a real synthesis."""
+    if not summary:
+        return True
+    s = summary.strip().lower()
+    if s in ("untitled event", "no title"):
+        return True
+    for a in articles:
+        t = (a.get("title") or "").strip().lower()
+        if t and t == s:
+            return True
+    return False
+
+
+def _fallback_title(articles: list[dict]) -> str:
+    titles = [a.get("title", "") for a in articles[:10] if a.get("title")]
+    return titles[0] if titles else "Untitled event"
 
 
 def _build_events(
@@ -406,24 +436,30 @@ def _build_events(
     summaries: list[str | None] = [None] * len(valid_clusters)
 
     for i, (cluster, ch) in enumerate(zip(valid_clusters, cluster_hashes)):
-        if ch in existing:
-            summaries[i] = existing[ch]
+        stored = existing.get(ch)
+        if stored and not CLUSTER_REGENERATE_SUMMARIES and not _summary_is_stale(stored, cluster):
+            summaries[i] = stored
             skipped_llm += 1
             logger.debug(
                 f"[CLUSTER] Cluster {i}: reusing DB summary for hash={ch[:12]}"
             )
         else:
+            if stored and _summary_is_stale(stored, cluster):
+                logger.info(
+                    f"[CLUSTER] Cluster {i}: stale summary for hash={ch[:12]} "
+                    f"(copies a member title or placeholder) — regenerating"
+                )
             try:
                 summaries[i] = _summarize_cluster(cluster)
             except Exception as e:
-                logger.warning(f"[CLUSTER] Cluster {i} summary failed: {e}")
-                titles = [a.get("title", "") for a in cluster[:10] if a.get("title")]
-                summaries[i] = titles[0] if titles else "Untitled event"
+                logger.warning(
+                    f"[CLUSTER] Cluster {i} summary failed: {e} — using fallback title"
+                )
+                summaries[i] = None
 
     for i, s in enumerate(summaries):
         if s is None:
-            titles = [a.get("title", "") for a in valid_clusters[i][:10] if a.get("title")]
-            summaries[i] = titles[0] if titles else "Untitled event"
+            summaries[i] = _fallback_title(valid_clusters[i])
 
     if skipped_llm:
         logger.info(

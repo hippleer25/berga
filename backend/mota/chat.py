@@ -17,6 +17,7 @@ Fluxo v3 (router → agente → síntese):
 import os
 os.environ.setdefault('LITELLM_LOG', 'WARNING')
 
+import hashlib
 import logging
 from typing import Iterator, Optional
 
@@ -27,7 +28,7 @@ from mota.chat_config import (
 )
 from mota.chat_sse import (
     _sse_event, _sse_status, _sse_error, _sse_done, _sse_sources, _sse_queries,
-    _sse_thinking, _Status, _Sources, _Queries, _Thinking,
+    _sse_thinking, _Status, _Sources, _Queries, _Thinking, _Session, _sse_session,
 )
 from mota.chat_classifier import is_simple_message
 from mota.chat_search import (
@@ -45,6 +46,25 @@ from intelligence.recommendations import _resolve_feed_filter
 logger = logging.getLogger(__name__)
 
 _CHAT_PUB_AFFINITY_WEIGHT = 0.08
+
+
+def _session_id_for(user, conversation_id=None) -> str | None:
+    """Stable per-conversation session id for the opencode gateway header.
+
+    Derived from the user id + chat session id — stable per conversation,
+    kept stateless upstream (all real context lives in the messages we
+    send), while still letting the gateway benefit from session
+    routing/prompt caching.
+    """
+    if isinstance(user, dict):
+        uid = user.get("id") or user.get("username")
+    else:
+        uid = user
+    if uid is None:
+        return None
+    if conversation_id is not None:
+        return hashlib.sha256(f"chat:{uid}:{conversation_id}".encode()).hexdigest()
+    return hashlib.sha256(f"chat:{uid}".encode()).hexdigest()
 
 
 def _get_publisher_affinity(user_id) -> Optional[dict]:
@@ -119,11 +139,36 @@ def _effective_source_mode(user_mode: str, plan_sources: list[str]) -> str:
     return "mixed"
 
 
+_SOURCE_MODE_ALLOWED = {
+    "local": {"feeds", "events"},          # só corpus local
+    "online": {"web", "wiki"},             # só web aberta (inclui Wikipedia)
+    "mixed": {"feeds", "web", "wiki", "events"},
+}
+
+
+def _clamp_plan_sources(plan: dict, source_mode: str) -> dict:
+    """
+    Restringe as fontes do plano ao que o usuário permitiu no picker.
+    Garante que o plano do router nunca contradiga a escolha do usuário.
+    """
+    allowed = _SOURCE_MODE_ALLOWED.get(source_mode)
+    if not allowed or source_mode == "mixed":
+        return plan
+    plan["sources"] = [s for s in plan["sources"] if s in allowed]
+    # wiki deixa de ser alvo → remove; sub-queries verticais "web" são
+    # rebaixadas para "news" para não buscar fora do corpus permitido.
+    if "web" not in allowed:
+        plan["sub_queries"] = [
+            {**sq, "vertical": "news"} for sq in plan.get("sub_queries", [])
+        ]
+    return plan
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # MODOS DE RESPOSTA SIMPLES
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _stream_general(user_message: str, history: list[dict]) -> Iterator:
+def _stream_general(user_message: str, history: list[dict], session_id: str | None = None) -> Iterator:
     """Resposta direta do tier synthesis (sem busca)."""
     from i18n.prompts import get_prompt
     msgs = [
@@ -131,7 +176,12 @@ def _stream_general(user_message: str, history: list[dict]) -> Iterator:
         *history,
         {"role": "user", "content": user_message},
     ]
-    for chunk in stream_llm_response(msgs, max_tokens=SYNTHESIS_OUTPUT_TOKENS, usage="synthesis"):
+    for chunk in stream_llm_response(
+        msgs,
+        max_tokens=SYNTHESIS_OUTPUT_TOKENS,
+        usage="synthesis",
+        session_id=session_id,
+    ):
         yield chunk
 
 
@@ -144,6 +194,7 @@ def _handle_direct_articles(
     articles: list[dict],
     history: list[dict] | None = None,
     registry: SourceRegistry | None = None,
+    session_id: str | None = None,
 ) -> Iterator:
     """Processa artigos enviados diretamente pelo usuário (com citações)."""
     from i18n.prompts import get_prompt
@@ -206,6 +257,7 @@ def _handle_direct_articles(
         max_tokens=SYNTHESIS_OUTPUT_TOKENS,
         usage="synthesis",
         auto_continue=SYNTHESIS_MAX_CONTINUATIONS,
+        session_id=session_id,
     ):
         if kind == "thinking":
             yield _Thinking(text)
@@ -224,11 +276,14 @@ def _handle_direct_articles(
 # HANDLER PRINCIPAL (RAW)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _generate_chat_stream(chat_request, user, history: list[dict] | None = None) -> Iterator:
+def _generate_chat_stream(chat_request, user, history: list[dict] | None = None,
+                          conversation_id=None) -> Iterator:
     """Handler principal do chat (retorna chunks/marcadores sem formatação SSE)."""
     logger.info(f"\n{'#'*70}")
     logger.info(f"[CHAT] Usuário: {user.get('username', user)}")
     logger.info(f"[CHAT] Mensagem: {chat_request.message!r}")
+    if conversation_id is not None:
+        logger.info(f"[CHAT] Sessão: {conversation_id}")
 
     user_message = chat_request.message
     source_mode = getattr(chat_request, "source_mode", "mixed")
@@ -236,6 +291,7 @@ def _generate_chat_stream(chat_request, user, history: list[dict] | None = None)
     folder_id = getattr(chat_request, "folder_id", None)
     feed_sha256 = getattr(chat_request, "feed_sha256", None)
     history = history or []
+    gateway_session = _session_id_for(user, conversation_id)
 
     feed_filter = _resolve_chat_feed_filter(user, scope, folder_id, feed_sha256)
     logger.info(f"[CHAT] Escopo: {scope} | folder={folder_id} | feed={feed_sha256} "
@@ -249,32 +305,40 @@ def _generate_chat_stream(chat_request, user, history: list[dict] | None = None)
     ]
     if direct_articles:
         logger.info(f"[CHAT] Modo: artigos diretos ({len(direct_articles)} artigos)")
-        yield from _handle_direct_articles(user_message, direct_articles, history=history)
+        yield from _handle_direct_articles(
+            user_message, direct_articles, history=history, session_id=gateway_session
+        )
         return
 
     # ── CASO 2: Saudação/pureza trivial (regex; sem custo de LLM) ─────────────
     if is_simple_message(user_message):
         logger.info("[CHAT] → Mensagem simples: resposta direta")
         yield _Status("thinking")
-        yield from _stream_general(user_message, history)
+        yield from _stream_general(user_message, history, session_id=gateway_session)
         return
 
     # ── CASO 3: Router LLM + agent loop ──────────────────────────────────────
     user_id = user.get("id") if isinstance(user, dict) else None
-    digest = conversation.digest_for_router(user_id) if user_id else ""
+    digest = conversation.digest_for_router(user_id, conversation_id) if user_id else ""
     usage_out: dict = {}
 
     yield _Status("planning")
-    plan = route_message(user_message, history_digest=digest, usage_out=usage_out)
+    plan = route_message(
+        user_message,
+        history_digest=digest,
+        usage_out=usage_out,
+        session_id=gateway_session,
+    )
 
     if plan["kind"] in ("greeting", "general_chat"):
         logger.info(f"[CHAT] → Router: {plan['kind']} → resposta direta")
-        yield from _stream_general(user_message, history)
+        yield from _stream_general(user_message, history, session_id=gateway_session)
         if user_id:
             conversation.add_token_usage(user_id, usage_out)
         return
 
-    registry = SourceRegistry(conversation.load_sources(user_id) if user_id else [])
+    registry = SourceRegistry(conversation.load_sources(user_id, conversation_id) if user_id else [])
+    plan = _clamp_plan_sources(plan, source_mode)
     effective_mode = _effective_source_mode(source_mode, plan["sources"])
     publisher_affinity = _get_publisher_affinity(user_id) if (scope == "mine" and feed_filter) else None
     logger.info(f"[CHAT] Router: kind={plan['kind']} sources={plan['sources']} "
@@ -290,10 +354,11 @@ def _generate_chat_stream(chat_request, user, history: list[dict] | None = None)
         registry=registry,
         usage_out=usage_out,
         publisher_affinity=publisher_affinity,
+        session_id=gateway_session,
     )
 
     if user_id:
-        conversation.save_sources(user_id, registry.entries)
+        conversation.save_sources(user_id, registry.entries, conversation_id)
         total = conversation.add_token_usage(user_id, usage_out)
         logger.info(f"[CHAT][USAGE] turn total: {usage_out} → daily={total}")
 
@@ -306,8 +371,26 @@ def receive(chat_request, user) -> Iterator[str]:
     """
     Handler principal do chat com formatação SSE.
     """
+    from mota import chat_sessions
+
     user_id = user.get("id") if isinstance(user, dict) else None
-    history = conversation.prepare_history(user_id) if user_id else []
+    conversation_id = getattr(chat_request, "session_id", None)
+    created_session = False
+    if user_id and conversation_id is not None:
+        try:
+            conversation_id = int(conversation_id)
+        except (TypeError, ValueError):
+            conversation_id = None
+        if conversation_id is not None and not chat_sessions.session_exists(user_id, conversation_id):
+            conversation_id = None
+    if user_id and conversation_id is None:
+        # New session: created lazily on the first message of a chat.
+        conversation_id = chat_sessions.create_session(user_id, chat_request.message)
+        created_session = conversation_id is not None
+        if not created_session:
+            logger.warning("[CHAT] Sessão não pôde ser criada — seguindo sem persistência")
+
+    history = conversation.prepare_history(user_id, conversation_id) if user_id else []
     if history:
         logger.info(f"[CHAT] História preparada: {len(history)} mensagens para user={user_id}")
 
@@ -315,7 +398,10 @@ def receive(chat_request, user) -> Iterator[str]:
     sources_to_persist: Optional[list[dict]] = None
 
     try:
-        for chunk in _generate_chat_stream(chat_request, user, history=history):
+        if created_session and conversation_id is not None:
+            yield _sse_session(conversation_id)
+        for chunk in _generate_chat_stream(chat_request, user, history=history,
+                                           conversation_id=conversation_id):
             if isinstance(chunk, _Status):
                 yield _sse_status(chunk.phase)
             elif isinstance(chunk, _Queries):
@@ -333,25 +419,84 @@ def receive(chat_request, user) -> Iterator[str]:
     except GeneratorExit:
         # Client disconnected mid-stream (page close, navigation). Persist
         # whatever streamed so the turn is not lost server-side.
-        _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_persist)
+        _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_persist,
+                      conversation_id)
         raise
     except Exception as e:
         logger.error(f"[CHAT] ✗ Erro não tratado: {e}", exc_info=True)
         yield _sse_error(str(e))
 
-    _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_persist)
+    if not assistant_chunks:
+        logger.error("[CHAT] ✗ Síntese não produziu resposta — emitindo erro SSE")
+        yield _sse_error(
+            "Não consegui gerar uma resposta agora — o modelo não respondeu. Tente novamente em instantes."
+        )
+
+    _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_persist,
+                  conversation_id, first_turn=created_session)
     yield _sse_done()
 
 
-def _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_persist) -> None:
+def _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_persist,
+                  conversation_id=None, first_turn: bool = False) -> None:
     """Shares the same persistence for normal completion and client disconnects."""
-    if not user_id:
+    if not user_id or conversation_id is None:
         return
     user_message = chat_request.message
-    conversation.save_turn(user_id, "user", user_message)
+    conversation.save_turn(user_id, "user", user_message, session_id=conversation_id)
+    from mota import chat_sessions
+    chat_sessions.append_message(user_id, conversation_id, "user", user_message)
     if assistant_chunks:
         assistant_response = "".join(assistant_chunks)
         if assistant_response.strip():
             conversation.save_turn(
-                user_id, "assistant", assistant_response, sources=sources_to_persist
+                user_id, "assistant", assistant_response, sources=sources_to_persist,
+                session_id=conversation_id,
             )
+            chat_sessions.append_message(
+                user_id, conversation_id, "assistant", assistant_response,
+                sources=sources_to_persist,
+            )
+    if first_turn:
+        # Enqueue AI title generation for this brand-new session (fail-open).
+        _enqueue_title_generation(user_id, conversation_id)
+
+
+def _enqueue_title_generation(user_id, conversation_id) -> None:
+    """Try to enqueue the async AI title job; harmless if arq is unavailable.
+
+    Runs in a short-lived daemon thread with its own event loop + arq pool,
+    because receive() iterates in a worker thread and sharing the lifespan
+    pool across loops is unsafe.
+    """
+    if not user_id or conversation_id is None:
+        return
+    from mota import chat_config
+    if not getattr(chat_config, "TITLE_GENERATION_ENABLED", True):
+        return
+
+    def _job() -> None:
+        try:
+            import asyncio
+            from arq import create_pool
+            from arq.connections import RedisSettings
+
+            async def _enqueue() -> None:
+                pool = await create_pool(RedisSettings(
+                    host=os.getenv("REDIS_HOST", "redis"),
+                    port=int(os.getenv("REDIS_PORT", "6379")),
+                ))
+                try:
+                    await pool.enqueue_job(
+                        "generate_chat_title", user_id, int(conversation_id)
+                    )
+                finally:
+                    await pool.aclose()
+
+            asyncio.run(_enqueue())
+            logger.info(f"[CHAT] Título agendado para sessão {conversation_id}")
+        except Exception as e:
+            logger.warning(f"[CHAT] Falha ao agendar título da sessão {conversation_id}: {e}")
+
+    import threading
+    threading.Thread(target=_job, name=f"title-gen-{conversation_id}", daemon=True).start()

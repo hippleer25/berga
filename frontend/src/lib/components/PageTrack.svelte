@@ -4,6 +4,7 @@ import { swipeOffset, swipeDragging, activeTabIdx, navVisible } from '$lib/store
 import { orderedTabs, TAB_LOADERS, type TabId } from '$lib/config/tabs';
 import { onMount } from 'svelte';
 import type { Component } from 'svelte';
+import NavRevealZone from '$lib/components/NavRevealZone.svelte';
 
 const HOME_ID: TabId = 'home';
 
@@ -95,9 +96,14 @@ $effect(() => {
         swipeDragging.set(isDragging);
     });
 
-    // Restore NavBar when leaving Home tab
+    // NavBar auto-hide: Home hides on scroll-down; on Mota (mobile) the chat
+    // takes the full screen, so the nav is forced away and restored on exit.
+    const MOTA_ID: TabId = 'mota';
+    const isDesktop = () => window.matchMedia('(min-width: 768px)').matches;
     $effect(() => {
-        if (activeTabId !== HOME_ID) navVisible.set(true);
+        if (isDesktop()) return;
+        if (activeTabId === MOTA_ID) navVisible.set(false);
+        else if (activeTabId !== HOME_ID) navVisible.set(true);
     });
 
     // ── Touch handlers ────────────────────────────────────────────────────────
@@ -252,6 +258,7 @@ function onTouchMove(e: TouchEvent) {
     </div>
   {/each}
 </div>
+<NavRevealZone />
 </div>
 
 <style>

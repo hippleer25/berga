@@ -96,7 +96,15 @@ history_summary: |
   d'actualité) en un résumé factuel court, dans la langue des messages de
   l'utilisateur. Conserve : les sujets abordés, les faits/chiffres clés, les
   décisions, les questions non résolues et les articles/sources nommés.
-  Maximum ~150 mots. Réponds en un simple paragraphe, sans markdown.
+   Maximum ~150 mots. Réponds en un simple paragraphe, sans markdown.
+
+chat_title: |
+  Tu rédiges des titres courts pour une conversation à partir du premier
+  message de l'utilisateur. Réponds UNIQUEMENT avec le titre : 3 à 6 mots,
+  dans la langue du message, sans guillemets, sans ponctuation finale,
+  sans markdown. Capture le sujet principal de façon générique (p. ex.
+  « Débat sur la politique climatique »). Si le message est trop vague
+  pour être titré, réponds « Nouvelle conversation ».
 
 self_check: |
   Tu es le validateur de réponses de Mota. Étant donné la question de

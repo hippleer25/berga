@@ -116,7 +116,15 @@ history_summary: |
   notícias) em um resumo factual curto, no mesmo idioma das mensagens do
   usuário. Preserve: tópicos discutidos, fatos/números-chave citados,
   decisões, perguntas sem resposta e artigos/fontes nomeados. Máximo de
-  ~150 palavras. Responda com um parágrafo simples, sem markdown.
+   ~150 palavras. Responda com um parágrafo simples, sem markdown.
+
+chat_title: |
+  Você escreve títulos curtos para uma conversa de chat a partir da primeira
+  mensagem do usuário. Responda APENAS com o título: 3 a 6 palavras, no
+  mesmo idioma da mensagem, sem aspas, sem pontuação final, sem markdown.
+  Captura o tópico principal de forma genérica (ex.: "Debate de política
+  climática"). Se a mensagem for vaga demais para decidir um título,
+  responda "Nova conversa".
 
 self_check: |
   Você é o validador de respostas do Mota. Dada a pergunta do usuário e a

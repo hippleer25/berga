@@ -224,7 +224,7 @@ def _load_model() -> SentenceTransformer:
             onnx_file,
             exc,
         )
-        last_exc = exc
+            last_exc = exc
 
     raise RuntimeError(
         f"No ONNX variant could be loaded for model '{MODEL_NAME}'. "

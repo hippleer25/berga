@@ -83,6 +83,8 @@ services:
     container_name: berga_api
     env_file:
       - .env
+    environment:
+      - HF_HOME=/home/appuser/.cache/huggingface
     ports:
       - "5746:5746"
     depends_on:
@@ -96,6 +98,7 @@ services:
       - app_network
     volumes:
       - ./backend:/code
+      - hf_cache:/home/appuser/.cache/huggingface
     deploy:
       resources:
         limits:
@@ -120,3 +123,4 @@ volumes:
   mysql_data:
   qdrant_data:
   redis_data:
+  hf_cache:
