@@ -3,5 +3,16 @@
   "home": "Startseite",
   "events": "Suchen",
   "mota": "Mota",
-  "mainNav": "Hauptnavigation"
+  "mainNav": "Hauptnavigation",
+  "splitOpenLeft": "In linker Ansicht öffnen",
+  "splitOpenRight": "In rechter Ansicht öffnen",
+  "splitMoveLeft": "In linke Ansicht verschieben",
+  "splitMoveRight": "In rechte Ansicht verschieben",
+  "splitRemove": "Aus geteilter Ansicht entfernen",
+  "splitDropLeft": "Zum Öffnen in der linken Hälfte ablegen",
+  "splitDropRight": "Zum Öffnen in der rechten Hälfte ablegen",
+  "splitInvert": "Ansichten tauschen",
+  "splitClose": "Geteilte Ansicht schließen",
+  "splitPaneLeft": "Linke Ansicht",
+  "splitPaneRight": "Rechte Ansicht"
 }

@@ -10,11 +10,14 @@
 	import NavBar from '$lib/components/NavBar.svelte';
 	import PageTrack from '$lib/components/PageTrack.svelte';
 	import LeftPanel from '$lib/components/LeftPanel.svelte';
+	import SplitView from '$lib/components/SplitView.svelte';
+	import SplitDropZones from '$lib/components/SplitDropZones.svelte';
 	import { drawerOpen } from '$lib/stores/drawer';
 	import { initAppearance } from '$lib/utils/appearance';
 	import { initUiPrefs } from '$lib/stores/uiPrefs';
 	import { sessionChecked, sessionLoggedIn } from '$lib/stores/session';
 	import { stackedScreenOpen } from '$lib/stores/swipe';
+	import { splitTab, splitSide } from '$lib/stores/splitView';
 	import { resetScreenStack } from '$lib/utils/screenStack';
 	import { orderedTabs } from '$lib/config/tabs';
 	import "../app.css";
@@ -88,10 +91,19 @@
     <!-- Tab layer: always mounted beneath stacked screens so swipe-to-close
          reveals the live tab. Drawer outside PageTrack to avoid its
          transform stacking context. -->
-    <div class="tabs-layer" class:stacked={$stackedScreenOpen}>
+    <div class="tabs-layer" class:stacked={$stackedScreenOpen} class:split={$splitTab !== null}>
         <LeftPanel bind:open={$drawerOpen} />
         <NavBar />
-        <PageTrack />
+        <div class="page-panes">
+            {#if $splitTab && $splitSide === 'left'}
+                <div class="pane pane-split"><SplitView /></div>
+            {/if}
+            <div class="pane pane-main"><PageTrack /></div>
+            {#if $splitTab && $splitSide === 'right'}
+                <div class="pane pane-split"><SplitView /></div>
+            {/if}
+        </div>
+        <SplitDropZones />
     </div>
 {/if}
 {@render children()}
@@ -99,6 +111,43 @@
 <style>
 	.tabs-layer.stacked {
 		pointer-events: none;
+	}
+
+	/* Split viewer (desktop only): main pane + pinned pane side by side.
+	   Panes get their own scroll; the stacked-screen rules below still
+	   hide the whole layer while a screen is open. */
+	.page-panes {
+		display: block;
+	}
+	@media (min-width: 768px) {
+		.tabs-layer.split .page-panes {
+			display: flex;
+			position: fixed;
+			inset: 0;
+			left: var(--sidebar-w, 240px);
+		}
+		.tabs-layer.split .pane {
+			flex: 1 1 50%;
+			min-width: 0;
+			height: 100%;
+			overflow-y: auto;
+			overflow-x: hidden;
+			scrollbar-width: none;
+			background: var(--color-base-100);
+		}
+		.tabs-layer.split .pane::-webkit-scrollbar {
+			width: 0;
+			height: 0;
+			display: none;
+		}
+		/* Tab content assumes full-viewport width (sidebar-aware centering);
+		   inside a 50% pane, re-center within the pane instead. */
+		.tabs-layer.split :global(.main-content) {
+			padding-left: 16px !important;
+			padding-right: 16px !important;
+			margin-left: auto !important;
+			margin-right: auto !important;
+		}
 	}
 
 	/* Desktop: stacked screens are normal pages with the sidebar visible,

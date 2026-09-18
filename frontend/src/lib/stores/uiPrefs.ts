@@ -389,6 +389,91 @@ export function getSavedChipIcons(): boolean {
 
 export const uiChipIcons: Writable<boolean> = writable(getSavedChipIcons());
 
+/* ── Navbar background ─────────────────────────────────────────────────── */
+
+export type NavBg = 'default' | 'white' | 'berga-white' | 'berga-gray' | 'dark';
+export const NAV_BG_BERGA_WHITE = '#fbfaf7';
+export const NAV_BG_BERGA_GRAY = '#f8f7f3';
+const NAV_BG_KEY = 'ui-nav-bg';
+const NAV_BG_VALUES: NavBg[] = ['default', 'white', 'berga-white', 'berga-gray', 'dark'];
+
+/** Pre-rename 'berga-white' (#f8f7f3) → 'berga-gray'. */
+function migrateNavBg(raw: string | null): NavBg | null {
+	if (raw === 'berga-white') {
+		localStorage.setItem(NAV_BG_KEY, 'berga-gray');
+		return 'berga-gray';
+	}
+	return raw && NAV_BG_VALUES.includes(raw as NavBg) ? (raw as NavBg) : null;
+}
+
+export function applyNavBg(value: NavBg, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-nav-bg', value);
+	if (persist) localStorage.setItem(NAV_BG_KEY, value);
+}
+
+export function getSavedNavBg(): NavBg {
+	if (!browser) return 'berga-gray';
+	return migrateNavBg(localStorage.getItem(NAV_BG_KEY)) ?? 'berga-gray';
+}
+
+export const uiNavBg: Writable<NavBg> = writable(getSavedNavBg());
+
+/* ── Page background ───────────────────────────────────────────────────── */
+
+export type PageBg = 'theme' | 'white' | 'berga-white' | 'berga-gray' | 'dark';
+const PAGE_BG_KEY = 'ui-page-bg';
+const PAGE_BG_VALUES: PageBg[] = ['theme', 'white', 'berga-white', 'berga-gray', 'dark'];
+const PAGE_BG_HASHES: Record<Exclude<PageBg, 'theme'>, string> = {
+	'white': '#ffffff',
+	'berga-white': '#fbfaf7',
+	'berga-gray': '#f8f7f3',
+	'dark': '#17181d',
+};
+
+/**
+ * Full theme switch: light values ride on the light (`berga-black`) palette,
+ * dark on the dark (`berga`) one; the chosen attribute only re-points the
+ * base surfaces. 'theme' clears the override and follows preferred-theme.
+ */
+export function applyPageBg(value: PageBg, persist = false) {
+	if (!browser) return;
+	const root = document.documentElement;
+	if (value === 'theme') {
+		root.removeAttribute('data-page-bg');
+		if (persist) localStorage.removeItem(PAGE_BG_KEY);
+	} else {
+		root.setAttribute('data-theme', value === 'dark' ? 'berga' : 'berga-black');
+		root.setAttribute('data-page-bg', value);
+		if (persist) localStorage.setItem(PAGE_BG_KEY, value);
+	}
+}
+
+export function getSavedPageBg(): PageBg {
+	if (!browser) return 'theme';
+	const v = localStorage.getItem(PAGE_BG_KEY) as PageBg | null;
+	return v && PAGE_BG_VALUES.includes(v) ? v : 'theme';
+}
+
+export const uiPageBg: Writable<PageBg> = writable(getSavedPageBg());
+
+/* ── Desktop sidebar collapse ──────────────────────────────────────────── */
+
+const SIDEBAR_COLLAPSED_KEY = 'ui-sidebar-collapsed';
+
+export function applySidebarCollapsed(on: boolean, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-sidebar-collapsed', on ? 'on' : 'off');
+	if (persist) localStorage.setItem(SIDEBAR_COLLAPSED_KEY, on ? 'true' : 'false');
+}
+
+export function getSavedSidebarCollapsed(): boolean {
+	if (!browser) return false;
+	return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true';
+}
+
+export const uiSidebarCollapsed: Writable<boolean> = writable(getSavedSidebarCollapsed());
+
 /* ── Init / reset ───────────────────────────────────────────────────────── */
 
 export function initUiPrefs() {
@@ -406,6 +491,9 @@ export function initUiPrefs() {
 	applyDeckHeightVw(getSavedDeckHeightVw());
 	applyDeckRadiusPct(getSavedDeckRadiusPct());
 	applyWelcomeBold(getSavedWelcomeBold());
+	applyNavBg(getSavedNavBg());
+	applySidebarCollapsed(getSavedSidebarCollapsed());
+	applyPageBg(getSavedPageBg());
 }
 
 export function resetUiPrefs() {
@@ -435,4 +523,10 @@ export function resetUiPrefs() {
 	applyDeckRadiusPct(DECK_RADIUS_PCT_DEFAULT, true);
 	uiWelcomeBold.set(false);
 	applyWelcomeBold(false, true);
+	uiNavBg.set('berga-gray');
+	applyNavBg('berga-gray', true);
+	uiSidebarCollapsed.set(false);
+	applySidebarCollapsed(false, true);
+	uiPageBg.set('theme');
+	applyPageBg('theme', true);
 }

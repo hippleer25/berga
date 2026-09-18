@@ -30,6 +30,44 @@
           // On error (e.g.: localStorage blocked), uses default light theme
           document.documentElement.setAttribute('data-theme', 'berga');
         }
+
+        try {
+          var NAV_BG_VALUES = ['default', 'white', 'berga-white', 'berga-gray', 'dark'];
+          var savedNavBg = localStorage.getItem('ui-nav-bg');
+          if (savedNavBg === 'berga-white') {
+            // Pre-rename 'berga-white' (#f8f7f3) → 'berga-gray'
+            savedNavBg = 'berga-gray';
+            localStorage.setItem('ui-nav-bg', 'berga-gray');
+          }
+          document.documentElement.setAttribute(
+            'data-nav-bg',
+            savedNavBg && NAV_BG_VALUES.indexOf(savedNavBg) !== -1 ? savedNavBg : 'berga-gray'
+          );
+        } catch (e) {
+          document.documentElement.setAttribute('data-nav-bg', 'berga-gray');
+        }
+
+        try {
+          var PAGE_BG_VALUES = ['theme', 'white', 'berga-white', 'berga-gray', 'dark'];
+          var savedPageBg = localStorage.getItem('ui-page-bg');
+          if (savedPageBg && PAGE_BG_VALUES.indexOf(savedPageBg) !== -1) {
+            document.documentElement.setAttribute('data-page-bg', savedPageBg);
+            if (savedPageBg === 'dark') {
+              document.documentElement.setAttribute('data-theme', 'berga');
+            } else if (savedPageBg !== 'theme') {
+              document.documentElement.setAttribute('data-theme', 'berga-black');
+            }
+          }
+        } catch (e) {
+          document.documentElement.removeAttribute('data-page-bg');
+        }
+
+        try {
+          var sidebarCollapsed = localStorage.getItem('ui-sidebar-collapsed') === 'true';
+          document.documentElement.setAttribute('data-sidebar-collapsed', sidebarCollapsed ? 'on' : 'off');
+        } catch (e) {
+          document.documentElement.setAttribute('data-sidebar-collapsed', 'off');
+        }
       })();
     </script>
 

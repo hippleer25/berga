@@ -524,6 +524,9 @@ const res = await apiFetch(`/api/mota/resume/${loadedItemId}`, {
                     }
                 }
             }
+            if (!resumeText && !resumeError) {
+                resumeError = get(t)('article.resumeError');
+            }
         } catch (err: any) {
             if (err?.name === 'AbortError') {
                 // Aborted on pagehide to keep bfcache eligible — silent.
@@ -1420,7 +1423,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     }
     @media (min-width: 768px) {
         .top-bar {
-            margin-left: max(240px, calc(50vw - var(--article-body-max-width, var(--article-max-width, 42rem)) / 2));
+            margin-left: max(var(--sidebar-w, 240px), calc(50vw - var(--article-body-max-width, var(--article-max-width, 42rem)) / 2));
             margin-right: auto;
             padding-left: 0;
             padding-right: 0;
@@ -1481,7 +1484,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     }
     @media (min-width: 768px) {
         .article-header {
-            margin-left: max(240px, calc(50vw - var(--article-title-max-width, 42rem) / 2));
+            margin-left: max(var(--sidebar-w, 240px), calc(50vw - var(--article-title-max-width, 42rem) / 2));
             margin-right: auto;
         }
     }
@@ -1888,7 +1891,7 @@ line-height: var(--article-line-height, 1.8);
     }
     @media (min-width: 768px) {
         .article-body {
-            margin-left: max(240px, calc(50vw - var(--article-body-max-width, var(--article-max-width, 42rem)) / 2));
+            margin-left: max(var(--sidebar-w, 240px), calc(50vw - var(--article-body-max-width, var(--article-max-width, 42rem)) / 2));
             margin-right: auto;
         }
     }
@@ -2025,7 +2028,7 @@ font-family: var(--font-post-title);
     }
     @media (min-width: 768px) {
         .similar-section {
-            margin-left: max(240px, calc(50vw - var(--article-body-max-width, var(--article-max-width, 42rem)) / 2));
+            margin-left: max(var(--sidebar-w, 240px), calc(50vw - var(--article-body-max-width, var(--article-max-width, 42rem)) / 2));
             margin-right: auto;
         }
     }

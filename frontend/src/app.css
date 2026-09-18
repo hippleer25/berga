@@ -501,12 +501,62 @@ textarea:focus:not(:focus-visible) {
   justify-content: center;
 }
 
+/* ── Navbar background option ───────────────────────────────────────────── */
+:root {
+  --nav-bg: #f8f7f3;
+  --nav-bg-content: #16130a;
+}
+[data-nav-bg="white"] {
+  --nav-bg: #ffffff;
+  --nav-bg-content: #16130a;
+}
+[data-nav-bg="berga-white"] {
+  --nav-bg: #fbfaf7;
+  --nav-bg-content: #16130a;
+}
+[data-nav-bg="berga-gray"] {
+  --nav-bg: #f8f7f3;
+  --nav-bg-content: #16130a;
+}
+[data-nav-bg="dark"] {
+  --nav-bg: #17181d;
+  --nav-bg-content: #f5f4ef;
+}
+
+/* ── Page background option: full palette override ─────────────────────── */
+[data-page-bg="white"] {
+  --color-base-100: #ffffff;
+  --color-base-200: color-mix(in oklch, #16130a 7%, #ffffff);
+  --color-base-300: color-mix(in oklch, #16130a 13%, #ffffff);
+  --color-base-content: #16130a;
+}
+[data-page-bg="berga-white"] {
+  --color-base-100: #fbfaf7;
+  --color-base-200: color-mix(in oklch, #16130a 7%, #fbfaf7);
+  --color-base-300: color-mix(in oklch, #16130a 13%, #fbfaf7);
+  --color-base-content: #16130a;
+}
+[data-page-bg="berga-gray"] {
+  --color-base-100: #f8f7f3;
+  --color-base-200: color-mix(in oklch, #16130a 7%, #f8f7f3);
+  --color-base-300: color-mix(in oklch, #16130a 13%, #f8f7f3);
+  --color-base-content: #16130a;
+}
+[data-page-bg="dark"] {
+  --color-base-100: #17181d;
+  --color-base-200: color-mix(in oklch, #ffffff 12%, #17181d);
+  --color-base-300: color-mix(in oklch, #ffffff 16%, #17181d);
+  --color-base-content: #f5f4ef;
+}
+
 /* ── Frosted glass off → solid surfaces ─────────────────────────────────── */
 [data-glass="off"] {
   --glass-blur: none;
   --glass-bg: var(--color-base-100);
   --glass-bg-strong: var(--color-base-100);
   --glass-border: var(--color-base-200);
+  --nav-glass: var(--nav-bg);
+  --nav-glass-strong: var(--nav-bg);
 }
 
 /* Browsers without backdrop-filter get readable solid surfaces instead */
@@ -514,7 +564,17 @@ textarea:focus:not(:focus-visible) {
   :root {
     --glass-bg: var(--color-base-100);
     --glass-bg-strong: var(--color-base-100);
+    --nav-glass: var(--nav-bg);
+    --nav-glass-strong: var(--nav-bg);
   }
+}
+
+/* ── Desktop sidebar collapse ───────────────────────────────────────────── */
+:root {
+  --sidebar-w: 240px;
+}
+[data-sidebar-collapsed="on"] {
+  --sidebar-w: 0px;
 }
 
 /* ── Border option: outline chrome + controls ───────────────────────────── */

@@ -637,7 +637,7 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
     @media (min-width: 768px) {
         .main-content {
             padding: 0;
-            margin-left: max(240px, calc(50vw - 21rem));
+            margin-left: max(var(--sidebar-w, 240px), calc(50vw - 21rem));
             margin-right: auto;
         }
     }

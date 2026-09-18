@@ -8,7 +8,9 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
 COPY . .
 COPY supervisord.conf /etc/supervisord.conf
 
-RUN useradd --create-home appuser
+RUN useradd --create-home appuser \
+ && mkdir -p /home/appuser/.cache/huggingface/hub \
+ && chown -R appuser:appuser /home/appuser/.cache
 USER appuser
 
 CMD ["supervisord", "-c", "/etc/supervisord.conf"]

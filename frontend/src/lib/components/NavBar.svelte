@@ -1,5 +1,10 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
+	import { goto } from '$app/navigation';
+	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
+	import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
+	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
+	import X from '@lucide/svelte/icons/x';
 	import {
 		activeTabIdx,
 		navVisible,
@@ -7,14 +12,70 @@
 		navDragging,
 		stackedScreenOpen
 	} from '$lib/stores/swipe';
-	import { orderedTabs } from '$lib/config/tabs';
+	import { orderedTabs, type TabDef } from '$lib/config/tabs';
+	import {
+		splitTab,
+		splitSide,
+		moveSplit,
+		closeSplit,
+		opposite,
+		swapWithMain,
+		navTabDragging
+	} from '$lib/stores/splitView';
+	import NavContextMenu from '$lib/components/NavContextMenu.svelte';
+	import { ripple } from '$lib/actions/ripple';
+	import {
+		applySidebarCollapsed,
+		uiSidebarCollapsed
+	} from '$lib/stores/uiPrefs';
 
 	const tabIdx = $derived($activeTabIdx);
 	const covered = $derived($stackedScreenOpen);
 
+	// ── Multi-tab split viewer (desktop) ─────────────────────────────────
+	let ctxMenu = $state<{ x: number; y: number; tab: TabDef } | null>(null);
+
+	const isDesktop = () => window.matchMedia('(min-width: 768px)').matches;
+
+	function navCtx(e: MouseEvent, tab: TabDef) {
+		if (!isDesktop()) return;
+		e.preventDefault();
+		e.stopPropagation(); // don't let the event close the menu we just opened
+		ctxMenu = { x: e.clientX, y: e.clientY, tab };
+	}
+
+	function invertSplit() {
+		if ($splitTab === null) return;
+		moveSplit(opposite($splitSide));
+	}
+
+	function navDragStart(e: DragEvent, tab: TabDef) {
+		if (!e.dataTransfer) return;
+		e.dataTransfer.setData('berga/tab', tab.id);
+		e.dataTransfer.effectAllowed = 'copy';
+		navTabDragging.set(true);
+	}
+
+	function navDragEnd() {
+		navTabDragging.set(false);
+	}
+
+	/** Left-click on a pinned tab's icon swaps the main and pinned panes. */
+	function navClick(e: MouseEvent, tab: TabDef) {
+		ctxMenu = null;
+		if ($splitTab !== tab.id) return;
+		e.preventDefault();
+		if (swapWithMain()) goto(tab.href);
+	}
+
+	function toggleSidebar() {
+		const next = !$uiSidebarCollapsed;
+		uiSidebarCollapsed.set(next);
+		applySidebarCollapsed(next, true);
+	}
+
 	// ── Swipe-down-to-hide gesture (mobile only) ────────────────────────────
 	let navEl: HTMLElement;
-	const isDesktop = () => window.matchMedia('(min-width: 768px)').matches;
 
 	let tsX = 0, tsY = 0;
 	let gAxis: 'h' | 'v' | null = null;
@@ -125,16 +186,54 @@
 <!-- ── Desktop Sidebar ───────────────────────────────────── -->
 <aside class="sidebar" class:covered aria-label="{$t('navbar.mainNav')}">
 	<div class="sidebar-inner">
-		<div class="brand"></div>
+		<div class="sidebar-top">
+			<div class="brand"></div>
+			{#if $splitTab}
+				<button
+					class="sidebar-collapse"
+					use:ripple
+					onclick={invertSplit}
+					title={$t('navbar.splitInvert')}
+					aria-label={$t('navbar.splitInvert')}
+				>
+					<ArrowLeftRight size={18} strokeWidth={1.8} />
+				</button>
+				<button
+					class="sidebar-collapse"
+					use:ripple
+					onclick={closeSplit}
+					title={$t('navbar.splitClose')}
+					aria-label={$t('navbar.splitClose')}
+				>
+					<X size={18} strokeWidth={1.8} />
+				</button>
+			{/if}
+			<button
+				class="sidebar-collapse"
+				use:ripple
+				onclick={toggleSidebar}
+				title={$t('settings.collapseSidebar')}
+				aria-label={$t('settings.collapseSidebar')}
+			>
+				<PanelLeftClose size={18} strokeWidth={1.8} />
+			</button>
+		</div>
 		<nav class="sidebar-nav">
 			{#each $orderedTabs as tab, i (tab.id)}
 				{@const active = tabIdx === i}
+				{@const pinned = $splitTab === tab.id}
 				<a
 					href={tab.href}
 					class="sidebar-item"
 					class:active
+					class:pinned
 					aria-current={active ? 'page' : undefined}
 					title={$t(`navbar.${tab.id}`)}
+					draggable="true"
+					onclick={e => navClick(e, tab)}
+					oncontextmenu={e => navCtx(e, tab)}
+					ondragstart={e => navDragStart(e, tab)}
+					ondragend={navDragEnd}
 				>
 					<tab.icon size={20} strokeWidth={active ? 2.2 : 1.6} />
 					<span class="s-label">{$t(`navbar.${tab.id}`)}</span>
@@ -143,6 +242,23 @@
 		</nav>
 	</div>
 </aside>
+
+{#if ctxMenu}
+	<NavContextMenu pos={{ x: ctxMenu.x, y: ctxMenu.y }} tab={ctxMenu.tab} onClose={() => (ctxMenu = null)} />
+{/if}
+
+<!-- ── Floating expand button (desktop, sidebar collapsed) ── -->
+{#if $uiSidebarCollapsed}
+	<button
+		class="sidebar-expand"
+		use:ripple
+		onclick={toggleSidebar}
+		title={$t('settings.expandSidebar')}
+		aria-label={$t('settings.expandSidebar')}
+	>
+		<PanelLeftOpen size={18} strokeWidth={1.8} />
+	</button>
+{/if}
 
 <style>
 	/* ── Mobile Nav ──────────────────────────────────────── */
@@ -155,7 +271,7 @@
 		padding: 0 8px env(safe-area-inset-bottom, 8px);
 		align-items: center;
 		justify-content: center;
-		background: var(--glass-bg);
+		background: var(--nav-glass, color-mix(in oklch, var(--nav-bg, var(--color-base-100)) 58%, transparent));
 		backdrop-filter: var(--glass-blur);
 		-webkit-backdrop-filter: var(--glass-blur);
 		border-top: 1px solid var(--glass-border);
@@ -163,6 +279,12 @@
 		transform: translateY(var(--nav-drag, 0px));
 		touch-action: none;
 		transition: transform 320ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease;
+	}
+	:global([data-glass="off"]) .mobile-nav {
+		background: var(--nav-bg, var(--color-base-100));
+	}
+	:global([data-glass="off"]) .nav-item {
+		color: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 58%, transparent);
 	}
 	.mobile-nav.nav-hidden,
 	.mobile-nav.covered {
@@ -179,7 +301,7 @@
 		left: calc(50% - var(--deck-width, 73vw) / 2);
 		height: var(--deck-height, 16vw);
 		padding: 0 12px;
-		background: var(--glass-bg-strong);
+		background: var(--nav-glass-strong, color-mix(in oklch, var(--nav-bg, var(--color-base-100)) 82%, transparent));
 		border: var(--ui-border-width, 1px) solid var(--ui-border-color, var(--glass-border));
 		border-radius: var(--deck-radius, var(--ui-radius-xl));
 		overflow: hidden;
@@ -291,9 +413,65 @@
 			z-index: 50;
 			width: 240px;
 			flex-direction: column;
-			background: var(--color-base-100);
-			border-right: 1px solid var(--color-base-200);
+			background: var(--nav-bg, var(--color-base-100));
+			border-right: 1px solid var(--glass-border, var(--color-base-200));
 		}
+		:global([data-sidebar-collapsed="on"]) .sidebar { display: none; }
+		.sidebar-item {
+			--sidebar-item-color: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 60%, transparent);
+			--sidebar-item-hover-color: var(--nav-bg-content, var(--color-base-content));
+			--sidebar-item-hover-bg: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 8%, transparent);
+		}
+		.sidebar-collapse {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 32px;
+			height: 32px;
+			border: none;
+			border-radius: var(--ui-radius-sm);
+			background: transparent;
+			color: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 55%, transparent);
+			cursor: pointer;
+			transition: color 150ms ease, background 150ms ease;
+			-webkit-tap-highlight-color: transparent;
+		}
+		.sidebar-collapse:hover {
+			color: var(--nav-bg-content, var(--color-base-content));
+			background: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 10%, transparent);
+		}
+	}
+	.sidebar-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+	.sidebar-expand {
+		display: none;
+	}
+	@media (min-width: 768px) {
+		.sidebar-expand {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			position: fixed;
+			top: 14px;
+			left: 14px;
+			z-index: 60;
+			width: 38px;
+			height: 38px;
+			border: 1px solid var(--glass-border, var(--color-base-200));
+			border-radius: var(--ui-radius-sm);
+			background: var(--nav-bg, var(--color-base-100));
+			color: var(--nav-bg-content, var(--color-base-content));
+			cursor: pointer;
+			box-shadow: 0 2px 10px color-mix(in oklch, black 12%, transparent);
+			transition: background 150ms ease;
+		}
+		.sidebar-expand:hover {
+			background: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 8%, var(--nav-bg, var(--color-base-100)));
+		}
+		:global(.covered) ~ .sidebar-expand { pointer-events: none; }
 	}
 
 	.sidebar-inner {
@@ -320,15 +498,15 @@
 		border-radius: var(--ui-radius-sm);
 		border-left: 3px solid transparent;
 		text-decoration: none;
-		color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+		color: var(--sidebar-item-color, color-mix(in oklch, var(--color-base-content) 60%, transparent));
 		position: relative;
 		overflow: hidden;
 		transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
 	}
 
 	.sidebar-item:hover {
-		color: var(--color-base-content);
-		background: var(--color-base-200);
+		color: var(--sidebar-item-hover-color, var(--color-base-content));
+		background: var(--sidebar-item-hover-bg, var(--color-base-200));
 	}
 
 	/* Active State: Strong Contrast with Border and Accent */
@@ -336,6 +514,19 @@
 		color: var(--color-accent);
 		background: color-mix(in oklch, var(--color-accent) 8%, transparent);
 		border-left-color: var(--color-accent);
+	}
+
+	/* Pinned in the split viewer: small dot on the icon's corner */
+	.sidebar-item.pinned::after {
+		content: '';
+		position: absolute;
+		top: 12px;
+		right: 12px;
+		width: 6px;
+		height: 6px;
+		border-radius: var(--ui-radius-full);
+		background: var(--color-accent);
+		opacity: 0.9;
 	}
 
 	.s-label {

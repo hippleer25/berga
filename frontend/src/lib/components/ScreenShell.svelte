@@ -146,11 +146,17 @@
 			z-index: 55;
 			overflow-y: auto;
 			overflow-x: hidden;
+			scrollbar-width: none;
 			-webkit-overflow-scrolling: touch;
 			overscroll-behavior-x: none;
 			/* No fill-mode/forwards: a lingering transform would become the
 			   containing block for position:fixed children (sub-tab bars). */
 			animation: shell-enter 280ms cubic-bezier(0.22, 1, 0.36, 1);
+		}
+		.screen-shell::-webkit-scrollbar {
+			width: 0;
+			height: 0;
+			display: none;
 		}
 	}
 

@@ -581,6 +581,8 @@ def run_agent(
     ):
         if kind == "thinking":
             yield _Thinking(text)
+        elif kind == "error":
+            logger.warning(f"[AGENT] Síntese stream terminou sem conteúdo: {text}")
         elif text:
             answer_text += text
             yield text

@@ -3,5 +3,16 @@
   "home": "Accueil",
   "events": "Rechercher",
   "mota": "Mota",
-  "mainNav": "Navigation principale"
+  "mainNav": "Navigation principale",
+  "splitOpenLeft": "Ouvrir dans le volet gauche",
+  "splitOpenRight": "Ouvrir dans le volet droit",
+  "splitMoveLeft": "Déplacer vers le volet gauche",
+  "splitMoveRight": "Déplacer vers le volet droit",
+  "splitRemove": "Retirer de la vue scindée",
+  "splitDropLeft": "Déposez pour ouvrir dans la moitié gauche",
+  "splitDropRight": "Déposez pour ouvrir dans la moitié droite",
+  "splitInvert": "Inverser les volets",
+  "splitClose": "Fermer la vue scindée",
+  "splitPaneLeft": "Volet gauche",
+  "splitPaneRight": "Volet droit"
 }

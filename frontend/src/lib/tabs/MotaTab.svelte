@@ -17,7 +17,6 @@
   import Pencil from '@lucide/svelte/icons/pencil';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import History from '@lucide/svelte/icons/history';
-  import Portal from '$lib/components/Portal.svelte';
   import { pendingMotaPosts, navVisible } from '$lib/stores/swipe';
   import {
     chatSessions,
@@ -607,17 +606,13 @@
   <!-- ── Top Header (persistent) ──────────────────────────── -->
   <header class="top-header">
     <div class="main-content top-header-inner">
-      <div class="header-left">
-        <button class="filter-chip" onclick={openSessions} title="{$t('motatab.sessionsTitle')}">
-          <History size={13} />
-          <span class="chip-label">{$t('motatab.sessions')}</span>
-        </button>
-        <button class="filter-chip" onclick={newChat} title="{$t('motatab.newChat')}">
-          <Plus size={14} />
-          <span class="chip-label">{$t('motatab.newChat')}</span>
-        </button>
-      </div>
       <div class="top-header-actions">
+        <button class="header-icon-btn" onclick={openSessions} title="{$t('motatab.sessionsTitle')}" aria-label="{$t('motatab.sessions')}">
+          <History size={20} />
+        </button>
+        <button class="header-icon-btn" onclick={() => { closeSessions(); newChat(); }} title="{$t('motatab.newChat')}" aria-label="{$t('motatab.newChat')}">
+          <Plus size={20} />
+        </button>
         <button class="settings-btn" onclick={() => goto('/settings/appearance')} aria-label="Settings">
           <Settings size={20} />
         </button>
@@ -625,23 +620,30 @@
     </div>
   </header>
 
-  <!-- ── Sessions dialog (app dialog pattern) ─────────────── -->
-  <Portal>
-    {#if $sessionsOpen}
-      <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-      <div class="dialog-backdrop" onclick={closeSessions}></div>
-      <div class="dialog sessions-dialog" role="dialog" aria-modal="true" aria-label="{$t('motatab.sessionsTitle')}">
-        <div class="dialog-header">
-          <h2 class="dialog-title">{$t('motatab.sessionsTitle')}</h2>
-          <button class="dialog-close" onclick={closeSessions} aria-label="Close">
-            <X size={18} />
+  <!-- ── Sessions screen (full-tab, Following-tab pattern) ── -->
+  {#if $sessionsOpen}
+    <section class="sessions-screen" aria-label="{$t('motatab.sessionsTitle')}">
+      <div class="main-content sessions-inner">
+        <header class="sessions-header">
+          <h2 class="sessions-title">{$t('motatab.sessionsTitle')}</h2>
+          <button class="header-icon-btn" onclick={closeSessions} aria-label="{$t('followerstab.close')}">
+            <X size={20} />
           </button>
-        </div>
+        </header>
 
         {#if sessionsLoading && $chatSessions.length === 0}
-          <p class="dialog-sub">{$t('motatab.loadingSessions')}</p>
+          <ul class="sessions-list" aria-hidden="true">
+            {#each Array.from({ length: 6 }) as _, i (i)}
+              <li class="sk-row">
+                <div class="sk-bar" style="width:46%"></div>
+                <div class="sk-bar sk-ml-auto" style="width:44px; opacity:.4"></div>
+              </li>
+            {/each}
+          </ul>
         {:else if sessionsFailed}
-          <p class="dialog-sub">{$t('motatab.sessionsError')}</p>
+          <div class="sessions-state">
+            <p class="sessions-state-text">{$t('motatab.sessionsError')}</p>
+          </div>
         {:else if $chatSessions.length === 0}
           <div class="state-empty-wrap">
             <MessageSquare size={28} strokeWidth={1.5} class="empty-icon" />
@@ -699,8 +701,8 @@
           </ul>
         {/if}
       </div>
-    {/if}
-  </Portal>
+    </section>
+  {:else}
 
   {#if !hasStarted}
   <div class="main-content">
@@ -908,6 +910,8 @@
     </div>
   </footer>
 
+  {/if}
+
 </div>
 
 
@@ -932,7 +936,7 @@
  @media (min-width: 768px) {
   .main-content {
    padding: 0;
-   margin-left: max(240px, calc(50vw - 21rem));
+   margin-left: max(var(--sidebar-w, 240px), calc(50vw - 21rem));
    margin-right: auto;
   }
  }
@@ -952,8 +956,10 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
  }
- .settings-btn {
+ .settings-btn,
+ .header-icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -969,6 +975,10 @@
   background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
   color: var(--color-base-content);
   transform: rotate(8deg);
+ }
+ .header-icon-btn:hover {
+  background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+  color: var(--color-base-content);
  }
 
  /* ── Welcome Section (matches HomeTab) ─────────────── */
@@ -1598,93 +1608,68 @@
    .footer-inner { padding: 16px 0; }
  }
 
-  .header-left {
+  /* ── Sessions screen (full tab, Following-tab pattern) ── */
+  .sessions-screen {
+   flex: 1;
+   min-height: 0;
+   overflow-y: auto;
+   scrollbar-width: thin;
+   padding-bottom: 32px;
+  }
+  .sessions-inner {
+   padding-top: 16px;
+  }
+  .sessions-header {
    display: flex;
    align-items: center;
-   gap: 6px;
+   justify-content: space-between;
+   gap: 12px;
+   padding-bottom: 10px;
+   border-bottom: 1px solid color-mix(in oklch, var(--color-base-300) 35%, transparent);
   }
-
-  /* Filter chips — same pattern as HomeTab's filter bar */
-  .filter-chip {
-   display: inline-flex; align-items: center; gap: 5px;
-   padding: 6px 12px;
-   border-radius: var(--ui-radius-sm);
-   border: 1px solid var(--color-base-300);
-   background: transparent;
-   font-size: 13px; font-weight: 500;
-   color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
-   cursor: pointer;
-   transition: background 130ms, color 130ms, border-color 130ms;
-   white-space: nowrap;
-  }
-  .filter-chip:hover {
-   background: var(--color-base-200);
-   color: var(--color-base-content);
-  }
-  .chip-label {
-   overflow: hidden;
-   text-overflow: ellipsis;
-  }
-
-  /* ── Sessions dialog (app dialog pattern) ─────────────── */
-  .dialog-backdrop {
-   position: fixed; inset: 0;
-   background: color-mix(in oklch, black 30%, transparent);
-   z-index: 100;
-   animation: dialog-fade 160ms ease both;
-  }
-  .dialog {
-   position: fixed; top: 50%; left: 50%;
-   transform: translate(-50%, -50%);
-   z-index: 110;
-   background: var(--color-base-100);
-   border: 1px solid var(--color-base-200);
-   border-radius: var(--ui-radius-lg);
-   padding: 20px 20px 16px;
-   box-shadow: 0 20px 60px color-mix(in oklch, black 24%, transparent);
-   animation: dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  @keyframes dialog-fade { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes dialog-in {
-   from { opacity: 0; transform: translate(-50%, -48%) scale(0.95); }
-   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  }
-  .dialog-header {
-   display: flex; align-items: center; justify-content: space-between;
-   margin-bottom: 6px;
-  }
-  .dialog-title {
+  .sessions-title {
    font-family: var(--font-page-title);
    font-size: 1.15rem; font-weight: 400; letter-spacing: -0.01em;
    color: var(--color-base-content); margin: 0;
   }
-  .dialog-close {
-   display: flex; align-items: center; justify-content: center;
-   width: 30px; height: 30px;
-   border-radius: var(--ui-radius-sm);
-   border: none; background: transparent;
-   color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
-   cursor: pointer;
-   transition: background 130ms ease, color 130ms ease;
-  }
-  .dialog-close:hover {
-   background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
-   color: var(--color-base-content);
-  }
-  .sessions-dialog {
-   max-height: min(70dvh, 540px);
+  .sessions-state {
    display: flex;
-   flex-direction: column;
+   align-items: center;
+   justify-content: center;
+   padding: 32px 16px;
   }
-  .dialog-header {
-   margin-bottom: 6px;
-   padding-bottom: 10px;
-   border-bottom: 1px solid color-mix(in oklch, var(--color-base-300) 35%, transparent);
-  }
-  .dialog-sub {
+  .sessions-state-text {
    font-size: 12.5px;
    color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
    margin: 0;
+  }
+
+  /* Skeleton rows — FollowersTab conventions */
+  .sk-row {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   padding: 9px 2px 9px 6px;
+   border-bottom: 1px solid color-mix(in oklch, var(--color-base-300) 35%, transparent);
+  }
+  .sk-row:last-child { border-bottom: none; }
+  .sk-ml-auto { margin-left: auto; }
+  .sk-bar {
+   height: 10px;
+   flex-shrink: 0;
+   border-radius: var(--ui-radius-xs);
+   background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--color-base-300) 60%, transparent) 0%,
+    color-mix(in oklch, var(--color-base-300) 90%, transparent) 40%,
+    color-mix(in oklch, var(--color-base-300) 60%, transparent) 80%
+   );
+   background-size: 200% 100%;
+   animation: sk-shimmer 1.6s ease-in-out infinite;
+  }
+  @keyframes sk-shimmer {
+   0% { background-position: 200% center; }
+   100% { background-position: -200% center; }
   }
 
   /* Rows — .feed-row conventions from the Following tab */
@@ -1692,8 +1677,6 @@
    list-style: none;
    margin: 0;
    padding: 2px 0 8px;
-   overflow-y: auto;
-   scrollbar-width: thin;
   }
   .session-row {
    display: flex;

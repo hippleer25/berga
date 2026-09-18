@@ -7,8 +7,11 @@ from bs4 import BeautifulSoup
 from mota import ai_lib
 from mota.chat_sse import _sse_event, _sse_error, _sse_done
 from i18n.prompts import get_prompt
+import os
 
 logger = logging.getLogger(__name__)
+
+RESUME_MAX_TOKENS = int(os.getenv("RESUME_MAX_TOKENS", "800"))
 
 
 def _truncate_at_boundary(text: str, limit: int) -> str:
@@ -48,9 +51,19 @@ def get(item_id: str, user) -> Generator[str, None, None]:
     ]
 
     try:
-        for chunk in ai_lib.stream_llm_response(messages, max_tokens=150, usage="summarize"):
-            if chunk:
-                yield _sse_event(chunk)
+        got_answer = False
+        got_error: str | None = None
+        for kind, chunk in ai_lib.stream_llm_deltas(messages, max_tokens=RESUME_MAX_TOKENS, usage="summarize"):
+            if kind == "answer":
+                if chunk:
+                    got_answer = True
+                    yield _sse_event(chunk)
+            elif kind == "error":
+                got_error = chunk
+                yield _sse_error(chunk)
+        if not got_answer and not got_error:
+            logger.error("[RESUME] Stream ended with no content and no error")
+            yield _sse_error("empty summary — the model returned no content")
     except Exception as e:
         logger.error(f"[RESUME] Erro ao gerar resumo: {e}", exc_info=True)
         yield _sse_error(f"Erro ao gerar resumo: {e}")

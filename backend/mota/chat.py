@@ -261,6 +261,8 @@ def _handle_direct_articles(
     ):
         if kind == "thinking":
             yield _Thinking(text)
+        elif kind == "error":
+            logger.warning(f"[CHAT] Síntese stream terminou sem conteúdo: {text}")
         elif text:
             answer_text += text
             yield text

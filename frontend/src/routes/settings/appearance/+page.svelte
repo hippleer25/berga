@@ -43,6 +43,8 @@
     uiRadiusSurface,
     uiRadiusControl,
     uiNavStyle,
+    uiNavBg,
+    uiPageBg,
     uiGlass,
     uiAccent,
     uiBorderOn,
@@ -100,6 +102,12 @@
     BORDER_WIDTH_MAX,
     type NavStyle,
     type NavIndicator,
+    type NavBg,
+    applyNavBg,
+    getSavedNavBg,
+    type PageBg,
+    applyPageBg,
+    getSavedPageBg,
   } from '$lib/stores/uiPrefs';
   import { tabOrder, setTabOrder, TAB_DEFS, type TabId } from '$lib/config/tabs';
   import { ChevronUp, RotateCcw } from '@lucide/svelte';
@@ -199,6 +207,24 @@
   let borderColor = $state<string | null>(getSavedBorderColor());
   let customBorderColor = $state<string>(getSavedBorderColor() ?? '#8f8f96');
   let navIndicatorVal = $state<NavIndicator>(getSavedNavIndicator());
+  let navBgVal = $state<NavBg>(getSavedNavBg());
+  let pageBgVal = $state<PageBg>(getSavedPageBg());
+
+  const NAV_BG_OPTIONS: { value: NavBg; labelKey: string; color: string | null }[] = [
+    { value: 'default', labelKey: 'settings.navColorDefault', color: null },
+    { value: 'white', labelKey: 'settings.navColorWhite', color: '#ffffff' },
+    { value: 'berga-white', labelKey: 'settings.navColorBergaWhite', color: '#fbfaf7' },
+    { value: 'berga-gray', labelKey: 'settings.navColorBergaGray', color: '#f8f7f3' },
+    { value: 'dark', labelKey: 'settings.navColorDark', color: '#17181d' },
+  ];
+
+  const PAGE_BG_OPTIONS: { value: PageBg; labelKey: string; color: string | null }[] = [
+    { value: 'theme', labelKey: 'settings.bgColorTheme', color: null },
+    { value: 'white', labelKey: 'settings.bgColorWhite', color: '#ffffff' },
+    { value: 'berga-white', labelKey: 'settings.bgColorBergaWhite', color: '#fbfaf7' },
+    { value: 'berga-gray', labelKey: 'settings.bgColorBergaGray', color: '#f8f7f3' },
+    { value: 'dark', labelKey: 'settings.bgColorDark', color: '#17181d' },
+  ];
   let chipIcons = $state<boolean>(getSavedChipIcons());
   let deckWidth = $state<number>(getSavedDeckWidthPct());
   let deckHeight = $state<number>(getSavedDeckHeightVw());
@@ -431,6 +457,13 @@
   function setNavIndicator(s: NavIndicator) {
     navIndicatorVal = s; applyNavIndicator(s, true); uiNavIndicator.set(s);
   }
+  function setNavBg(v: NavBg) {
+    navBgVal = v; applyNavBg(v, true); uiNavBg.set(v);
+  }
+  function setPageBg(v: PageBg) {
+    pageBgVal = v; applyPageBg(v, true); uiPageBg.set(v);
+    if (v !== 'theme') activeTheme = v === 'dark' ? 'berga' : 'berga-black';
+  }
   function toggleChipIcons() {
     chipIcons = !chipIcons; applyChipIcons(chipIcons, true); uiChipIcons.set(chipIcons);
   }
@@ -464,6 +497,8 @@
     borderWidth = 1;
     borderColor = null;
     navIndicatorVal = 'modern';
+    navBgVal = 'berga-gray';
+    pageBgVal = 'theme';
     chipIcons = true;
     deckWidth = DECK_WIDTH_PCT_DEFAULT;
     deckHeight = DECK_HEIGHT_VW_DEFAULT;
@@ -495,15 +530,6 @@
   function getThemeLabel(name: string): string {
     if (BUILTIN_THEME_LABELS[name]) return BUILTIN_THEME_LABELS[name];
     return name.charAt(0).toUpperCase() + name.slice(1);
-  }
-
-  function toggleTheme() {
-    if (activeTheme === 'berga-black') {
-      activeTheme = 'berga';
-    } else {
-      activeTheme = 'berga-black';
-    }
-    applyTheme(activeTheme, true);
   }
 
   function handleLocaleChange(lang: SupportedLocale) {
@@ -708,12 +734,25 @@
   </div>
 
   <div class="setting-row">
-    <div class="setting-text">
-      <span class="setting-label">{getThemeLabel(activeTheme)}</span>
+    <span class="setting-label">{$t('settings.bgColor')}</span>
+    <div class="navstyle-picker">
+      {#each PAGE_BG_OPTIONS as opt (opt.value)}
+        <button
+          class="navstyle-card"
+          class:active={pageBgVal === opt.value}
+          use:ripple
+          onclick={() => setPageBg(opt.value)}
+          aria-pressed={pageBgVal === opt.value}
+        >
+          <span
+            class="navbg-swatch"
+            style:background={opt.color}
+            class:navbg-swatch--theme={opt.color === null}
+          ></span>
+          <span class="navstyle-label">{$t(opt.labelKey)}</span>
+        </button>
+      {/each}
     </div>
-    <button class="pill-toggle" class:on={activeTheme === 'berga-black'} use:ripple onclick={toggleTheme} aria-label={$t('settings.lightMode')}>
-      <div class="pill-thumb"></div>
-    </button>
   </div>
 
   {#snippet TabIcon(id: TabId)}
@@ -747,6 +786,28 @@
             <span class="navstyle-preview navstyle-preview--deck"><span></span><span></span><span></span></span>
             <span class="navstyle-label">{$t('settings.navStyleDeck')}</span>
           </button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <span class="setting-label">{$t('settings.navColor')}</span>
+        <div class="navstyle-picker">
+          {#each NAV_BG_OPTIONS as opt (opt.value)}
+            <button
+              class="navstyle-card"
+              class:active={navBgVal === opt.value}
+              use:ripple
+              onclick={() => setNavBg(opt.value)}
+              aria-pressed={navBgVal === opt.value}
+            >
+              <span
+                class="navbg-swatch"
+                style:background={opt.color}
+                class:navbg-swatch--theme={opt.color === null}
+              ></span>
+              <span class="navstyle-label">{$t(opt.labelKey)}</span>
+            </button>
+          {/each}
         </div>
       </div>
 
@@ -1397,6 +1458,17 @@
   }
   .navstyle-preview--classic span:first-child {
     background: color-mix(in oklch, var(--color-accent) 26%, transparent);
+  }
+
+  /* ── Interface: nav background swatches ───────────────────── */
+  .navbg-swatch {
+    width: 64px; height: 26px;
+    border-radius: var(--ui-radius-xs);
+    border: 1px solid var(--color-base-300);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-base-content) 6%, transparent);
+  }
+  .navbg-swatch--theme {
+    background: linear-gradient(135deg, var(--color-base-100) 0%, var(--color-base-200) 100%);
   }
 
   /* ── Interface: accent swatches ───────────────────────────── */

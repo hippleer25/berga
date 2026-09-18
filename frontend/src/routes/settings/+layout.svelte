@@ -197,9 +197,13 @@
 			z-index: 50;
 			width: 240px;
 			flex-direction: column;
-			background: var(--color-base-100);
-			border-right: 1px solid var(--color-base-200);
+			background: var(--nav-bg, var(--color-base-100));
+			border-right: 1px solid var(--glass-border, var(--color-base-200));
+			--sidebar-item-color: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 60%, transparent);
+			--sidebar-item-hover-color: var(--nav-bg-content, var(--color-base-content));
+			--sidebar-item-hover-bg: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 8%, transparent);
 		}
+		:global([data-sidebar-collapsed="on"]) .sidebar { display: none; }
 	}
 
 	.sidebar-inner {
@@ -223,7 +227,7 @@
 		padding: 10px 16px; border-radius: var(--ui-radius-sm);
 		border-left: 3px solid transparent;
 		text-decoration: none;
-		color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+		color: var(--sidebar-item-color, color-mix(in oklch, var(--color-base-content) 60%, transparent));
 		position: relative; overflow: hidden;
 		transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
 		width: 100%;
@@ -234,8 +238,8 @@
 		text-align: left;
 	}
 	.sidebar-item:hover {
-		color: var(--color-base-content);
-		background: var(--color-base-200);
+		color: var(--sidebar-item-hover-color, var(--color-base-content));
+		background: var(--sidebar-item-hover-bg, var(--color-base-200));
 	}
 .sidebar-item.active {
   color: var(--color-accent);
@@ -254,7 +258,7 @@
 }
 	@media (min-width: 768px) {
 		.settings-content {
-			margin-left: max(240px, calc(50vw - 21rem));
+			margin-left: max(var(--sidebar-w, 240px), calc(50vw - 21rem));
 			margin-right: auto;
 			max-width: 42rem;
 			padding: 24px 0;

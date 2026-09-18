@@ -3,5 +3,16 @@
   "home": "Home",
   "events": "Search",
   "mota": "Mota",
-  "mainNav": "Main navigation"
+  "mainNav": "Main navigation",
+  "splitOpenLeft": "Open in left pane",
+  "splitOpenRight": "Open in right pane",
+  "splitMoveLeft": "Move to left pane",
+  "splitMoveRight": "Move to right pane",
+  "splitRemove": "Remove from split",
+  "splitDropLeft": "Drop to open in the left half",
+  "splitDropRight": "Drop to open in the right half",
+  "splitInvert": "Invert panes",
+  "splitClose": "Close split view",
+  "splitPaneLeft": "Left pane",
+  "splitPaneRight": "Right pane"
 }

@@ -196,8 +196,8 @@ def _load_model() -> SentenceTransformer:
                 MODEL_NAME,
                 backend="onnx",
                 model_kwargs={"file_name": onnx_file},
-            truncate_dim=VECTOR_SIZE,
-        )
+                truncate_dim=VECTOR_SIZE,
+            )
             # ── Sanity check: does truncate_dim actually work? ─────────────
             probe = model.encode("probe", convert_to_numpy=True)
             actual_dim = int(np.array(probe).shape[-1])
@@ -220,10 +220,10 @@ def _load_model() -> SentenceTransformer:
 
         except Exception as exc: # noqa: BLE001
             logger.warning(
-            "Could not load ONNX file '%s': %s — trying next candidate.",
-            onnx_file,
-            exc,
-        )
+                "Could not load ONNX file '%s': %s — trying next candidate.",
+                onnx_file,
+                exc,
+            )
             last_exc = exc
 
     raise RuntimeError(

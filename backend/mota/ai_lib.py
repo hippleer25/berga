@@ -561,6 +561,8 @@ def stream_llm_deltas(
     Streams a completion as typed deltas:
       ("thinking", text) — provider reasoning_content (None em modelos sem thinking)
       ("answer",   text) — conteúdo final da resposta
+      ("error",    text) — terminal event, orienta APENAS quando nada foi gerado:
+                   chamador decide como sinalizar (chamadores de chat ignoram)
 
     Auto-continuation: if the model hits the output cap (finish_reason
     == "length"), up to `auto_continue` extra calls append the partial
@@ -607,6 +609,9 @@ def stream_llm_deltas(
     ladder_idx = 0
     streamed_anything = False
     fallback_tried = False
+    tokens_budget = max_tokens
+    empty_retries = 0
+    final_error: str | None = None
 
     while True:
         partial_answer = ""
@@ -619,7 +624,7 @@ def stream_llm_deltas(
                     if route else config["model"]
                 ),
                 "messages": active_messages,
-                "max_tokens": max_tokens,
+                "max_tokens": tokens_budget,
                 "temperature": temperature,
                 "stream": True,
                 "api_key": config.get("api_key"),
@@ -664,7 +669,7 @@ def stream_llm_deltas(
                         call_kwargs = {
                             "model": step["model"],
                             "messages": active_messages,
-                            "max_tokens": max_tokens,
+                            "max_tokens": tokens_budget,
                             "temperature": temperature,
                             "stream": True,
                             "api_key": config.get("api_key"),
@@ -705,6 +710,7 @@ def stream_llm_deltas(
                             break
                         error = e2
         if error is not None and not stepped:
+            final_error = f"{type(error).__name__}: {error}"
             break
 
         # Pseudo-stream fallback: some gateways/models answer stream requests
@@ -752,6 +758,19 @@ def stream_llm_deltas(
 
         truncated = finish_reason == "length" and partial_answer.strip()
         if not (truncated and remaining_continue > 0):
+            # Reasoning models can burn the whole output budget on
+            # reasoning and end the stream with no visible content and
+            # no exception — retry with a much larger budget instead of
+            # surfacing an empty answer (mirrors call_llm's escalation).
+            if not partial_answer and error is None and empty_retries < 2:
+                empty_retries += 1
+                tokens_budget = max(tokens_budget * 4, 2000)
+                logger.warning(
+                    f"[AI_LIB] Stream ended with no content from {config['model']} "
+                    f"(likely reasoning consumed max_tokens={max_tokens}) — "
+                    f"retrying with {tokens_budget} (empty attempt {empty_retries})"
+                )
+                continue
             break
 
         remaining_continue -= 1
@@ -763,6 +782,13 @@ def stream_llm_deltas(
             },
         ]
         logger.info(f"[AI_LIB] Output cap atingido — auto-continuação ({remaining_continue} restantes)")
+
+    if not streamed_anything:
+        msg = final_error or (
+            f"model returned no content ({config.get('model')})"
+        )
+        logger.error(f"[AI_LIB] Streaming ended empty ({config['model']}): {msg}")
+        yield ("error", msg)
 
 
 def stream_llm_response(
