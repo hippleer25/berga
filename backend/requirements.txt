@@ -1,6 +1,8 @@
-# Force PyTorch CPU-only — no CUDA, no ~2 GB of unnecessary NVIDIA drivers
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.12.0
+# Berga backend dependencies
+# NOTE: torch/transformers/sentence-transformers removed — embeddings run via
+# pure numpy + HF tokenizers over StaticEmbedding safetensors (see intelligence/embeddings.py).
+# scikit-learn/scipy removed — DBSCAN + k-NN are implemented in numpy (intelligence/cluster.py).
+# All pins are exact; the full transitive tree is frozen in requirements.lock.
 
 # API
 fastapi==0.136.1
@@ -15,14 +17,15 @@ python-jose[cryptography]==3.5.0
 mysql-connector-python==9.7.0
 qdrant-client==1.17.0
 
-# Embeddings
-sentence-transformers==5.5.1
+# Embeddings (numpy + fast tokenizer + mmap weights)
+numpy==2.4.6
+tokenizers==0.22.2
 safetensors==0.4.5
+huggingface_hub==1.2.3
 
 # RSS / parsing
 feedparser==6.0.12
 listparser==0.20
-newspaper4k==0.9.5
 readability-lxml==0.8.4.1
 lxml_html_clean==0.4.4
 bs4==0.0.2
@@ -36,8 +39,7 @@ charset-normalizer==3.4.7
 arq==0.28.0
 redis==5.3.1
 
-# ML / search
-scikit-learn==1.8.0
+# Search
 ddgs==9.14.4
 
 # AI
@@ -48,3 +50,5 @@ pyyaml==6.0.3
 
 # Process manager
 supervisor==4.2.5
+# supervisor imports pkg_resources — removed in setuptools>=84, keep 81.x
+setuptools==81.0.0

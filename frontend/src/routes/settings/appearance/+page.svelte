@@ -1385,6 +1385,7 @@
   .group-card {
     display: flex;
     flex-direction: column;
+    gap: 10px;
     background: transparent;
     border: none;
     padding: 0;
@@ -1423,12 +1424,13 @@
   .density-picker { display: flex; gap: 4px; }
 
   /* ── Interface: nav style picker ──────────────────────────── */
-  .navstyle-picker { display: flex; gap: 8px; }
+  .navstyle-picker { display: flex; gap: 8px; min-width: 0; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: thin; margin-top: 2px; }
   .navstyle-card {
     display: flex; flex-direction: column; align-items: center; gap: 6px;
     padding: 8px; border-radius: var(--ui-radius-sm);
     border: 1px solid var(--color-base-300); background: transparent;
     cursor: pointer; transition: all 130ms; position: relative; overflow: hidden;
+    flex-shrink: 0;
   }
   .navstyle-card:hover { background: var(--color-base-200); }
   .navstyle-card.active {

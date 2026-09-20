@@ -780,7 +780,7 @@ if (res.ok) {
         
         <!-- Top Header (Settings only) -->
         <header class="top-header">
-            <button class="settings-btn" onclick={() => goto('/settings/appearance')} aria-label="{$t('hometab.settings')}">
+            <button class="settings-btn" onclick={() => goto('/settings')} aria-label="{$t('hometab.settings')}">
                 <Settings size={20} />
             </button>
         </header>

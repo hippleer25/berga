@@ -24,15 +24,42 @@ from typing import Generator, Literal, Optional
 
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
-import litellm
-from litellm import completion, acompletion
+_litellm_module = None
+
+
+class _LiteLLMProxy:
+    """
+    Lazy litellm loader. Importing litellm costs ~130 MB RSS and would
+    otherwise happen at API boot via the chat import chain — even in
+    sessions that never touch AI. The actual import is deferred to the
+    first attribute/call access.
+    """
+
+    def __getattr__(self, name):
+        global _litellm_module
+        if _litellm_module is None:
+            import litellm as _mod  # deferred heavy import
+            _mod.drop_params = True
+            _litellm_module = _mod
+        return getattr(_litellm_module, name)
+
+
+litellm = _LiteLLMProxy()
+
+
+def completion(*args, **kwargs):
+    return litellm.completion(*args, **kwargs)
+
+
+def acompletion(*args, **kwargs):
+    return litellm.acompletion(*args, **kwargs)
 
 from mota import model_routing
 
 logger = logging.getLogger(__name__)
 
 # Automatically remove parameters not supported by the provider
-litellm.drop_params = True
+# litellm.drop_params=True is set on first lazy import in _LiteLLMProxy.
 
 DEFAULT_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "120"))
 

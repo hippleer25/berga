@@ -18,8 +18,6 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 
-from sklearn.cluster import DBSCAN
-from sklearn.neighbors import NearestNeighbors
 from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
 from mota.ai_lib import generate_text
 from database.init_db import get_db
@@ -299,13 +297,38 @@ def _count_unique_feeds(articles: list[dict]) -> int:
     return len(set(a.get("feed_sha256") for a in articles if a.get("feed_sha256")))
 
 
+def _pairwise_cosine_dist(normalized: np.ndarray, block: int = 512) -> np.ndarray:
+    """
+    Cosine distance matrix (1 − X·Yᵀ) computed in blocks so the fp32
+    transient stays small. Self-distance is set to exactly 0 afterwards,
+    matching sklearn's handling of the diagonal.
+    """
+    n = normalized.shape[0]
+    x = normalized.astype(np.float32, copy=False)
+    d = np.empty((n, n), dtype=np.float32)
+    for i in range(0, n, block):
+        j_end = min(i + block, n)
+        chunk = x[i:j_end] @ x.T          # cosine similarity
+        np.clip(chunk, -1.0, 1.0, out=chunk)
+        chunk *= -1.0                     # → -cos
+        chunk += 1.0                      # → cosine distance
+        d[i:j_end] = chunk
+    np.fill_diagonal(d, 0.0)
+    return d
+
+
+def _kth_distance(dists: np.ndarray, k: int) -> np.ndarray:
+    """Kth nearest-neighbour distance per row (k includes the point itself)."""
+    part = np.partition(dists, kth=k - 1, axis=1)
+    return part[:, k - 1]
+
+
 def _compute_adaptive_eps(normalized: np.ndarray, k: int) -> float:
     n_samples = normalized.shape[0]
     effective_k = min(k, n_samples - 1) if n_samples > 1 else 1
 
-    nbrs = NearestNeighbors(n_neighbors=effective_k, metric="cosine", n_jobs=2).fit(normalized)
-    distances, _ = nbrs.kneighbors(normalized)
-    kth_distances = np.sort(distances[:, -1])
+    dists = _pairwise_cosine_dist(normalized)
+    kth_distances = np.sort(_kth_distance(dists, effective_k))
 
     eps = float(np.percentile(kth_distances, CLUSTER_EPS_PERCENTILE))
     eps = min(eps, CLUSTER_EPS_MAX)
@@ -319,6 +342,63 @@ def _compute_adaptive_eps(normalized: np.ndarray, k: int) -> float:
         f"p90={np.percentile(kth_distances, 90):.4f})"
     )
     return eps
+
+
+# ------------------------------------------------------------------
+# Density clustering (pure-numpy DBSCAN equivalent)
+# ------------------------------------------------------------------
+# Faithful to sklearn.cluster.DBSCAN semantics:
+#   – neighbours = points with cosine distance ≤ eps (self counts)
+#   – core points: ≥ min_samples neighbours
+#   – clusters grow by BFS through core points; border points join the
+#     first point's cluster that reaches them
+#   – points not reachable from any core point are noise (-1)
+
+def _numpy_dbscan(dists: np.ndarray, eps: float, min_samples: int) -> np.ndarray:
+    n = dists.shape[0]
+    labels = np.full(n, -1, dtype=np.int64)
+    if n == 0:
+        return labels
+
+    neighbours = dists <= eps          # boolean adjacency (self included, d=0 ≤ eps)
+    is_core = neighbours.sum(axis=1) >= min_samples
+
+    visited = np.zeros(n, dtype=bool)
+    cluster_id = 0
+
+    for p in range(n):
+        if visited[p]:
+            continue
+        if not is_core[p]:
+            # Border or noise point: leave unassigned for now; a core
+            # point expanding a cluster may still claim it.
+            visited[p] = True
+            continue
+
+        # ── Expand a new cluster: BFS over directly-reachable points ──
+        # Seed with p's own neighbourhood; every newly found core point
+        # contributes its neighbourhood to the expansion.
+        seeds = np.flatnonzero(neighbours[p]).tolist()
+        for q in seeds:
+            labels[q] = cluster_id
+            visited[q] = True
+        queue = seeds if is_core[p] else []
+        while queue:
+            q = queue.pop(0)
+            if not is_core[q]:
+                continue
+            # Neighbours of q not claimed by any earlier cluster join here.
+            for r in np.flatnonzero(neighbours[q]):
+                r = int(r)
+                if visited[r]:
+                    continue
+                visited[r] = True
+                labels[r] = cluster_id
+                queue.append(r)
+            is_core[q] = False  # mark core as fully expanded
+        cluster_id += 1
+
+    return labels
 
 
 def _run_clustering(vectors: np.ndarray, min_cluster_size: int) -> np.ndarray:
@@ -336,13 +416,8 @@ def _run_clustering(vectors: np.ndarray, min_cluster_size: int) -> np.ndarray:
     else:
         eps = _compute_adaptive_eps(normalized, dbscan_min_samples)
 
-    clusterer = DBSCAN(
-        eps=eps,
-        min_samples=dbscan_min_samples,
-        metric="cosine",
-        n_jobs=2,
-    )
-    labels = clusterer.fit_predict(normalized)
+    dists = _pairwise_cosine_dist(normalized)
+    labels = _numpy_dbscan(dists, eps, dbscan_min_samples)
 
     n_clusters = len(set(labels) - {-1})
     n_noise = int(np.sum(labels == -1))

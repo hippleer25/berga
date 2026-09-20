@@ -65,8 +65,8 @@ cd frontend && npm audit                         # JS vulnerability check
 | `rss/parser.py` | Feed parsing + storage |
 | `rss/schedule.py` | User-scoped feed refresh orchestration |
 | `intelligence/recommendations.py` | Three-tier ranking engine (personalised → cold-start → chronological) |
-| `intelligence/embeddings.py` | SentenceTransformer singleton (ONNX int8 preferred), Qdrant client singleton |
-| `intelligence/cluster.py` | Weekly event clustering via LLM |
+| `intelligence/embeddings.py` | Numpy StaticEmbedding engine (HF `tokenizers` + safetensors np.memmap — no torch), Qdrant client singleton |
+| `intelligence/cluster.py` | Weekly event clustering via LLM (pure-numpy DBSCAN + k-NN eps — no sklearn) |
 | `intelligence/similar.py` | Similar-article search via Qdrant |
 | `intelligence/affinity.py` | User affinity analysis and boost controls |
 | `mota/chat.py` | AI chat handler — router → bounded agent loop → synthesis with citations (streaming SSE) |
@@ -93,6 +93,10 @@ cd frontend && npm audit                         # JS vulnerability check
 
 ## Gotchas
 
+- **Embeddings run on pure numpy, not torch** — `intelligence/embeddings.py` loads the StaticEmbedding safetensors via `np.memmap` (zero-copy) + HF `tokenizers` and does the mean-pool itself. torch/transformers/sentence-transformers are NOT installed. Output parity with the old torch pipeline was validated (cosine 1.000 on probe pairs). Only StaticEmbedding-type models are supported; a non-static model would fail loudly at first encode (no silent fallbacks — that bug class is what wasted ~400 MB/process before).
+- **HF_HUB_OFFLINE=1** in compose — the model snapshot lives in the `hf_cache` volume. If the volume is wiped, unset it for one boot to re-download.
+- **setuptools is pinned to 81.0.0** — supervisor 4.2.5 imports `pkg_resources`, which was removed in setuptools>=84.
+- **litellm is lazy-imported** via `_LiteLLMProxy` in `mota/ai_lib.py` (~130 MB RSS saved in the API process at boot). `litellm.drop_params=True` is set on first import.
 - **Frontend is SPA, not SSR** — `adapter-static` with `fallback: 'index.html'`. All routes must work client-side.
 - **No tests configured** — no test runner or test files found in either frontend or backend. Chat is verified via E2E scripts piped into `docker compose exec -T backend python -` (register → Bearer token → SSE `/api/chat`).
 - **Chat source/citation flow** — source URLs never enter LLM prompts; `mota/sources.py` maps `[n]` to URLs backend-side and emits them as a final `sources` SSE event. Executed search queries are emitted as a `queries` SSE event (frontend renders search chips). `ChatRequest.deep_reading` is accepted but ignored (deep reading is on-demand via `read_article`).

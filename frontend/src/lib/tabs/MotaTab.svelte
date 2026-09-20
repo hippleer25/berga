@@ -613,7 +613,7 @@
         <button class="header-icon-btn" onclick={() => { closeSessions(); newChat(); }} title="{$t('motatab.newChat')}" aria-label="{$t('motatab.newChat')}">
           <Plus size={20} />
         </button>
-        <button class="settings-btn" onclick={() => goto('/settings/appearance')} aria-label="Settings">
+        <button class="settings-btn" onclick={() => goto('/settings')} aria-label="Settings">
           <Settings size={20} />
         </button>
       </div>

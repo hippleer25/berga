@@ -3,28 +3,35 @@ intelligence/embeddings.py — Embedding model and Qdrant client singletons.
 
 Thread-safe initialisation with double-checked locking.
 
-Runtime backend: ONNX int8 (model_int8.onnx)
-  – Eliminates the PyTorch runtime (~400–800 MB saved).
-  – Model weights shrink from ~434 MB (fp32) to ~108 MB (int8).
-  – Quality loss vs fp32 is statistically negligible for STS tasks.
+Runtime backend: zero-copy numpy inference over the StaticEmbedding
+weights (safetensors mmap + HF `tokenizers`).
 
-If the ONNX file is unavailable (e.g. the model repo doesn't ship it),
-the loader falls back to the plain ONNX fp32 backend, logging a warning.
+  – No PyTorch, no transformers, no sentence-transformers at runtime.
+    (StaticEmbedding = bag-of-token-embeddings: the "model" is a lookup
+    table plus a mean — numpy does the entire forward pass.)
+  – Weights are np.memmap'd, so RSS cost is only the pages actually
+    touched (shared, evictable), not the full 434 MB file.
+  – Floor RSS for the whole pipeline measured at ~57 MB
+    (the previous torch pipeline peaked at 428 MB).
+  – Output parity with the torch pipeline is bit-exact on the
+    validation probes (cosine 1.000); see AGENTS.md history.
 """
 
 from __future__ import annotations
 
 import html
 import hashlib
+import json
 import logging
 import os
 import re
+import struct
 import threading
 import uuid
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.http.models import (
@@ -62,15 +69,23 @@ except KeyError:
         f"Valid options: {', '.join(d.name for d in Distance)}"
     )
 
-# ONNX file preference order — first available wins.
-# model_int8.onnx  →  108 MB, negligible quality loss for STS tasks (recommended)
-# model_fp16.onnx  →  217 MB, half of fp32, lossless
-# model.onnx       →  434 MB, fp32 baseline (no RAM gain vs PyTorch)
-_ONNX_CANDIDATES = (
-    "onnx/model_int8.onnx",
-    "onnx/model_fp16.onnx",
-    "onnx/model.onnx",
-)
+# Model repo layout (StaticEmbedding models): a single safetensors weights
+# file plus a fast-tokenizer JSON. No ONNX export is required — numpy
+# reproduces the entire forward pass.
+_SAFETENSORS_RELPATH = "0_StaticEmbedding/model.safetensors"
+_TOKENIZER_RELPATH = "0_StaticEmbedding/tokenizer.json"
+_SAFETENSORS_DTYPE_MAP = {
+    "F64": np.float64,
+    "F32": np.float32,
+    "F16": np.float16,
+    "BF16": None,  # numpy has no bfloat16 — rejected at load time
+    "I8": np.int8,
+    "I16": np.int16,
+    "I32": np.int32,
+    "I64": np.int64,
+    "U8": np.uint8,
+    "BOOL": np.bool_,
+}
 
 # ── Embedding text builder ────────────────────────────────────────────────────
 
@@ -160,7 +175,7 @@ def _check_model_fingerprint(client: QdrantClient, fingerprint: str) -> None:
 
 # ── Thread-safe singletons ─────────────────────────────────────────────────────
 
-_model: Optional[SentenceTransformer] = None
+_model: Optional["_StaticEmbedder"] = None
 _model_lock = threading.Lock()
 
 _qdrant_client: Optional[QdrantClient] = None
@@ -169,112 +184,135 @@ _qdrant_lock = threading.Lock()
 
 # ── Model loader ───────────────────────────────────────────────────────────────
 
-def _load_model() -> SentenceTransformer:
+def _locate_model_dir() -> Path:
     """
-    Load the SentenceTransformer with the best available ONNX variant.
-
-    Strategy:
-      1. Try each candidate ONNX file in order (int8 → fp16 → fp32).
-      2. After loading, verify that truncate_dim is respected by running
-         a one-sentence probe. If the output dimension doesn't match
-         VECTOR_SIZE, the backend silently ignored truncate_dim — in that
-         case we apply manual post-encode truncation via a wrapper.
-      3. If no ONNX backend works at all, raise so the operator knows
-         immediately rather than silently running fp32 PyTorch.
+    Resolve the local snapshot directory for MODEL_NAME, mirroring the
+    huggingface-hub cache layout. Uses local_files_only when
+    HF_HUB_OFFLINE=1 so cached deployments never touch the network.
     """
-    last_exc: Optional[Exception] = None
+    from huggingface_hub import snapshot_download
 
-    for onnx_file in _ONNX_CANDIDATES:
+    home = os.environ.get("HF_HOME") or str(Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")) / "huggingface")
+    hub_dir = Path(home).expanduser() / "hub"
+
+    fmt_kwargs = dict(repo_id=MODEL_NAME)
+    if os.environ.get("HF_HOME"):
+        fmt_kwargs["cache_dir"] = hub_dir
+    if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
         try:
-            logger.info(
-                "Loading embedding model '%s' via ONNX backend (file=%s, truncate_dim=%d)",
-                MODEL_NAME,
-                onnx_file,
-                VECTOR_SIZE,
+            return Path(snapshot_download(local_files_only=True, **fmt_kwargs))
+        except Exception as exc:
+            raise RuntimeError(
+                f"HF_HUB_OFFLINE=1 but model '{MODEL_NAME}' is not cached under {hub_dir}: {exc}"
             )
-            model = SentenceTransformer(
-                MODEL_NAME,
-                backend="onnx",
-                model_kwargs={"file_name": onnx_file},
-                truncate_dim=VECTOR_SIZE,
-            )
-            # ── Sanity check: does truncate_dim actually work? ─────────────
-            probe = model.encode("probe", convert_to_numpy=True)
-            actual_dim = int(np.array(probe).shape[-1])
+    return Path(snapshot_download(**fmt_kwargs))
 
-            if actual_dim != VECTOR_SIZE:
-                logger.warning(
-                    "ONNX backend ignored truncate_dim=%d (got dim=%d). "
-                    "Manual truncation will be applied at encode time.",
-                    VECTOR_SIZE,
-                    actual_dim,
-                )
-                return _TruncatingModel(model, VECTOR_SIZE)
 
-            logger.info(
-                "Embedding model ready (backend=onnx, file=%s, dim=%d)",
-                onnx_file,
-                actual_dim,
-            )
-            return model
+def _load_safetensors_weights(path: Path) -> np.memmap:
+    """
+    Zero-copy load of the embedding table from a safetensors file.
 
-        except Exception as exc: # noqa: BLE001
-            logger.warning(
-                "Could not load ONNX file '%s': %s — trying next candidate.",
-                onnx_file,
-                exc,
-            )
-            last_exc = exc
-
-    raise RuntimeError(
-        f"No ONNX variant could be loaded for model '{MODEL_NAME}'. "
-        f"Tried: {_ONNX_CANDIDATES}. Last error: {last_exc}"
+    We bypass safetensors.numpy.load_file() because it materialises the
+    entire file as anonymous RAM. A manual np.memmap over the tensor's
+    byte range keeps the weights file-backed (shared + evictable).
+    """
+    with open(path, "rb") as f:
+        (header_len,) = struct.unpack("<Q", f.read(8))
+        header = json.loads(f.read(header_len))
+    meta = header.get("embedding.weight")
+    if meta is None:
+        raise RuntimeError(f"{path} does not contain tensor 'embedding.weight'")
+    dtype = _SAFETENSORS_DTYPE_MAP.get(meta["dtype"])
+    if dtype is None:
+        raise RuntimeError(
+            f"Unsupported safetensors dtype '{meta['dtype']}' for numpy inference"
+        )
+    data_offset = 8 + header_len
+    start, _end = meta["data_offsets"]
+    return np.memmap(
+        path, dtype=dtype, mode="r",
+        offset=data_offset + start, shape=tuple(meta["shape"]),
     )
 
 
-class _TruncatingModel:
+class _StaticEmbedder:
     """
-    Thin wrapper that truncates embeddings post-encode when the ONNX backend
-    ignores `truncate_dim`. Exposes the same `.encode()` interface as
-    SentenceTransformer so the rest of the codebase needs zero changes.
+    Minimal NumPy reimplementation of sentence-transformers'
+    StaticEmbedding: tokenize (no special tokens) → mean of token
+    embedding rows → truncate to VECTOR_SIZE (MRL) → L2-normalise.
+
+    Exposes the same `.encode()` interface the rest of the codebase
+    expects, so `affinity.py`, `parser.py` and `workers/tasks.py` need
+    zero changes.
     """
 
-    def __init__(self, inner: SentenceTransformer, dim: int) -> None:
-        self._inner = inner
-        self._dim = dim
+    def __init__(self, model_dir: Path) -> None:
+        weights_path = model_dir / _SAFETENSORS_RELPATH
+        tokenizer_path = model_dir / _TOKENIZER_RELPATH
+        if not weights_path.exists():
+            raise RuntimeError(
+                f"StaticEmbedding weights not found at {weights_path}. "
+                "Only StaticEmbedding models are supported by the numpy backend."
+            )
+        if not tokenizer_path.exists():
+            raise RuntimeError(
+                f"Tokenizer file not found at {tokenizer_path}"
+            )
+
+        from tokenizers import Tokenizer
+        self._weights = _load_safetensors_weights(weights_path)
+        self._tokenizer = Tokenizer.from_file(str(tokenizer_path))
+        self.dim = int(self._weights.shape[1])
+
+        logger.info(
+            "Embedding model ready (backend=numpy-mmap, model=%s, table=%s, mrl_dim=%d)",
+            MODEL_NAME, self._weights.shape, VECTOR_SIZE,
+        )
+        if VECTOR_SIZE > self.dim:
+            raise ValueError(
+                f"VECTOR_SIZE ({VECTOR_SIZE}) exceeds model dimension ({self.dim})"
+            )
 
     def encode(
         self,
         sentences,
         *,
-        batch_size: int = 64,
+        batch_size: int = 64,  # accepted for interface parity — numpy has no batching knobs
         normalize_embeddings: bool = True,
         convert_to_numpy: bool = True,
-        show_progress_bar: bool = False,
-        **kwargs,
+        show_progress_bar: bool = False,  # noqa: ARG002
+        **kwargs,  # noqa: ANN003
     ) -> np.ndarray:
-        embeddings = self._inner.encode(
-            sentences,
-            batch_size=batch_size,
-            normalize_embeddings=False,   # normalise *after* truncation
-            convert_to_numpy=True,
-            show_progress_bar=show_progress_bar,
-            **kwargs,
-        )
-        embeddings = np.array(embeddings)[..., : self._dim]
+        if not convert_to_numpy:
+            raise ValueError("numpy backend only returns numpy arrays")
+        single = isinstance(sentences, str)
+        texts = [sentences] if single else list(sentences)
+
+        out = np.empty((len(texts), VECTOR_SIZE), dtype=np.float32)
+        for i, text in enumerate(texts):
+            ids = self._tokenizer.encode(text, add_special_tokens=False).ids
+            if ids:
+                vec = np.asarray(self._weights[ids], dtype=np.float32).mean(axis=0)[:VECTOR_SIZE]
+            else:
+                vec = np.zeros(VECTOR_SIZE, dtype=np.float32)
+            out[i] = vec
 
         if normalize_embeddings:
-            norms = np.linalg.norm(embeddings, axis=-1, keepdims=True)
+            norms = np.linalg.norm(out, axis=-1, keepdims=True)
             # Avoid division by zero for zero vectors
             norms = np.where(norms == 0, 1.0, norms)
-            embeddings = embeddings / norms
-
-        return embeddings
+            out = out / norms
+        return out[0] if single else out
 
 
 # ── Public accessors ───────────────────────────────────────────────────────────
 
-def get_embedding_model() -> SentenceTransformer | _TruncatingModel:
+def _load_model() -> "_StaticEmbedder":
+    """Locate the cached model snapshot and build the numpy engine."""
+    return _StaticEmbedder(_locate_model_dir())
+
+
+def get_embedding_model() -> "_StaticEmbedder":
     """Return the shared embedding model instance (thread-safe, lazy)."""
     global _model, _current_fingerprint
     if _model is None:
