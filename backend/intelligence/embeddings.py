@@ -202,8 +202,13 @@ def _locate_model_dir() -> Path:
         try:
             return Path(snapshot_download(local_files_only=True, **fmt_kwargs))
         except Exception as exc:
-            raise RuntimeError(
-                f"HF_HUB_OFFLINE=1 but model '{MODEL_NAME}' is not cached under {hub_dir}: {exc}"
+            # Cache miss (e.g. volume wiped with `docker compose down -v`).
+            # Fail-soft: allow ONE online download instead of crash-looping
+            # forever. Subsequent boots still use the offline cache.
+            logger.warning(
+                "HF_HUB_OFFLINE=1 but model '%s' is not cached under %s (%s) — "
+                "attempting a one-time download to populate the cache",
+                MODEL_NAME, hub_dir, exc,
             )
     return Path(snapshot_download(**fmt_kwargs))
 

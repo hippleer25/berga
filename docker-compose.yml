@@ -1,4 +1,4 @@
-name: dev-berga
+name: dev_berga
 
 services:
   mysql:

@@ -53,7 +53,14 @@ logger = logging.getLogger(__name__)
 def db_verification():
     init_db.get_db()
     init_db.init_db()
-    ensure_payload_indexes()
+    try:
+        ensure_payload_indexes()
+    except Exception as e:
+        # Degrade instead of dying: MySQL-backed routes still serve, but
+        # vector-dependent endpoints will fail loudly until Qdrant/embedding
+        # init succeeds. The supervisor keeps the process alive so the API
+        # can recover on the next request that retriggers model loading.
+        logger.error("Qdrant/embedding initialisation failed — starting degraded: %s", e)
 
 
 @asynccontextmanager
