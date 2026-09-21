@@ -391,11 +391,11 @@ export const uiChipIcons: Writable<boolean> = writable(getSavedChipIcons());
 
 /* ── Navbar background ─────────────────────────────────────────────────── */
 
-export type NavBg = 'default' | 'white' | 'berga-white' | 'berga-gray' | 'dark';
+export type NavBg = 'default' | 'white' | 'berga-white' | 'berga-gray' | 'dark' | 'amoled';
 export const NAV_BG_BERGA_WHITE = '#fbfaf7';
 export const NAV_BG_BERGA_GRAY = '#f8f7f3';
 const NAV_BG_KEY = 'ui-nav-bg';
-const NAV_BG_VALUES: NavBg[] = ['default', 'white', 'berga-white', 'berga-gray', 'dark'];
+const NAV_BG_VALUES: NavBg[] = ['default', 'white', 'berga-white', 'berga-gray', 'dark', 'amoled'];
 
 /** Pre-rename 'berga-white' (#f8f7f3) → 'berga-gray'. */
 function migrateNavBg(raw: string | null): NavBg | null {
@@ -421,14 +421,15 @@ export const uiNavBg: Writable<NavBg> = writable(getSavedNavBg());
 
 /* ── Page background ───────────────────────────────────────────────────── */
 
-export type PageBg = 'theme' | 'white' | 'berga-white' | 'berga-gray' | 'dark';
+export type PageBg = 'theme' | 'white' | 'berga-white' | 'berga-gray' | 'dark' | 'amoled';
 const PAGE_BG_KEY = 'ui-page-bg';
-const PAGE_BG_VALUES: PageBg[] = ['theme', 'white', 'berga-white', 'berga-gray', 'dark'];
+const PAGE_BG_VALUES: PageBg[] = ['theme', 'white', 'berga-white', 'berga-gray', 'dark', 'amoled'];
 const PAGE_BG_HASHES: Record<Exclude<PageBg, 'theme'>, string> = {
 	'white': '#ffffff',
 	'berga-white': '#fbfaf7',
 	'berga-gray': '#f8f7f3',
 	'dark': '#17181d',
+	'amoled': '#000000',
 };
 
 /**
@@ -443,7 +444,7 @@ export function applyPageBg(value: PageBg, persist = false) {
 		root.removeAttribute('data-page-bg');
 		if (persist) localStorage.removeItem(PAGE_BG_KEY);
 	} else {
-		root.setAttribute('data-theme', value === 'dark' ? 'berga' : 'berga-black');
+		root.setAttribute('data-theme', value === 'dark' || value === 'amoled' ? 'berga' : 'berga-black');
 		root.setAttribute('data-page-bg', value);
 		if (persist) localStorage.setItem(PAGE_BG_KEY, value);
 	}

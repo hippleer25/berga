@@ -293,6 +293,7 @@
     { value: 'berga-white', labelKey: 'settings.navColorBergaWhite', color: '#fbfaf7' },
     { value: 'berga-gray', labelKey: 'settings.navColorBergaGray', color: '#f8f7f3' },
     { value: 'dark', labelKey: 'settings.navColorDark', color: '#17181d' },
+    { value: 'amoled', labelKey: 'settings.navColorAmoled', color: '#000000' },
   ];
 
   const PAGE_BG_OPTIONS: { value: PageBg; labelKey: string; color: string | null }[] = [
@@ -301,6 +302,7 @@
     { value: 'berga-white', labelKey: 'settings.bgColorBergaWhite', color: '#fbfaf7' },
     { value: 'berga-gray', labelKey: 'settings.bgColorBergaGray', color: '#f8f7f3' },
     { value: 'dark', labelKey: 'settings.bgColorDark', color: '#17181d' },
+    { value: 'amoled', labelKey: 'settings.bgColorAmoled', color: '#000000' },
   ];
   let chipIcons = $state<boolean>(getSavedChipIcons());
   let deckWidth = $state<number>(getSavedDeckWidthPct());
@@ -563,7 +565,7 @@
   }
   function setPageBg(v: PageBg) {
     pageBgVal = v; applyPageBg(v, true); uiPageBg.set(v);
-    if (v !== 'theme') activeTheme = v === 'dark' ? 'berga' : 'berga-black';
+    if (v !== 'theme') activeTheme = v === 'dark' || v === 'amoled' ? 'berga' : 'berga-black';
   }
   function setSettingsIcon(v: SettingsIconPlacement) {
     settingsIconVal = v; applySettingsIconPlacement(v, true); uiSettingsIconPlacement.set(v);

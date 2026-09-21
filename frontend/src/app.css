@@ -522,6 +522,10 @@ textarea:focus:not(:focus-visible) {
   --nav-bg: #17181d;
   --nav-bg-content: #f5f4ef;
 }
+[data-nav-bg="amoled"] {
+  --nav-bg: #000000;
+  --nav-bg-content: #f5f4ef;
+}
 
 /* ── Page background option: full palette override ─────────────────────── */
 [data-page-bg="white"] {
@@ -546,6 +550,12 @@ textarea:focus:not(:focus-visible) {
   --color-base-100: #17181d;
   --color-base-200: color-mix(in oklch, #ffffff 12%, #17181d);
   --color-base-300: color-mix(in oklch, #ffffff 16%, #17181d);
+  --color-base-content: #f5f4ef;
+}
+[data-page-bg="amoled"] {
+  --color-base-100: #000000;
+  --color-base-200: #0d0d0d;
+  --color-base-300: #171717;
   --color-base-content: #f5f4ef;
 }
 
