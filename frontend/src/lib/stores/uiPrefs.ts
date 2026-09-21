@@ -498,6 +498,30 @@ export function getSavedSidebarMargin(): number {
 
 export const uiSidebarMargin: Writable<number> = writable(getSavedSidebarMargin());
 
+/* ── Desktop sidebar pill size (vertical padding) ──────────────────────── */
+
+export const SIDEBAR_SIZE_MIN = 4;
+export const SIDEBAR_SIZE_MAX = 20;
+export const SIDEBAR_SIZE_DEFAULT = 10;
+const SIDEBAR_SIZE_KEY = 'ui-sidebar-size';
+
+export function applySidebarSize(px: number, persist = false) {
+	if (!browser) return;
+	const v = clamp(px, SIDEBAR_SIZE_MIN, SIDEBAR_SIZE_MAX);
+	document.documentElement.style.setProperty('--sidebar-item-pad-y', `${v}px`);
+	if (persist) localStorage.setItem(SIDEBAR_SIZE_KEY, String(v));
+}
+
+export function getSavedSidebarSize(): number {
+	if (!browser) return SIDEBAR_SIZE_DEFAULT;
+	const v = Number(localStorage.getItem(SIDEBAR_SIZE_KEY));
+	return Number.isFinite(v) && v >= SIDEBAR_SIZE_MIN && v <= SIDEBAR_SIZE_MAX
+		? v
+		: SIDEBAR_SIZE_DEFAULT;
+}
+
+export const uiSidebarSize: Writable<number> = writable(getSavedSidebarSize());
+
 /* ── Init / reset ───────────────────────────────────────────────────────── */
 
 export function initUiPrefs() {
@@ -518,6 +542,7 @@ export function initUiPrefs() {
 	applyNavBg(getSavedNavBg());
 	applySidebarCollapsed(getSavedSidebarCollapsed());
 	applySidebarMargin(getSavedSidebarMargin());
+	applySidebarSize(getSavedSidebarSize());
 	applyPageBg(getSavedPageBg());
 }
 
@@ -554,6 +579,8 @@ export function resetUiPrefs() {
 	applySidebarCollapsed(false, true);
 	uiSidebarMargin.set(SIDEBAR_MARGIN_DEFAULT);
 	applySidebarMargin(SIDEBAR_MARGIN_DEFAULT, true);
+	uiSidebarSize.set(SIDEBAR_SIZE_DEFAULT);
+	applySidebarSize(SIDEBAR_SIZE_DEFAULT, true);
 	uiPageBg.set('theme');
 	applyPageBg('theme', true);
 }

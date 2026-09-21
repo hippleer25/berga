@@ -57,6 +57,7 @@
     uiDeckRadiusPct,
     uiWelcomeBold,
     uiSidebarMargin,
+    uiSidebarSize,
     applyRadiusSurfaces,
     applyRadiusControls,
     applyNavStyle,
@@ -70,6 +71,7 @@
     applyDeckRadiusPct,
     applyWelcomeBold,
     applySidebarMargin,
+    applySidebarSize,
     resetUiPrefs,
     getSavedRadiusSurface,
     getSavedRadiusControl,
@@ -86,6 +88,7 @@
     getSavedDeckRadiusPct,
     getSavedWelcomeBold,
     getSavedSidebarMargin,
+    getSavedSidebarSize,
     RADIUS_SURFACE_MIN,
     RADIUS_SURFACE_MAX,
     RADIUS_SURFACE_DEFAULT,
@@ -104,6 +107,9 @@
     SIDEBAR_MARGIN_MIN,
     SIDEBAR_MARGIN_MAX,
     SIDEBAR_MARGIN_DEFAULT,
+    SIDEBAR_SIZE_MIN,
+    SIDEBAR_SIZE_MAX,
+    SIDEBAR_SIZE_DEFAULT,
     BORDER_WIDTH_MIN,
     BORDER_WIDTH_MAX,
     type NavStyle,
@@ -237,6 +243,7 @@
   let deckRadius = $state<number>(getSavedDeckRadiusPct());
   let welcomeBold = $state<boolean>(getSavedWelcomeBold());
   let sidebarMargin = $state<number>(getSavedSidebarMargin());
+  let sidebarSize = $state<number>(getSavedSidebarSize());
 
   // ── Typography state ──
   let fontSize = $state<number>(ARTICLE_TYPOGRAPHY.fontSize.default);
@@ -489,6 +496,9 @@
   function setSidebarMargin(v: number) {
     sidebarMargin = v; applySidebarMargin(v, true); uiSidebarMargin.set(v);
   }
+  function setSidebarSize(v: number) {
+    sidebarSize = v; applySidebarSize(v, true); uiSidebarSize.set(v);
+  }
   function moveTab(i: number, dir: -1 | 1) {
     const arr = [...get(tabOrder)];
     const j = i + dir;
@@ -516,6 +526,8 @@
     welcomeBold = false;
     sidebarMargin = SIDEBAR_MARGIN_DEFAULT;
     uiSidebarMargin.set(SIDEBAR_MARGIN_DEFAULT);
+    sidebarSize = SIDEBAR_SIZE_DEFAULT;
+    uiSidebarSize.set(SIDEBAR_SIZE_DEFAULT);
   }
 
   function fmtEm(px: number): string {
@@ -1057,6 +1069,23 @@
           oninput={(e) => setSidebarMargin(Number((e.target as HTMLInputElement).value))}
         />
         <p class="row-hint">{$t('settings.sidebarMarginHint')}</p>
+      </div>
+
+      <div class="setting-slider-row">
+        <div class="slider-head">
+          <span class="setting-label">{$t('settings.sidebarSize')}</span>
+          <span class="slider-value">{sidebarSize}px</span>
+        </div>
+        <input
+          type="range"
+          class="range"
+          min={SIDEBAR_SIZE_MIN}
+          max={SIDEBAR_SIZE_MAX}
+          step={1}
+          value={sidebarSize}
+          oninput={(e) => setSidebarSize(Number((e.target as HTMLInputElement).value))}
+        />
+        <p class="row-hint">{$t('settings.sidebarSizeHint')}</p>
       </div>
 
       <div class="setting-block">

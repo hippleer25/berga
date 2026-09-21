@@ -20,6 +20,8 @@
   "boldWelcome": "Título de bienvenida en negrita",
   "sidebarMargin": "Espaciado de las pestañas de la barra lateral",
   "sidebarMarginHint": "Margen lateral de las pestañas de nav (escritorio)",
+  "sidebarSize": "Tamaño de las pestañas de la barra lateral",
+  "sidebarSizeHint": "Altura de las píldoras de las pestañas (escritorio)",
   "borderColor": "Color del borde",
   "borderColorDefault": "Predeterminado del tema",
   "borderWidth": "Grosor del borde",

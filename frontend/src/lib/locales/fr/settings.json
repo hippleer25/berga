@@ -20,6 +20,8 @@
   "boldWelcome": "Titre de bienvenue en gras",
   "sidebarMargin": "Espacement des onglets de la barre latérale",
   "sidebarMarginHint": "Marge latérale des onglets de nav (bureau)",
+  "sidebarSize": "Taille des onglets de la barre latérale",
+  "sidebarSizeHint": "Hauteur des pilules des onglets (bureau)",
   "borderColor": "Couleur de la bordure",
   "borderColorDefault": "Valeur du thème",
   "borderWidth": "Épaisseur de la bordure",

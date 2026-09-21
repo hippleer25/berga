@@ -208,7 +208,7 @@
 
 	.sidebar-inner {
 		display: flex; flex-direction: column; height: 100%;
-		padding: 24px 16px 32px; gap: 8px;
+		padding: 24px var(--sidebar-item-margin, 16px) 12px; gap: 8px;
 	}
 	.brand { padding: 4px 8px 20px; }
 
@@ -224,7 +224,8 @@
 
 	.sidebar-item {
 		display: flex; align-items: center; gap: 12px;
-		padding: 10px 16px; border-radius: var(--ui-radius-sm);
+		padding: var(--sidebar-item-pad-y, 10px) var(--sidebar-item-margin, 16px);
+		border-radius: var(--ui-radius-sm);
 		border-left: 3px solid transparent;
 		text-decoration: none;
 		color: var(--sidebar-item-color, color-mix(in oklch, var(--color-base-content) 60%, transparent));

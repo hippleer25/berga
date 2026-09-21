@@ -77,6 +77,15 @@
         } catch (e) {
           document.documentElement.style.removeProperty('--sidebar-item-margin');
         }
+
+        try {
+          var sidebarSize = parseFloat(localStorage.getItem('ui-sidebar-size'));
+          if (isFinite(sidebarSize) && sidebarSize >= 4 && sidebarSize <= 20) {
+            document.documentElement.style.setProperty('--sidebar-item-pad-y', sidebarSize + 'px');
+          }
+        } catch (e) {
+          document.documentElement.style.removeProperty('--sidebar-item-pad-y');
+        }
       })();
     </script>
 

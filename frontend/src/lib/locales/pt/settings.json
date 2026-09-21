@@ -20,6 +20,8 @@
   "boldWelcome": "Título de boas-vindas em negrito",
   "sidebarMargin": "Espaçamento das abas da barra lateral",
   "sidebarMarginHint": "Margem lateral das abas da nav (desktop)",
+  "sidebarSize": "Tamanho das abas da barra lateral",
+  "sidebarSizeHint": "Altura das pílulas das abas (desktop)",
   "borderColor": "Cor da borda",
   "borderColorDefault": "Padrão do tema",
   "borderWidth": "Espessura da borda",
