@@ -1,3 +1,5 @@
+import { syncThemeColor } from './themeColor';
+
 export type FontCategory = 'page-title' | 'post-title' | 'article-body' | 'ui';
 
 export const FONT_LIST = [
@@ -271,6 +273,7 @@ export function applyFont(category: FontCategory, fontName: string, persist = fa
 export function applyTheme(themeName: string, persist = false) {
 	document.documentElement.setAttribute('data-theme', themeName);
 	if (persist) localStorage.setItem('preferred-theme', themeName);
+	syncThemeColor();
 }
 
 export function extractThemeNames(css: string): string[] {
@@ -396,6 +399,7 @@ export function initAppearance() {
 	applyCoverMaxHeight(numPref(POSTCARD_PREFS.coverMaxH.key, POSTCARD_PREFS.coverMaxH.default));
 
 	applyCustomCss();
+	syncThemeColor();
 }
 
 export function getSavedFont(category: FontCategory): string {

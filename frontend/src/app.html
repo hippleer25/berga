@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#595959" />
+  <meta name="theme-color" content="#000000" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Berga" />
@@ -61,6 +61,16 @@
         } catch (e) {
           document.documentElement.removeAttribute('data-page-bg');
         }
+
+        try {
+          // Android system bars follow the selected background via theme-color meta
+          var THEME_BAR_COLORS = { 'berga': '#000000', 'berga-black': '#ffffff' };
+          var PAGE_BG_BAR_COLORS = { white: '#ffffff', 'berga-white': '#fbfaf7', 'berga-gray': '#f8f7f3', dark: '#17181d', amoled: '#000000' };
+          var pageBgBar = localStorage.getItem('ui-page-bg');
+          var barColor = (pageBgBar && PAGE_BG_BAR_COLORS[pageBgBar]) || THEME_BAR_COLORS[document.documentElement.getAttribute('data-theme')] || '#000000';
+          var themeMeta = document.querySelector('meta[name="theme-color"]');
+          if (themeMeta) themeMeta.setAttribute('content', barColor);
+        } catch (e) {}
 
         try {
           var sidebarCollapsed = localStorage.getItem('ui-sidebar-collapsed') === 'true';

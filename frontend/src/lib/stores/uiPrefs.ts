@@ -1,5 +1,6 @@
 import { writable, type Writable, get } from 'svelte/store';
 import { browser } from '$app/environment';
+import { syncThemeColor } from '$lib/utils/themeColor';
 
 /* ── Corner radius (granular: large surfaces + small controls) ──────────── */
 
@@ -448,6 +449,7 @@ export function applyPageBg(value: PageBg, persist = false) {
 		root.setAttribute('data-page-bg', value);
 		if (persist) localStorage.setItem(PAGE_BG_KEY, value);
 	}
+	syncThemeColor();
 }
 
 export function getSavedPageBg(): PageBg {
