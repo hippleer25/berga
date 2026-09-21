@@ -18,6 +18,8 @@
   "bodyWidth": "Body width",
   "boldTitle": "Bold title",
   "boldWelcome": "Bold welcome title",
+  "welcomeSpace": "Welcome title spacing",
+  "welcomeSpaceHint": "Space between the top of the page and the Welcome title (home tab)",
   "sidebarMargin": "Sidebar tab spacing",
   "sidebarMarginHint": "Lateral margin of the nav tabs (desktop)",
   "sidebarSize": "Sidebar tab size",
@@ -128,5 +130,10 @@
   "titleTextPosition": "Title text position",
   "titleWidth": "Title width",
   "typeface": "Typeface",
-  "uiFont": "Interface font"
+  "uiFont": "Interface font",
+  "coverImageFit": "Image fit",
+  "coverFitFill": "Fit (crop)",
+  "coverFitProportions": "Keep proportions",
+  "coverMaxWidth": "Max width",
+  "coverMaxHeight": "Max height"
 }

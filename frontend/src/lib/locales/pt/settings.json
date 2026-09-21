@@ -18,6 +18,8 @@
   "bodyWidth": "Largura do corpo",
   "boldTitle": "Título em negrito",
   "boldWelcome": "Título de boas-vindas em negrito",
+  "welcomeSpace": "Espaçamento do título de boas-vindas",
+  "welcomeSpaceHint": "Espaço entre o topo da página e o título de boas-vindas (aba inicial)",
   "sidebarMargin": "Espaçamento das abas da barra lateral",
   "sidebarMarginHint": "Margem lateral das abas da nav (desktop)",
   "sidebarSize": "Tamanho das abas da barra lateral",
@@ -128,5 +130,10 @@
   "titleTextPosition": "Posição do título",
   "titleWidth": "Largura do título",
   "typeface": "Fonte",
-  "uiFont": "Fonte da interface"
+  "uiFont": "Fonte da interface",
+  "coverImageFit": "Ajuste da imagem",
+  "coverFitFill": "Preencher (cortar)",
+  "coverFitProportions": "Manter proporções",
+  "coverMaxWidth": "Largura máxima",
+  "coverMaxHeight": "Altura máxima"
 }

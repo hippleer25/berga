@@ -189,7 +189,10 @@
 <aside class="sidebar" class:covered aria-label="{$t('navbar.mainNav')}">
 	<div class="sidebar-inner">
 		<div class="sidebar-top">
-			<div class="brand"></div>
+			<a href="/" class="brand" aria-label="Berga">
+				<img src="/icons/berga_64.png" alt="" class="brand-logo" draggable="false" />
+				<span class="brand-name">Berga</span>
+			</a>
 			{#if $splitTab}
 				<button
 					class="sidebar-collapse"
@@ -497,7 +500,36 @@
 		gap: 8px;
 	}
 
-	.brand { padding: 4px 8px 20px; }
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 2px 20px;
+		text-decoration: none;
+		color: var(--nav-bg-content, var(--color-base-content));
+		transition: opacity 150ms ease;
+	}
+	.brand:hover {
+		opacity: 0.8;
+	}
+	.brand-logo {
+		width: 26px;
+		height: 26px;
+		border-radius: 6px;
+		display: block;
+		user-select: none;
+	}
+	.brand-name {
+		font-family: var(--font-page-title);
+		font-weight: 400;
+		font-size: 1.15rem;
+		/* Gloock's metrics ride high: match the logo's box height so the
+		   em box centers optically next to it */
+		line-height: 26px;
+		height: 26px;
+		display: flex;
+		align-items: center;
+	}
 
 	.sidebar-nav {
 		display: flex;

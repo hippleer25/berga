@@ -161,6 +161,9 @@ export const POSTCARD_PREFS = {
 	density: { key: 'feed-density', default: 'comfortable' as Density },
 	titleSize: { key: 'postcard-title-size', min: 80, max: 150, step: 5, default: 100 },
 	descSize: { key: 'postcard-desc-size', min: 80, max: 150, step: 5, default: 100 },
+	coverFit: { key: 'cover-image-fit', default: 'fill' as 'fill' | 'proportions' },
+	coverMaxW: { key: 'cover-image-max-w', min: 80, max: 400, step: 10, default: 160 },
+	coverMaxH: { key: 'cover-image-max-h', min: 60, max: 400, step: 10, default: 160 },
 } as const;
 
 export type Density = 'compact' | 'comfortable' | 'spacious';
@@ -228,6 +231,28 @@ export function getSavedDensity(): Density {
 	if (typeof localStorage === 'undefined') return 'comfortable';
 	const v = localStorage.getItem(POSTCARD_PREFS.density.key);
 	return v === 'compact' || v === 'spacious' ? v : 'comfortable';
+}
+
+export function applyCoverFit(value: 'fill' | 'proportions', persist = false) {
+	document.documentElement.setAttribute('data-cover-fit', value);
+	if (persist) localStorage.setItem(POSTCARD_PREFS.coverFit.key, value);
+}
+
+export function applyCoverMaxWidth(value: number, persist = false) {
+	const v = Math.min(POSTCARD_PREFS.coverMaxW.max, Math.max(POSTCARD_PREFS.coverMaxW.min, value));
+	document.documentElement.style.setProperty('--cover-max-w', `${v}px`);
+	if (persist) localStorage.setItem(POSTCARD_PREFS.coverMaxW.key, String(v));
+}
+
+export function applyCoverMaxHeight(value: number, persist = false) {
+	const v = Math.min(POSTCARD_PREFS.coverMaxH.max, Math.max(POSTCARD_PREFS.coverMaxH.min, value));
+	document.documentElement.style.setProperty('--cover-max-h', `${v}px`);
+	if (persist) localStorage.setItem(POSTCARD_PREFS.coverMaxH.key, String(v));
+}
+
+export function getSavedCoverFit(): 'fill' | 'proportions' {
+	if (typeof localStorage === 'undefined') return POSTCARD_PREFS.coverFit.default;
+	return localStorage.getItem(POSTCARD_PREFS.coverFit.key) === 'proportions' ? 'proportions' : 'fill';
 }
 
 export function applyFont(category: FontCategory, fontName: string, persist = false) {
@@ -366,6 +391,9 @@ export function initAppearance() {
 	applyTitleSize(numPref(POSTCARD_PREFS.titleSize.key, POSTCARD_PREFS.titleSize.default));
 	applyDescSize(numPref(POSTCARD_PREFS.descSize.key, POSTCARD_PREFS.descSize.default));
 	applyDensity(getSavedDensity());
+	applyCoverFit(getSavedCoverFit());
+	applyCoverMaxWidth(numPref(POSTCARD_PREFS.coverMaxW.key, POSTCARD_PREFS.coverMaxW.default));
+	applyCoverMaxHeight(numPref(POSTCARD_PREFS.coverMaxH.key, POSTCARD_PREFS.coverMaxH.default));
 
 	applyCustomCss();
 }

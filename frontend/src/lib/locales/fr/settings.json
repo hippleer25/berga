@@ -18,6 +18,8 @@
   "bodyWidth": "Largeur du corps",
   "boldTitle": "Titre en gras",
   "boldWelcome": "Titre de bienvenue en gras",
+  "welcomeSpace": "Espacement du titre de bienvenue",
+  "welcomeSpaceHint": "Espace entre le haut de la page et le titre de bienvenue (onglet accueil)",
   "sidebarMargin": "Espacement des onglets de la barre latérale",
   "sidebarMarginHint": "Marge latérale des onglets de nav (bureau)",
   "sidebarSize": "Taille des onglets de la barre latérale",
@@ -128,5 +130,10 @@
   "titleTextPosition": "Position du titre",
   "titleWidth": "Largeur du titre",
   "typeface": "Typographie",
-  "uiFont": "Police de l'interface"
+  "uiFont": "Police de l'interface",
+  "coverImageFit": "Ajustement de l'image",
+  "coverFitFill": "Remplir (rogner)",
+  "coverFitProportions": "Garder les proportions",
+  "coverMaxWidth": "Largeur max",
+  "coverMaxHeight": "Hauteur max"
 }

@@ -1243,7 +1243,7 @@ if (res.ok) {
 
     /* ── Welcome Section ─────────────────────────────────────── */
     .welcome-section {
-        padding-top: 4px;
+        padding-top: var(--welcome-space-top, 4px);
         padding-bottom: 16px;
     }
 .welcome-title {

@@ -31,6 +31,10 @@
     getSavedDescSize,
     applyDensity,
     getSavedDensity,
+    applyCoverFit,
+    applyCoverMaxWidth,
+    applyCoverMaxHeight,
+    getSavedCoverFit,
     ARTICLE_TYPOGRAPHY,
     POSTCARD_PREFS,
     type Density,
@@ -57,6 +61,7 @@
     uiDeckHeightVw,
     uiDeckRadiusPct,
     uiWelcomeBold,
+    uiWelcomeSpace,
     uiSidebarMargin,
     uiSidebarSize,
     applyRadiusSurfaces,
@@ -71,6 +76,7 @@
     applyDeckHeightVw,
     applyDeckRadiusPct,
     applyWelcomeBold,
+    applyWelcomeSpace,
     applySidebarMargin,
     applySidebarSize,
     resetUiPrefs,
@@ -88,6 +94,7 @@
     getSavedDeckHeightVw,
     getSavedDeckRadiusPct,
     getSavedWelcomeBold,
+    getSavedWelcomeSpace,
     getSavedSidebarMargin,
     getSavedSidebarSize,
     RADIUS_SURFACE_MIN,
@@ -108,6 +115,9 @@
     SIDEBAR_MARGIN_MIN,
     SIDEBAR_MARGIN_MAX,
     SIDEBAR_MARGIN_DEFAULT,
+    WELCOME_SPACE_MIN,
+    WELCOME_SPACE_MAX,
+    WELCOME_SPACE_DEFAULT,
     SIDEBAR_SIZE_MIN,
     SIDEBAR_SIZE_MAX,
     SIDEBAR_SIZE_DEFAULT,
@@ -142,7 +152,11 @@
     postcardDescLines,
     postcardTitleBold,
     feedDensity,
+    coverImageFit,
+    coverImageMaxWidth,
+    coverImageMaxHeight,
     type CoverPosition,
+    type CoverFitMode,
     type TextAlign,
   } from '$lib/stores/preferences';
 
@@ -178,6 +192,9 @@
   let cssSaveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
   let showCover = $state(false);
   let coverPos = $state<CoverPosition>('right');
+  let coverFitVal = $state<CoverFitMode>('fill');
+  let coverMaxWVal = $state(160);
+  let coverMaxHVal = $state(160);
   let coverDropdownOpen = $state(false);
   let coverBtnEl: HTMLButtonElement | null = $state(null);
   let coverDropStyle = $state('');
@@ -248,6 +265,7 @@
   let deckRadius = $state<number>(getSavedDeckRadiusPct());
   let welcomeBold = $state<boolean>(getSavedWelcomeBold());
   let sidebarMargin = $state<number>(getSavedSidebarMargin());
+  let welcomeSpace = $state<number>(getSavedWelcomeSpace());
   let sidebarSize = $state<number>(getSavedSidebarSize());
 
   // ── Typography state ──
@@ -282,6 +300,9 @@
     customCss = localStorage.getItem('custom-css') || '';
     showCover = get(showCoverImages);
     coverPos = get(coverImagePosition);
+    coverFitVal = get(coverImageFit);
+    coverMaxWVal = get(coverImageMaxWidth);
+    coverMaxHVal = get(coverImageMaxHeight);
     titlePos = get(titleTextAlign);
     bodyPos = get(bodyTextAlign);
 
@@ -371,6 +392,18 @@
     coverPos = pos;
     coverImagePosition.setPosition(pos);
     coverDropdownOpen = false;
+  }
+
+  function setCoverFit(mode: CoverFitMode) {
+    coverFitVal = mode;
+    coverImageFit.setValue(mode);
+    applyCoverFit(mode, true);
+  }
+  function setCoverMaxW(v: number) {
+    coverMaxWVal = v; applyCoverMaxWidth(v, true); coverImageMaxWidth.setValue(v);
+  }
+  function setCoverMaxH(v: number) {
+    coverMaxHVal = v; applyCoverMaxHeight(v, true); coverImageMaxHeight.setValue(v);
   }
 
   function toggleTitleDropdown() {
@@ -501,6 +534,9 @@
   function toggleWelcomeBold() {
     welcomeBold = !welcomeBold; applyWelcomeBold(welcomeBold, true); uiWelcomeBold.set(welcomeBold);
   }
+  function setWelcomeSpace(v: number) {
+    welcomeSpace = v; applyWelcomeSpace(v, true); uiWelcomeSpace.set(v);
+  }
   function setSidebarMargin(v: number) {
     sidebarMargin = v; applySidebarMargin(v, true); uiSidebarMargin.set(v);
   }
@@ -533,6 +569,8 @@
     deckHeight = DECK_HEIGHT_VW_DEFAULT;
     deckRadius = DECK_RADIUS_PCT_DEFAULT;
     welcomeBold = false;
+    welcomeSpace = WELCOME_SPACE_DEFAULT;
+    uiWelcomeSpace.set(WELCOME_SPACE_DEFAULT);
     sidebarMargin = SIDEBAR_MARGIN_DEFAULT;
     uiSidebarMargin.set(SIDEBAR_MARGIN_DEFAULT);
     sidebarSize = SIDEBAR_SIZE_DEFAULT;
@@ -1101,6 +1139,23 @@
 
       <div class="setting-slider-row">
         <div class="slider-head">
+          <span class="setting-label">{$t('settings.welcomeSpace')}</span>
+          <span class="slider-value">{welcomeSpace}px</span>
+        </div>
+        <input
+          type="range"
+          class="range"
+          min={WELCOME_SPACE_MIN}
+          max={WELCOME_SPACE_MAX}
+          step={1}
+          value={welcomeSpace}
+          oninput={(e) => setWelcomeSpace(Number((e.target as HTMLInputElement).value))}
+        />
+        <p class="row-hint">{$t('settings.welcomeSpaceHint')}</p>
+      </div>
+
+      <div class="setting-slider-row">
+        <div class="slider-head">
           <span class="setting-label">{$t('settings.sidebarMargin')}</span>
           <span class="slider-value">{sidebarMargin}px</span>
         </div>
@@ -1301,6 +1356,41 @@
             </button>
           </div>
         </div>
+
+        <div class="setting-row">
+          <span class="setting-label">{$t('settings.coverImageFit')}</span>
+          <div class="picker-wrap density-picker">
+            <button
+              class="density-btn"
+              class:active={coverFitVal === 'fill'}
+              use:ripple
+              onclick={() => setCoverFit('fill')}
+              aria-pressed={coverFitVal === 'fill'}
+            >
+              {$t('settings.coverFitFill')}
+            </button>
+            <button
+              class="density-btn"
+              class:active={coverFitVal === 'proportions'}
+              use:ripple
+              onclick={() => setCoverFit('proportions')}
+              aria-pressed={coverFitVal === 'proportions'}
+            >
+              {$t('settings.coverFitProportions')}
+            </button>
+          </div>
+        </div>
+
+        {#if coverFitVal === 'fill'}
+          {@render sliderRow($t('settings.coverMaxWidth'), coverMaxWVal,
+            POSTCARD_PREFS.coverMaxW.min, POSTCARD_PREFS.coverMaxW.max,
+            POSTCARD_PREFS.coverMaxW.step, 'px', setCoverMaxW,
+            (v) => `${v}px`)}
+          {@render sliderRow($t('settings.coverMaxHeight'), coverMaxHVal,
+            POSTCARD_PREFS.coverMaxH.min, POSTCARD_PREFS.coverMaxH.max,
+            POSTCARD_PREFS.coverMaxH.step, 'px', setCoverMaxH,
+            (v) => `${v}px`)}
+        {/if}
       {/if}
 
       {@render sliderRow($t('settings.descLines'), descLines,

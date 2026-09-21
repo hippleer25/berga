@@ -18,6 +18,8 @@
   "bodyWidth": "Ancho del cuerpo",
   "boldTitle": "Título en negrita",
   "boldWelcome": "Título de bienvenida en negrita",
+  "welcomeSpace": "Espaciado del título de bienvenida",
+  "welcomeSpaceHint": "Espacio entre la parte superior de la página y el título de bienvenida (pestaña de inicio)",
   "sidebarMargin": "Espaciado de las pestañas de la barra lateral",
   "sidebarMarginHint": "Margen lateral de las pestañas de nav (escritorio)",
   "sidebarSize": "Tamaño de las pestañas de la barra lateral",
@@ -128,5 +130,10 @@
   "titleTextPosition": "Posición del título",
   "titleWidth": "Ancho del título",
   "typeface": "Tipografía",
-  "uiFont": "Fuente de la interfaz"
+  "uiFont": "Fuente de la interfaz",
+  "coverImageFit": "Ajuste de la imagen",
+  "coverFitFill": "Rellenar (recortar)",
+  "coverFitProportions": "Mantener proporciones",
+  "coverMaxWidth": "Ancho máximo",
+  "coverMaxHeight": "Alto máximo"
 }

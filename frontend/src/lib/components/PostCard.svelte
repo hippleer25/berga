@@ -638,19 +638,24 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
 
 	/* ── Cover images ────────────────────────────────────────── */
 	.cover-image {
-		object-fit: cover;
 		border-radius: var(--ui-radius-sm);
 		flex-shrink: 0;
 	}
+	:global([data-cover-fit='fill']) .cover-image {
+		object-fit: cover;
+	}
+	:global([data-cover-fit='proportions']) .cover-image {
+		object-fit: contain;
+	}
 	.cover-image--right {
-		width: 110px;
-		height: 80px;
+		width: min(var(--cover-max-w, 110px), 45vw);
+		height: var(--cover-max-h, 80px);
 		margin-left: 10px;
 		margin-top: 2px;
 	}
 	.cover-image--bottom {
 		width: 100%;
-		max-height: 160px;
+		max-height: var(--cover-max-h, 160px);
 		margin-bottom: 8px;
 	}
 

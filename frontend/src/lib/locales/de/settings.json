@@ -18,6 +18,8 @@
   "bodyWidth": "Textbreite",
   "boldTitle": "Fetter Titel",
   "boldWelcome": "Fetter Willkommens-Titel",
+  "welcomeSpace": "Abstand des Willkommens-Titels",
+  "welcomeSpaceHint": "Abstand zwischen dem oberen Seitenrand und dem Willkommens-Titel (Home-Tab)",
   "sidebarMargin": "Abstand der Registerkarten in der Seitenleiste",
   "sidebarMarginHint": "Seitenrand der Nav-Registerkarten (Desktop)",
   "sidebarSize": "Größe der Registerkarten in der Seitenleiste",
@@ -128,5 +130,10 @@
   "titleTextPosition": "Titelposition",
   "titleWidth": "Titelbreite",
   "typeface": "Schriftart",
-  "uiFont": "Schriftart für Benutzeroberfläche"
+  "uiFont": "Schriftart für Benutzeroberfläche",
+  "coverImageFit": "Bildanpassung",
+  "coverFitFill": "Füllen (beschneiden)",
+  "coverFitProportions": "Proportionen beibehalten",
+  "coverMaxWidth": "Max. Breite",
+  "coverMaxHeight": "Max. Höhe"
 }

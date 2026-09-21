@@ -518,6 +518,30 @@ export function getSavedSidebarMargin(): number {
 
 export const uiSidebarMargin: Writable<number> = writable(getSavedSidebarMargin());
 
+/* ── Home welcome top space (title ↔ top of page) ──────────────────────── */
+
+export const WELCOME_SPACE_MIN = 0;
+export const WELCOME_SPACE_MAX = 64;
+export const WELCOME_SPACE_DEFAULT = 4;
+const WELCOME_SPACE_KEY = 'ui-welcome-space';
+
+export function applyWelcomeSpace(px: number, persist = false) {
+	if (!browser) return;
+	const v = clamp(px, WELCOME_SPACE_MIN, WELCOME_SPACE_MAX);
+	document.documentElement.style.setProperty('--welcome-space-top', `${v}px`);
+	if (persist) localStorage.setItem(WELCOME_SPACE_KEY, String(v));
+}
+
+export function getSavedWelcomeSpace(): number {
+	if (!browser) return WELCOME_SPACE_DEFAULT;
+	const v = Number(localStorage.getItem(WELCOME_SPACE_KEY));
+	return Number.isFinite(v) && v >= WELCOME_SPACE_MIN && v <= WELCOME_SPACE_MAX
+		? v
+		: WELCOME_SPACE_DEFAULT;
+}
+
+export const uiWelcomeSpace: Writable<number> = writable(getSavedWelcomeSpace());
+
 /* ── Desktop sidebar pill size (vertical padding) ──────────────────────── */
 
 export const SIDEBAR_SIZE_MIN = 4;
@@ -559,6 +583,7 @@ export function initUiPrefs() {
 	applyDeckHeightVw(getSavedDeckHeightVw());
 	applyDeckRadiusPct(getSavedDeckRadiusPct());
 	applyWelcomeBold(getSavedWelcomeBold());
+	applyWelcomeSpace(getSavedWelcomeSpace());
 	applyNavBg(getSavedNavBg());
 	applySettingsIconPlacement(getSavedSettingsIconPlacement());
 	applySidebarCollapsed(getSavedSidebarCollapsed());
@@ -594,6 +619,8 @@ export function resetUiPrefs() {
 	applyDeckRadiusPct(DECK_RADIUS_PCT_DEFAULT, true);
 	uiWelcomeBold.set(false);
 	applyWelcomeBold(false, true);
+	uiWelcomeSpace.set(WELCOME_SPACE_DEFAULT);
+	applyWelcomeSpace(WELCOME_SPACE_DEFAULT, true);
 	uiNavBg.set('berga-gray');
 	applyNavBg('berga-gray', true);
 	uiSettingsIconPlacement.set('navbar');

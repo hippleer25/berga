@@ -109,6 +109,12 @@ function createCoverPositionStore() {
 
 export const coverImagePosition = createCoverPositionStore();
 
+export type CoverFitMode = 'fill' | 'proportions';
+
+export const coverImageFit = createStringStore<CoverFitMode>('cover-image-fit', 'fill');
+export const coverImageMaxWidth = createNumberStore('cover-image-max-w', 160);
+export const coverImageMaxHeight = createNumberStore('cover-image-max-h', 160);
+
 export type TextAlign = 'left' | 'justify' | 'center' | 'right';
 
 function createTextAlignStore(key: string, defaultValue: TextAlign) {
