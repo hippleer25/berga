@@ -94,6 +94,7 @@ cd frontend && npm audit                         # JS vulnerability check
 ## Gotchas
 
 - **Embeddings run on pure numpy, not torch** — `intelligence/embeddings.py` loads the StaticEmbedding safetensors via `np.memmap` (zero-copy) + HF `tokenizers` and does the mean-pool itself. torch/transformers/sentence-transformers are NOT installed. Output parity with the old torch pipeline was validated (cosine 1.000 on probe pairs). Only StaticEmbedding-type models are supported; a non-static model would fail loudly at first encode (no silent fallbacks — that bug class is what wasted ~400 MB/process before).
+- **Event-clustering eps profile** — the pre-`f346736` band (`CLUSTER_EPS_PERCENTILE=10`, `CLUSTER_EPS_MAX=0.65`) is the working regime on a ±40-feed home corpus (adaptive eps ≈0.5); commit `f346736` (p15 + 0.35 cap) clamps real cross-feed story pairs (0.45–0.55) into all-noise. The overrides live in `.env` — don't "fix" them back.
 - **HF_HUB_OFFLINE=1** in compose — the model snapshot lives in the `hf_cache` volume. If the volume is wiped, unset it for one boot to re-download.
 - **setuptools is pinned to 81.0.0** — supervisor 4.2.5 imports `pkg_resources`, which was removed in setuptools>=84.
 - **litellm is lazy-imported** via `_LiteLLMProxy` in `mota/ai_lib.py` (~130 MB RSS saved in the API process at boot). `litellm.drop_params=True` is set on first import.

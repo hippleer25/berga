@@ -130,7 +130,8 @@ CACHE_HEADERS = {
     "recommendations": {"Cache-Control": "private, max-age=300, must-revalidate"},
     "recents": {"Cache-Control": "private, max-age=60, must-revalidate"},
     "saved": {"Cache-Control": "private, max-age=120, must-revalidate"},
-    "events": {"Cache-Control": "private, max-age=21600, must-revalidate"},
+    "events": {"Cache-Control": "private, max-age=600, must-revalidate"},
+    "events_empty": {"Cache-Control": "no-store"},
     "subscriptions": {"Cache-Control": "private, max-age=300, must-revalidate"},
 }
 
@@ -640,19 +641,32 @@ async def structure_route(body: StructureRequest, request: Request, user=Depends
 async def weekly_events(request: Request, response: Response, limit: int = CLUSTER_LIMIT, user=Depends(get_current_user)):
     arq_pool = request.app.state.arq
 
+    def _apply_event_headers(events_count: int) -> dict:
+        # Never let a temporarily-empty events payload be cached by any client
+        # layer (browser HTTP cache or PWA runtime caches) — a stale "no
+        # events" on screen is worse than one extra request.
+        if events_count == 0:
+            return CACHE_HEADERS["events_empty"]
+        return CACHE_HEADERS["events"]
+
+    async def _cache_and_return(events_list, cached_flag: bool):
+        payload = {"events": events_list[:limit], "total": len(events_list), "cached": cached_flag}
+        headers = _apply_event_headers(len(payload["events"]))
+        etag = _etag_for(payload)
+        if len(events_list) > 0:
+            not_modified = _check_etag(request, etag)
+            if not_modified:
+                not_modified.headers.update(headers)
+                return not_modified
+        response.headers.update(headers)
+        response.headers["ETag"] = etag
+        return payload
+
     try:
         if arq_pool:
             cached = await get_cached_events(arq_pool)
             if cached is not None:
-                payload = {"events": cached[:limit], "total": len(cached), "cached": True}
-                etag = _etag_for(payload)
-                not_modified = _check_etag(request, etag)
-                if not_modified:
-                    not_modified.headers.update(CACHE_HEADERS["events"])
-                    return not_modified
-                response.headers.update(CACHE_HEADERS["events"])
-                response.headers["ETag"] = etag
-                return payload
+                return await _cache_and_return(cached, True)
     except Exception as e:
         logger.warning("[CLUSTER] Redis indisponível ao ler cache: %s — trying DB", e)
 
@@ -664,15 +678,7 @@ async def weekly_events(request: Request, response: Response, limit: int = CLUST
         except Exception as e:
             logger.warning("[CLUSTER] Redis indisponível ao salvar cache: %s", e)
 
-        payload = {"events": db_events[:limit], "total": len(db_events), "cached": True}
-        etag = _etag_for(payload)
-        not_modified = _check_etag(request, etag)
-        if not_modified:
-            not_modified.headers.update(CACHE_HEADERS["events"])
-            return not_modified
-        response.headers.update(CACHE_HEADERS["events"])
-        response.headers["ETag"] = etag
-        return payload
+        return await _cache_and_return(db_events, True)
 
     events = await asyncio.to_thread(compute_weekly_events, limit=limit)
 
@@ -682,15 +688,7 @@ async def weekly_events(request: Request, response: Response, limit: int = CLUST
     except Exception as e:
         logger.warning("[CLUSTER] Redis indisponível ao salvar cache: %s — resultado não será cacheado", e)
 
-    payload = {"events": events, "total": len(events), "cached": False}
-    etag = _etag_for(payload)
-    not_modified = _check_etag(request, etag)
-    if not_modified:
-        not_modified.headers.update(CACHE_HEADERS["events"])
-        return not_modified
-    response.headers.update(CACHE_HEADERS["events"])
-    response.headers["ETag"] = etag
-    return payload
+    return await _cache_and_return(events, cached_flag=False)
 
 
 @app.post("/api/chat")

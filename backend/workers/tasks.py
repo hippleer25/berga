@@ -984,7 +984,17 @@ def _wait_for_db_sync() -> None:
 
 
 async def startup(ctx):
-    await asyncio.to_thread(_wait_for_db_sync)
+    # uvicorn and arq start simultaneously under supervisord; the worker can
+    # query tables before the API process finishes its inline migrations
+    # (e.g. smart_tags columns) → ProgrammingError 1054 crash-loop. Ensure
+    # the schema is migrated here first (init_db is idempotent).
+    try:
+        await asyncio.to_thread(_wait_for_db_sync)
+        from database.init_db import init_db as run_init_db
+        await asyncio.to_thread(run_init_db)
+    except Exception:
+        logger.warning("Worker schema init failed — continuing with existing schema", exc_info=True)
+
     await refresh_all_feeds(ctx)
     await refresh_weekly_events(ctx)
     await refresh_auto_tags(ctx)

@@ -44,14 +44,18 @@ export default defineConfig(({ mode }) => {
 							'/api/feed/recommendations',
 							'/api/feed/recents',
 							'/api/feed/saved',
-							'/api/feed/events',
+							// NOTE: /api/feed/events intentionally NOT stale-while-revalidate — the
+							// events list is refreshed cyclically and user-triggered; serving it
+							// cache-first pins stale/empty payloads past a hard refresh (this once
+							// showed "no events" for hours). It falls through to the api-cache
+							// NetworkFirst rule below.
 							'/api/list-subscriptions',
 						].some(path => url.pathname.startsWith(path));
 						return isFeed;
 					},
 					handler: "StaleWhileRevalidate",
 					options: {
-						cacheName: "feed-cache",
+						cacheName: "feed-cache-v2",
 						expiration: {
 							maxEntries: 100,
 							maxAgeSeconds: 60 * 60,
@@ -69,7 +73,9 @@ export default defineConfig(({ mode }) => {
 					},
 					handler: "NetworkFirst",
 					options: {
-						cacheName: "api-cache",
+						// cache-name bump: v2 → existing installs drop the old
+						// (poisoned) caches on activation via cleanupOutdatedCaches
+						cacheName: "api-cache-v2",
 						expiration: {
 							maxEntries: 200,
 							maxAgeSeconds: 60 * 60,

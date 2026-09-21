@@ -184,33 +184,68 @@ _qdrant_lock = threading.Lock()
 
 # ── Model loader ───────────────────────────────────────────────────────────────
 
-def _locate_model_dir() -> Path:
-    """
-    Resolve the local snapshot directory for MODEL_NAME, mirroring the
-    huggingface-hub cache layout. Uses local_files_only when
-    HF_HUB_OFFLINE=1 so cached deployments never touch the network.
-    """
+# Only fetch what the numpy loader actually reads. This avoids dragging in
+# the repo's onnx/, img/ and training files (~1.3 GB of dead weight with the
+# default full-repo snapshot_download).
+_SNAPSHOT_ALLOW_PATTERNS = (
+    "0_StaticEmbedding/*",
+    "config_sentence_transformers.json",
+    "modules.json",
+    "README.md",
+)
+
+
+def _snapshot_download(offline: bool):
+    """snapshot_download wrapper with the files our loader needs."""
     from huggingface_hub import snapshot_download
 
     home = os.environ.get("HF_HOME") or str(Path(os.environ.get("XDG_CACHE_HOME", "~/.cache")) / "huggingface")
     hub_dir = Path(home).expanduser() / "hub"
-
-    fmt_kwargs = dict(repo_id=MODEL_NAME)
+    kwargs = dict(repo_id=MODEL_NAME, allow_patterns=list(_SNAPSHOT_ALLOW_PATTERNS))
     if os.environ.get("HF_HOME"):
-        fmt_kwargs["cache_dir"] = hub_dir
-    if os.environ.get("HF_HUB_OFFLINE", "0") == "1":
+        kwargs["cache_dir"] = hub_dir
+    if offline:
+        kwargs["local_files_only"] = True
+    return Path(snapshot_download(**kwargs))
+
+
+def _locate_model_dir() -> Path:
+    """
+    Resolve the local snapshot directory for MODEL_NAME, mirroring the
+    huggingface-hub cache layout. With HF_HUB_OFFLINE=1 the lookup is
+    local-only; on a cache miss (e.g. volume wiped with `docker compose
+    down -v`) the offline lock is released *for one call* so the cache can
+    self-populate, instead of failing forever.
+
+    Note: huggingface_hub snapshots HF_HUB_OFFLINE into
+    `huggingface_hub.constants` at import time — the env var must be
+    patched there too or every network call raises OfflineModeIsEnabled
+    regardless of a later os.environ change.
+    """
+    offline_wanted = os.environ.get("HF_HUB_OFFLINE", "0") == "1"
+    if offline_wanted:
         try:
-            return Path(snapshot_download(local_files_only=True, **fmt_kwargs))
+            return _snapshot_download(offline=True)
         except Exception as exc:
-            # Cache miss (e.g. volume wiped with `docker compose down -v`).
-            # Fail-soft: allow ONE online download instead of crash-looping
-            # forever. Subsequent boots still use the offline cache.
             logger.warning(
                 "HF_HUB_OFFLINE=1 but model '%s' is not cached under %s (%s) — "
                 "attempting a one-time download to populate the cache",
-                MODEL_NAME, hub_dir, exc,
+                MODEL_NAME, os.environ.get("HF_HOME", "~/.cache/huggingface"), exc,
             )
-    return Path(snapshot_download(**fmt_kwargs))
+
+    # One-time online download (also the path when HF_HUB_OFFLINE is unset).
+    import huggingface_hub.constants as hf_constants
+    saved_env = os.environ.get("HF_HUB_OFFLINE")
+    saved_const = getattr(hf_constants, "HF_HUB_OFFLINE", False)
+    if offline_wanted:
+        os.environ.pop("HF_HUB_OFFLINE", None)
+        hf_constants.HF_HUB_OFFLINE = False
+    try:
+        return _snapshot_download(offline=False)
+    finally:
+        if offline_wanted:
+            os.environ["HF_HUB_OFFLINE"] = saved_env or "1"
+            hf_constants.HF_HUB_OFFLINE = saved_const
 
 
 def _load_safetensors_weights(path: Path) -> np.memmap:
@@ -312,19 +347,49 @@ class _StaticEmbedder:
 
 # ── Public accessors ───────────────────────────────────────────────────────────
 
+# Backoff for repeated model-init failures (e.g. no network + empty cache).
+# While the lock is active, callers get the original error raised instantly
+# without a new download attempt or another log line.
+_INIT_FAILURE_BACKOFF_SECONDS = 60.0
+_model_init_failure_at: float = 0.0
+_model_init_failure_exc: Optional[Exception] = None
+
+
 def _load_model() -> "_StaticEmbedder":
     """Locate the cached model snapshot and build the numpy engine."""
-    return _StaticEmbedder(_locate_model_dir())
+    global _model
+    _model = _StaticEmbedder(_locate_model_dir())
+    return _model
 
 
 def get_embedding_model() -> "_StaticEmbedder":
     """Return the shared embedding model instance (thread-safe, lazy)."""
-    global _model, _current_fingerprint
-    if _model is None:
-        with _model_lock:
-            if _model is None:
+    global _model, _current_fingerprint, _model_init_failure_at, _model_init_failure_exc
+    if _model is not None:
+        return _model
+
+    import time as _time
+    now = _time.monotonic()
+    if _model_init_failure_exc is not None and now - _model_init_failure_at < _INIT_FAILURE_BACKOFF_SECONDS:
+        raise _model_init_failure_exc  # fail fast — no new download attempt, no log spam
+
+    with _model_lock:
+        if _model is None:
+            try:
                 _model = _load_model()
                 _current_fingerprint = compute_model_fingerprint(_model)
+                _model_init_failure_exc = None
+            except Exception as exc:
+                only_failure = (
+                    _model_init_failure_exc is None
+                    or now - _model_init_failure_at >= _INIT_FAILURE_BACKOFF_SECONDS
+                )
+                _model_init_failure_at = now
+                _model_init_failure_exc = exc
+                level = logger.error if only_failure else logger.debug
+                level("Embedding model init failed (retry after %ds backoff, no repeated logging): %s",
+                      _INIT_FAILURE_BACKOFF_SECONDS, exc)
+                raise
     return _model
 
 
