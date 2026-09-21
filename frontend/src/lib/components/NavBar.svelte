@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import PanelLeftClose from '@lucide/svelte/icons/panel-left-close';
 	import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open';
 	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import X from '@lucide/svelte/icons/x';
+	import Settings from '@lucide/svelte/icons/settings';
 	import {
 		activeTabIdx,
 		navVisible,
@@ -239,6 +241,19 @@
 					<span class="s-label">{$t(`navbar.${tab.id}`)}</span>
 				</a>
 			{/each}
+		</nav>
+		<nav class="sidebar-bottom">
+			<button
+				class="sidebar-item"
+				class:active={$page.url.pathname.startsWith('/settings')}
+				use:ripple
+				onclick={() => goto('/settings')}
+				title={$t('settings.title')}
+				aria-label={$t('settings.title')}
+			>
+				<Settings size={20} strokeWidth={$page.url.pathname.startsWith('/settings') ? 2.2 : 1.6} />
+				<span class="s-label">{$t('settings.title')}</span>
+			</button>
 		</nav>
 	</div>
 </aside>
@@ -488,6 +503,36 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+	}
+
+	.sidebar-bottom {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-top: auto;
+		border-top: 1px solid var(--glass-border, var(--color-base-200));
+		padding-top: 8px;
+	}
+	.sidebar-bottom .sidebar-item {
+		width: 100%;
+		background: none;
+		border: none;
+		border-left: 3px solid transparent;
+		cursor: pointer;
+		font-family: inherit;
+		text-align: left;
+	}
+	.sidebar-bottom .sidebar-item:hover {
+		color: var(--sidebar-item-hover-color, var(--color-base-content));
+		background: var(--sidebar-item-hover-bg, var(--color-base-200));
+	}
+	.sidebar-bottom .sidebar-item.active {
+		color: var(--color-accent);
+		background: color-mix(in oklch, var(--color-accent) 8%, transparent);
+		border-left-color: var(--color-accent);
+	}
+	.sidebar-bottom .sidebar-item.active .s-label {
+		font-weight: 700;
 	}
 
 	.sidebar-item {

@@ -939,6 +939,7 @@
    margin-left: max(var(--sidebar-w, 240px), calc(50vw - 21rem));
    margin-right: auto;
   }
+  .settings-btn { display: none; }
  }
 
  /* ── Top Header (persistent) ─────────────────────── */
