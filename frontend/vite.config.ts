@@ -41,7 +41,6 @@ export default defineConfig(({ mode }) => {
 				{
 					urlPattern: ({ url }) => {
 						const isFeed = [
-							'/api/feed/recommendations',
 							'/api/feed/recents',
 							'/api/feed/saved',
 							// NOTE: /api/feed/events intentionally NOT stale-while-revalidate — the
@@ -49,6 +48,10 @@ export default defineConfig(({ mode }) => {
 							// cache-first pins stale/empty payloads past a hard refresh (this once
 							// showed "no events" for hours). It falls through to the api-cache
 							// NetworkFirst rule below.
+							// NOTE: /api/feed/recommendations also falls through — each
+							// reload uses a different exclude_ids/refresh query string and
+							// SWR would cache every variant separately, replaying stale or
+							// empty ([]) responses over fresh data.
 							'/api/list-subscriptions',
 						].some(path => url.pathname.startsWith(path));
 						return isFeed;

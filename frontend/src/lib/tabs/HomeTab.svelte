@@ -380,12 +380,25 @@ $effect(() => {
 			const res = await apiFetch(url, fetchCacheOpt());
 			if (res.status === 401) { window.location.replace('/login'); return; }
 			if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
-			const data: any[] = await res.json();
-			feed = data;
-			hasMore = data.length > 0;
+			let data: any[] = await res.json();
+			// A fresh-batch request (exclude_ids) can legitimately return
+			// nothing when the ranked corpus is smaller than what we already
+			// show. Fall back to a plain page-0 fetch instead of blanking the
+			// feed; if that yields nothing either, keep what we have.
+			if (data.length === 0 && mode === 'recommendations') {
+				const fbRes = await apiFetch(buildUrl(0), fetchCacheOpt());
+				if (fbRes.ok) {
+					const fbData: any[] = await fbRes.json();
+					if (fbData.length > 0) data = fbData;
+				}
+			}
+			if (data.length > 0 || feed.length === 0) {
+				feed = data;
+				hasMore = data.length > 0;
+			}
 			loading = false;
 			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
-			saveFeedCache(cacheKey, data);
+			if (data.length > 0) saveFeedCache(cacheKey, data);
 		} catch (e: any) {
 			error = (e as Error).message || get(t)('hometab.loadError');
 		} finally {

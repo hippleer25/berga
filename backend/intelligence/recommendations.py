@@ -192,6 +192,16 @@ def invalidate_interaction_cache(user_id: int | None = None) -> None:
 # ── Interacted IDs ─────────────────────────────────────────────────────────────
 
 def _get_interacted_ids(user_id: int) -> set[str]:
+    return get_interacted_ids_except_view(user_id)
+
+
+def get_interacted_ids_except_view(user_id: int) -> set[str]:
+    """IDs with an explicit interaction (read/like/dislike/...).
+
+    Mere feed ``view`` beacons and ``saved`` bookmarks do NOT exclude an
+    article from ranking — displaying it is not a signal, and the view
+    tracker fires at 50% visibility.
+    """
     now = time.monotonic()
     with _interaction_lock:
         entry = _interaction_cache.get(user_id)
@@ -203,7 +213,7 @@ def _get_interacted_ids(user_id: int) -> set[str]:
     with _get_cursor() as cursor:
         cursor.execute(
             "SELECT DISTINCT item_id FROM interactions "
-            "WHERE user_id = %s AND action NOT IN ('saved')",
+            "WHERE user_id = %s AND action NOT IN ('view', 'saved')",
             (user_id,),
         )
         ids: set[str] = {str(row["item_id"]) for row in cursor.fetchall()}
@@ -212,16 +222,6 @@ def _get_interacted_ids(user_id: int) -> set[str]:
         _interaction_cache[user_id] = (now, ids)
 
     return ids
-
-
-def get_interacted_ids_except_view(user_id: int) -> set[str]:
-    with _get_cursor() as cursor:
-        cursor.execute(
-            "SELECT DISTINCT item_id FROM interactions "
-            "WHERE user_id = %s AND action NOT IN ('view', 'saved')",
-            (user_id,),
-        )
-        return {str(row["item_id"]) for row in cursor.fetchall()}
 
 
 # ── Article stats ──────────────────────────────────────────────────────────────
