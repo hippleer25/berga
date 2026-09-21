@@ -18,6 +18,8 @@
   "bodyWidth": "Ancho del cuerpo",
   "boldTitle": "Título en negrita",
   "boldWelcome": "Título de bienvenida en negrita",
+  "sidebarMargin": "Espaciado de las pestañas de la barra lateral",
+  "sidebarMarginHint": "Margen lateral de las pestañas de nav (escritorio)",
   "borderColor": "Color del borde",
   "borderColorDefault": "Predeterminado del tema",
   "borderWidth": "Grosor del borde",

@@ -68,6 +68,15 @@
         } catch (e) {
           document.documentElement.setAttribute('data-sidebar-collapsed', 'off');
         }
+
+        try {
+          var sidebarMargin = parseFloat(localStorage.getItem('ui-sidebar-margin'));
+          if (isFinite(sidebarMargin) && sidebarMargin >= 0 && sidebarMargin <= 40) {
+            document.documentElement.style.setProperty('--sidebar-item-margin', sidebarMargin + 'px');
+          }
+        } catch (e) {
+          document.documentElement.style.removeProperty('--sidebar-item-margin');
+        }
       })();
     </script>
 

@@ -18,6 +18,8 @@
   "bodyWidth": "Body width",
   "boldTitle": "Bold title",
   "boldWelcome": "Bold welcome title",
+  "sidebarMargin": "Sidebar tab spacing",
+  "sidebarMarginHint": "Lateral margin of the nav tabs (desktop)",
   "borderColor": "Border color",
   "borderColorDefault": "Theme default",
   "borderWidth": "Border width",

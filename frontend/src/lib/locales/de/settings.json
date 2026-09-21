@@ -18,6 +18,8 @@
   "bodyWidth": "Textbreite",
   "boldTitle": "Fetter Titel",
   "boldWelcome": "Fetter Willkommens-Titel",
+  "sidebarMargin": "Abstand der Registerkarten in der Seitenleiste",
+  "sidebarMarginHint": "Seitenrand der Nav-Registerkarten (Desktop)",
   "borderColor": "Rahmenfarbe",
   "borderColorDefault": "Theme-Standard",
   "borderWidth": "Rahmenbreite",

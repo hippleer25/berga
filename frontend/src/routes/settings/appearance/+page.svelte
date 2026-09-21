@@ -56,6 +56,7 @@
     uiDeckHeightVw,
     uiDeckRadiusPct,
     uiWelcomeBold,
+    uiSidebarMargin,
     applyRadiusSurfaces,
     applyRadiusControls,
     applyNavStyle,
@@ -68,6 +69,7 @@
     applyDeckHeightVw,
     applyDeckRadiusPct,
     applyWelcomeBold,
+    applySidebarMargin,
     resetUiPrefs,
     getSavedRadiusSurface,
     getSavedRadiusControl,
@@ -83,6 +85,7 @@
     getSavedDeckHeightVw,
     getSavedDeckRadiusPct,
     getSavedWelcomeBold,
+    getSavedSidebarMargin,
     RADIUS_SURFACE_MIN,
     RADIUS_SURFACE_MAX,
     RADIUS_SURFACE_DEFAULT,
@@ -98,6 +101,9 @@
     DECK_RADIUS_PCT_MIN,
     DECK_RADIUS_PCT_MAX,
     DECK_RADIUS_PCT_DEFAULT,
+    SIDEBAR_MARGIN_MIN,
+    SIDEBAR_MARGIN_MAX,
+    SIDEBAR_MARGIN_DEFAULT,
     BORDER_WIDTH_MIN,
     BORDER_WIDTH_MAX,
     type NavStyle,
@@ -230,6 +236,7 @@
   let deckHeight = $state<number>(getSavedDeckHeightVw());
   let deckRadius = $state<number>(getSavedDeckRadiusPct());
   let welcomeBold = $state<boolean>(getSavedWelcomeBold());
+  let sidebarMargin = $state<number>(getSavedSidebarMargin());
 
   // ── Typography state ──
   let fontSize = $state<number>(ARTICLE_TYPOGRAPHY.fontSize.default);
@@ -479,6 +486,9 @@
   function toggleWelcomeBold() {
     welcomeBold = !welcomeBold; applyWelcomeBold(welcomeBold, true); uiWelcomeBold.set(welcomeBold);
   }
+  function setSidebarMargin(v: number) {
+    sidebarMargin = v; applySidebarMargin(v, true); uiSidebarMargin.set(v);
+  }
   function moveTab(i: number, dir: -1 | 1) {
     const arr = [...get(tabOrder)];
     const j = i + dir;
@@ -504,6 +514,8 @@
     deckHeight = DECK_HEIGHT_VW_DEFAULT;
     deckRadius = DECK_RADIUS_PCT_DEFAULT;
     welcomeBold = false;
+    sidebarMargin = SIDEBAR_MARGIN_DEFAULT;
+    uiSidebarMargin.set(SIDEBAR_MARGIN_DEFAULT);
   }
 
   function fmtEm(px: number): string {
@@ -1028,6 +1040,23 @@
         <button class="pill-toggle" class:on={welcomeBold} use:ripple onclick={toggleWelcomeBold} aria-label={$t('settings.boldWelcome')}>
           <div class="pill-thumb"></div>
         </button>
+      </div>
+
+      <div class="setting-slider-row">
+        <div class="slider-head">
+          <span class="setting-label">{$t('settings.sidebarMargin')}</span>
+          <span class="slider-value">{sidebarMargin}px</span>
+        </div>
+        <input
+          type="range"
+          class="range"
+          min={SIDEBAR_MARGIN_MIN}
+          max={SIDEBAR_MARGIN_MAX}
+          step={1}
+          value={sidebarMargin}
+          oninput={(e) => setSidebarMargin(Number((e.target as HTMLInputElement).value))}
+        />
+        <p class="row-hint">{$t('settings.sidebarMarginHint')}</p>
       </div>
 
       <div class="setting-block">

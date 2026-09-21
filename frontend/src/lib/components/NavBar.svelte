@@ -493,7 +493,7 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		padding: 24px 16px 32px;
+		padding: 24px var(--sidebar-item-margin, 16px) 32px;
 		gap: 8px;
 	}
 
@@ -539,7 +539,7 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		padding: 10px 16px;
+		padding: 10px var(--sidebar-item-margin, 16px);
 		border-radius: var(--ui-radius-sm);
 		border-left: 3px solid transparent;
 		text-decoration: none;

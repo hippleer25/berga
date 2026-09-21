@@ -474,6 +474,30 @@ export function getSavedSidebarCollapsed(): boolean {
 
 export const uiSidebarCollapsed: Writable<boolean> = writable(getSavedSidebarCollapsed());
 
+/* ── Desktop sidebar item margin ───────────────────────────────────────── */
+
+export const SIDEBAR_MARGIN_MIN = 0;
+export const SIDEBAR_MARGIN_MAX = 40;
+export const SIDEBAR_MARGIN_DEFAULT = 16;
+const SIDEBAR_MARGIN_KEY = 'ui-sidebar-margin';
+
+export function applySidebarMargin(px: number, persist = false) {
+	if (!browser) return;
+	const v = clamp(px, SIDEBAR_MARGIN_MIN, SIDEBAR_MARGIN_MAX);
+	document.documentElement.style.setProperty('--sidebar-item-margin', `${v}px`);
+	if (persist) localStorage.setItem(SIDEBAR_MARGIN_KEY, String(v));
+}
+
+export function getSavedSidebarMargin(): number {
+	if (!browser) return SIDEBAR_MARGIN_DEFAULT;
+	const v = Number(localStorage.getItem(SIDEBAR_MARGIN_KEY));
+	return Number.isFinite(v) && v >= SIDEBAR_MARGIN_MIN && v <= SIDEBAR_MARGIN_MAX
+		? v
+		: SIDEBAR_MARGIN_DEFAULT;
+}
+
+export const uiSidebarMargin: Writable<number> = writable(getSavedSidebarMargin());
+
 /* ── Init / reset ───────────────────────────────────────────────────────── */
 
 export function initUiPrefs() {
@@ -493,6 +517,7 @@ export function initUiPrefs() {
 	applyWelcomeBold(getSavedWelcomeBold());
 	applyNavBg(getSavedNavBg());
 	applySidebarCollapsed(getSavedSidebarCollapsed());
+	applySidebarMargin(getSavedSidebarMargin());
 	applyPageBg(getSavedPageBg());
 }
 
@@ -527,6 +552,8 @@ export function resetUiPrefs() {
 	applyNavBg('berga-gray', true);
 	uiSidebarCollapsed.set(false);
 	applySidebarCollapsed(false, true);
+	uiSidebarMargin.set(SIDEBAR_MARGIN_DEFAULT);
+	applySidebarMargin(SIDEBAR_MARGIN_DEFAULT, true);
 	uiPageBg.set('theme');
 	applyPageBg('theme', true);
 }
