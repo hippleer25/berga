@@ -139,5 +139,6 @@
   "coverFitFill": "Füllen (beschneiden)",
   "coverFitProportions": "Proportionen beibehalten",
   "coverMaxWidth": "Max. Breite",
-  "coverMaxHeight": "Max. Höhe"
+  "coverMaxHeight": "Max. Höhe",
+  "showRecommendationScore": "Debug: Empfehlungspunkte anzeigen"
 }

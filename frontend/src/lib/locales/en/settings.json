@@ -139,5 +139,6 @@
   "coverFitFill": "Fit (crop)",
   "coverFitProportions": "Keep proportions",
   "coverMaxWidth": "Max width",
-  "coverMaxHeight": "Max height"
+  "coverMaxHeight": "Max height",
+  "showRecommendationScore": "Debug: show recommendation scores"
 }

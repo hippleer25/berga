@@ -6,7 +6,7 @@ import { t, locale } from 'svelte-i18n';
  import { get } from 'svelte/store';
  import { apiFetch } from '$lib/api';
 	import { clearFeedCache } from '$lib/stores/feedCache';
-	import { showCoverImages, coverImagePosition, postcardDescLines } from '$lib/stores/preferences';
+	import { showCoverImages, coverImagePosition, postcardDescLines, showRecommendationScore } from '$lib/stores/preferences';
 	import type { TagRef } from '$lib/utils/syncFeedTags';
 	import { sanitizeInlineHtml } from '$lib/utils/sanitize';
 
@@ -38,6 +38,7 @@ let {
         disliked?: boolean;
         saved?: boolean;
         image_url?: string;
+        relevance_score?: number;
     };
     server?: string;
     selectionMode?: boolean;
@@ -79,6 +80,10 @@ $effect(() => {
   let likeLoading = $state(false);
   let dislikeLoading = $state(false);
   let saveLoading = $state(false);
+
+  function fmtScore(score?: number): string {
+    return (typeof score === 'number' && Number.isFinite(score) ? score : 0).toFixed(2);
+  }
 
     // ── Long press ────────────────────────────────────────────────────────────
     let pressTimer:  ReturnType<typeof setTimeout> | null = null;
@@ -478,6 +483,13 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
           <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
         </button>
 
+        {#if $showRecommendationScore}
+          <span
+            class="score-pill score-pill-{(item.relevance_score ?? 0) >= 0.6 ? 'high' : (item.relevance_score ?? 0) >= 0.3 ? 'mid' : 'low'}"
+            title="Recommendation score"
+          >{fmtScore(item.relevance_score)}</span>
+        {/if}
+
 <button
     onclick={handleDislike}
     class="action-btn"
@@ -823,6 +835,30 @@ font-family: var(--font-post-title);
   transform: scale(0.88);
 }
     .action-btn:disabled { opacity: 0.5; cursor: default; }
+
+    /* ── Recommendation score pill (debug) ─────────────────── */
+    .score-pill {
+        flex-shrink: 0;
+        margin-left: 4px;
+        padding: 1px 6px;
+        border-radius: var(--ui-radius-full);
+        font-size: 10px;
+        font-family: ui-monospace, monospace;
+        line-height: 1.6;
+        user-select: none;
+        cursor: default;
+        background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
+        color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+    }
+    .score-pill-mid {
+        color: var(--color-accent);
+        background: color-mix(in oklch, var(--color-accent) 14%, transparent);
+    }
+    .score-pill-high {
+        color: var(--color-success, var(--color-accent));
+        background: color-mix(in oklch, var(--color-success, var(--color-accent)) 16%, transparent);
+    }
+    .score-pill-low { opacity: 0.7; }
 
 /* Like/Dislike colors aligned with DaisyUI without being too loud */
 .action-active {

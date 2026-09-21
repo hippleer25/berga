@@ -155,6 +155,7 @@ export const articleImageWidth = createNumberStore('article-image-width', 100);
 /* ── Post-card ──────────────────────────────────────────────────────────── */
 export const postcardDescLines = createNumberStore('postcard-desc-lines', 2);
 export const postcardTitleBold = createBooleanStore('postcard-title-bold', false);
+export const showRecommendationScore = createBooleanStore('postcard-score-pill', false);
 
 export type Density = 'compact' | 'comfortable' | 'spacious';
 export const feedDensity = createStringStore<Density>('feed-density', 'comfortable');

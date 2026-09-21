@@ -139,5 +139,6 @@
   "coverFitFill": "Remplir (rogner)",
   "coverFitProportions": "Garder les proportions",
   "coverMaxWidth": "Largeur max",
-  "coverMaxHeight": "Hauteur max"
+  "coverMaxHeight": "Hauteur max",
+  "showRecommendationScore": "Débogage : afficher les scores de recommandation"
 }

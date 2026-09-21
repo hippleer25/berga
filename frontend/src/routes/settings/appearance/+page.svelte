@@ -152,6 +152,7 @@
     articleImageWidth,
     postcardDescLines,
     postcardTitleBold,
+    showRecommendationScore,
     feedDensity,
     coverImageFit,
     coverImageMaxWidth,
@@ -234,6 +235,7 @@
   let customCss = $state('');
   let cssSaveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
   let showCover = $state(false);
+  let scoreOn = $state(false);
   let coverPos = $state<CoverPosition>('right');
   let coverFitVal = $state<CoverFitMode>('fill');
   let coverMaxWVal = $state(160);
@@ -344,6 +346,7 @@
     activeTheme = localStorage.getItem('preferred-theme') || 'berga';
     customCss = localStorage.getItem('custom-css') || '';
     showCover = get(showCoverImages);
+    scoreOn = get(showRecommendationScore);
     coverPos = get(coverImagePosition);
     coverFitVal = get(coverImageFit);
     coverMaxWVal = get(coverImageMaxWidth);
@@ -428,6 +431,11 @@
   function toggleShowCover() {
     showCover = !showCover;
     showCoverImages.setEnabled(showCover);
+  }
+
+  function toggleScore() {
+    scoreOn = !scoreOn;
+    showRecommendationScore.setValue(scoreOn);
   }
 
   function toggleCoverDropdown() {
@@ -1415,7 +1423,16 @@
         <div class="setting-text">
           <span class="setting-label">{$t('settings.showCoverImages')}</span>
         </div>
-        <button class="pill-toggle" class:on={showCover} use:ripple onclick={toggleShowCover} aria-label={$t('settings.showCoverImages')}>
+        <button class="pill-toggle" class:on={showCover} use:ripple onclick={toggleShowCover}         aria-label={$t('settings.showCoverImages')}>
+          <div class="pill-thumb"></div>
+        </button>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-text">
+          <span class="setting-label">{$t('settings.showRecommendationScore')}</span>
+        </div>
+        <button class="pill-toggle" class:on={scoreOn} use:ripple onclick={toggleScore} aria-label={$t('settings.showRecommendationScore')}>
           <div class="pill-thumb"></div>
         </button>
       </div>
