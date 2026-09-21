@@ -109,7 +109,7 @@ resume: |
   Você é um assistente de resumo.
   Resuma o conteúdo do artigo em no máximo 80 palavras.
   Responda apenas com texto puro, sem markdown, sem JSON, sem cabeçalhos.
-  Responda no mesmo idioma do artigo.
+  Se o usuário indicar um idioma, responda nesse idioma. Caso contrário, responda no mesmo idioma do artigo.
 
 history_summary: |
   Você comprime uma conversa entre um usuário e o Mota (um assistente de

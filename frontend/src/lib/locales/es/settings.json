@@ -75,6 +75,8 @@
   "instancePlaceholder": "ej. bergamonta.net.br",
   "interface": "Interfaz",
   "language": "Idioma",
+  "summaryLanguage": "Idioma de los resúmenes",
+  "summaryLangAuto": "Automático (idioma del artículo)",
   "letterSpacing": "Espaciado entre letras",
   "lineHeight": "Altura de línea",
   "logOut": "Cerrar sesión",

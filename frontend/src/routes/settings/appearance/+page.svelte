@@ -42,6 +42,7 @@
   import type { FontCategory, FontName } from '$lib/utils/appearance';
   import { get } from 'svelte/store';
   import { ripple } from '$lib/actions/ripple';
+  import { apiFetch } from '$lib/api';
   import Portal from '$lib/components/Portal.svelte';
   import {
     uiRadiusSurface,
@@ -155,10 +156,36 @@
     coverImageFit,
     coverImageMaxWidth,
     coverImageMaxHeight,
+    summaryLanguage,
+    type SummaryLanguage,
     type CoverPosition,
     type CoverFitMode,
     type TextAlign,
   } from '$lib/stores/preferences';
+
+  let summaryLangOpen = $state(false);
+  let summaryBtnEl: HTMLButtonElement | null = $state(null);
+  let summaryDropStyle = $state('');
+  let summaryLangVal: SummaryLanguage = $state(summaryLanguage.getLanguage());
+
+  function toggleSummaryDropdown() {
+    summaryLangOpen = !summaryLangOpen;
+    if (summaryLangOpen && summaryBtnEl) {
+      const r = summaryBtnEl.getBoundingClientRect();
+      summaryDropStyle = `top:${r.bottom + 6}px;left:${r.left}px;min-width:${r.width}px`;
+    }
+  }
+
+  function handleSummaryLangChange(lang: SummaryLanguage) {
+    summaryLangVal = lang;
+    summaryLanguage.setLanguage(lang);
+    summaryLangOpen = false;
+    apiFetch('/api/settings/summary-language', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: lang }),
+    }).catch(() => {/* non-fatal: cluster worker keeps previous value */});
+  }
 
   const LOCALE_LABELS: Record<SupportedLocale, string> = {
     pt: 'Português',
@@ -167,6 +194,22 @@
     de: 'Deutsch',
     fr: 'Français',
   };
+
+  const SUMMARY_LANG_OPTIONS: { value: SummaryLanguage; labelKey?: string; label?: string }[] = [
+    { value: 'auto', labelKey: 'settings.summaryLangAuto' },
+    { value: 'pt', label: LOCALE_LABELS['pt'] },
+    { value: 'en', label: LOCALE_LABELS['en'] },
+    { value: 'es', label: LOCALE_LABELS['es'] },
+    { value: 'de', label: LOCALE_LABELS['de'] },
+    { value: 'fr', label: LOCALE_LABELS['fr'] },
+  ];
+
+  function summaryLangLabel(lang: SummaryLanguage): string {
+    if (lang === 'auto') {
+      return get(t)('settings.summaryLangAuto');
+    }
+    return LOCALE_LABELS[lang];
+  }
 
   const fontCategories: { key: FontCategory; labelKey: string }[] = [
     { key: 'page-title', labelKey: 'settings.pageTitleFont' },
@@ -336,6 +379,12 @@
 				langDropdownOpen = false;
 			}
 		}
+      if (summaryBtnEl && !summaryBtnEl.contains(target)) {
+        const summaryDropdown = document.querySelector('.summary-lang-dropdown');
+        if (!summaryDropdown || !summaryDropdown.contains(target)) {
+          summaryLangOpen = false;
+        }
+      }
       if (openFontDropdown) {
         const btnEl = fontBtnEls[openFontDropdown];
         if (!btnEl || !btnEl.contains(target)) {
@@ -657,6 +706,26 @@
   }
 </script>
 
+{#if summaryLangOpen}
+  <Portal>
+    <div class="picker-backdrop" onclick={() => summaryLangOpen = false} aria-hidden="true"></div>
+    <div class="picker-dropdown summary-lang-dropdown" style={summaryDropStyle} role="listbox">
+      {#each SUMMARY_LANG_OPTIONS as opt (opt.value)}
+        <button
+          class="picker-item"
+          class:picker-selected={summaryLangVal === opt.value}
+          role="option"
+          aria-selected={summaryLangVal === opt.value}
+          onclick={() => handleSummaryLangChange(opt.value)}
+        >
+          <span class="picker-item-text">{opt.labelKey ? $t(opt.labelKey) : opt.label}</span>
+          {#if summaryLangVal === opt.value}<Check size={12} class="picker-check" />{/if}
+        </button>
+      {/each}
+    </div>
+  </Portal>
+{/if}
+
 {#if langDropdownOpen}
   <Portal>
     <div class="picker-backdrop" onclick={() => langDropdownOpen = false} aria-hidden="true"></div>
@@ -798,6 +867,18 @@
       <button bind:this={langBtnEl} class="setting-btn" use:ripple onclick={toggleLangDropdown}>
         <span>{$locale ? LOCALE_LABELS[$locale as SupportedLocale] ?? $locale : ''}</span>
         <span class="chevron-icon" class:rotated={langDropdownOpen}>
+          <ChevronDown size={14} />
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <div class="setting-row">
+    <span class="setting-label">{$t('settings.summaryLanguage')}</span>
+    <div class="picker-wrap">
+      <button bind:this={summaryBtnEl} class="setting-btn" use:ripple onclick={toggleSummaryDropdown}>
+        <span>{summaryLangLabel(summaryLangVal)}</span>
+        <span class="chevron-icon" class:rotated={summaryLangOpen}>
           <ChevronDown size={14} />
         </span>
       </button>

@@ -11,7 +11,7 @@ import { apiFetch } from '$lib/api';
 import { renderMarkdown } from '$lib/utils/markdown';
 import { flushPending } from '$lib/stores/viewTracker';
 	import { clearFeedCache } from '$lib/stores/feedCache';
-import { titleTextAlign, bodyTextAlign, highlightColors, highlightOpacity, highlightRadius, highlightCustomColorDefault } from '$lib/stores/preferences';
+import { titleTextAlign, bodyTextAlign, highlightColors, highlightOpacity, highlightRadius, highlightCustomColorDefault, summaryLanguage } from '$lib/stores/preferences';
 import { hexToRgba } from '$lib/utils/color';
 import ScreenShell from '$lib/components/ScreenShell.svelte';
 import { closeScreen } from '$lib/utils/screenStack';
@@ -491,6 +491,8 @@ const res = await apiFetch(`/api/mota/resume/${loadedItemId}`, {
         method: 'POST',
         credentials: 'include',
         signal: resumeAbort.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language: summaryLanguage.getLanguage() }),
       });
 
             if (res.status === 401) { goto('/login?returnTo=' + encodeURIComponent($page.url.pathname)); return; }

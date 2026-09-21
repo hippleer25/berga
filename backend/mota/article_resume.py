@@ -6,6 +6,7 @@ from post import load
 from bs4 import BeautifulSoup
 from mota import ai_lib
 from mota.chat_sse import _sse_event, _sse_error, _sse_done
+from mota.summary_language import fixed_language, language_instruction
 from i18n.prompts import get_prompt
 import os
 
@@ -28,7 +29,7 @@ def _truncate_at_boundary(text: str, limit: int) -> str:
     return chunk.rstrip() + "…"
 
 
-def get(item_id: str, user) -> Generator[str, None, None]:
+def get(item_id: str, user, language: str = "auto") -> Generator[str, None, None]:
     response = load.get(user["id"], item_id)
     if response is None:
         yield _sse_error("article content could not be fetched")
@@ -45,9 +46,14 @@ def get(item_id: str, user) -> Generator[str, None, None]:
     clean_text = soup.get_text()
     cut_size_text = _truncate_at_boundary(clean_text, 15000)
 
+    fixed = fixed_language(language)
+    user_content = cut_size_text
+    if fixed:
+        user_content = f"{cut_size_text}\n\n{language_instruction(fixed)}"
+
     messages = [
         {"role": "system", "content": get_prompt("resume")},
-        {"role": "user", "content": cut_size_text},
+        {"role": "user", "content": user_content},
     ]
 
     try:

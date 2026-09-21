@@ -211,3 +211,35 @@ export const highlightColors = createHighlightColorsStore('highlight-colors', DE
 export const highlightOpacity = createNumberStore('highlight-opacity', 100);
 export const highlightRadius = createNumberStore('highlight-radius', 0);
 export const highlightCustomColorDefault = createStringStore('highlight-custom-color-default', '#FF9800');
+
+/* ── AI summary language ────────────────────────────────────────────────── */
+import type { SupportedLocale } from '$lib/i18n';
+
+export type SummaryLanguage = 'auto' | SupportedLocale;
+
+const SUMMARY_LANGUAGE_VALUES: SummaryLanguage[] = ['auto', 'pt', 'en', 'es', 'de', 'fr'];
+
+export function isSummaryLanguage(value: string | null | undefined): value is SummaryLanguage {
+  return SUMMARY_LANGUAGE_VALUES.includes(value as SummaryLanguage);
+}
+
+function createSummaryLanguageStore() {
+  const saved = browser ? localStorage.getItem('summary-language') : null;
+  const initial: SummaryLanguage = isSummaryLanguage(saved) ? saved : 'auto';
+  const { subscribe, set } = writable<SummaryLanguage>(initial);
+
+  return {
+    subscribe,
+    setLanguage: (value: SummaryLanguage) => {
+      if (browser) localStorage.setItem('summary-language', value);
+      set(value);
+    },
+    getLanguage: (): SummaryLanguage => {
+      let val: SummaryLanguage = 'auto';
+      subscribe(v => (val = v))();
+      return val;
+    },
+  };
+}
+
+export const summaryLanguage = createSummaryLanguageStore();

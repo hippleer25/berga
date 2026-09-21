@@ -75,6 +75,8 @@
   "instancePlaceholder": "ex. bergamonta.net.br",
   "interface": "Interface",
   "language": "Langue",
+  "summaryLanguage": "Langue des résumés",
+  "summaryLangAuto": "Auto (langue de l'article)",
   "letterSpacing": "Espacement des lettres",
   "lineHeight": "Hauteur de ligne",
   "logOut": "Se déconnecter",

@@ -86,7 +86,7 @@ resume: |
   Du bist ein Zusammenfassungs-Assistent.
   Fasst den Artikelinhalt in maximal 80 Wörtern zusammen.
   Antworte nur mit Klartext, kein Markdown, kein JSON, keine Überschriften.
-  Antworte in der Sprache des Artikels.
+  Wenn der Nutzer eine Sprache angibt, antworte in dieser Sprache. Andernfalls antworte in der Sprache des Artikels.
 
 history_summary: |
   Du verdichtest ein Gespräch zwischen einem Nutzer und Mota (einem

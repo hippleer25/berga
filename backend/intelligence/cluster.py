@@ -433,9 +433,14 @@ def _run_clustering(vectors: np.ndarray, min_cluster_size: int) -> np.ndarray:
     return labels
 
 
-def _summarize_cluster(articles: list[dict]) -> str:
+def _summarize_cluster(articles: list[dict], summary_language: str = "auto") -> str:
     titles = [a.get("title", "") for a in articles[:10] if a.get("title")]
     titles_text = "\n".join(f"- {t}" for t in titles)
+
+    if summary_language != "auto":
+        language_rule = f"- Write in {summary_language}.\n"
+    else:
+        language_rule = "- Write in the language used by most headlines.\n"
 
     logger.debug(f"[CLUSTER] Generating summary for cluster with {len(articles)} articles")
 
@@ -448,7 +453,7 @@ def _summarize_cluster(articles: list[dict]) -> str:
         "- Merge the common facts; drop outlet-specific details.\n"
         "- Direct sentence, journalistic headline style, no quotation marks.\n"
         "- Maximum 20 words.\n"
-        "- Write in the language used by most headlines.\n"
+        f"{language_rule}"
         "- Do not use any markup, HTML tags, or list formatting.\n\n"
         f"{titles_text}\n\nSynthesized headline:"
     )
@@ -494,6 +499,7 @@ def _fallback_title(articles: list[dict]) -> str:
 def _build_events(
     valid_clusters: list[list[dict]],
     existing_db_events: dict[str, str] | None = None,
+    summary_language: str = "auto",
 ) -> list[dict]:
     logger.info(f"[CLUSTER] Generating summaries for {len(valid_clusters)} clusters...")
 
@@ -525,7 +531,7 @@ def _build_events(
                     f"(copies a member title or placeholder) — regenerating"
                 )
             try:
-                summaries[i] = _summarize_cluster(cluster)
+                summaries[i] = _summarize_cluster(cluster, summary_language)
             except Exception as e:
                 logger.warning(
                     f"[CLUSTER] Cluster {i} summary failed: {e} — using fallback title"
@@ -571,7 +577,23 @@ def compute_weekly_events(
     min_unique_feeds: int = CLUSTER_MIN_UNIQUE_FEEDS,
     days: int = CLUSTER_DAYS,
     limit: int = CLUSTER_LIMIT,
+    summary_language: str | None = None,
 ) -> list[dict]:
+    # Resolve the user language preference once per run (auto by default).
+    if summary_language is None:
+        try:
+            from mota.summary_language import fixed_language, get_stored_language, LANGUAGE_NAMES
+
+            pref = get_stored_language()
+            fixed = fixed_language(pref)
+            if fixed:
+                summary_language = LANGUAGE_NAMES[fixed]
+        except Exception:
+            summary_language = None
+    if summary_language:
+        logger.info(f"[CLUSTER] Summary language preference: {summary_language}")
+    else:
+        summary_language = "auto"
     logger.info(
         f"[CLUSTER] Starting pipeline — days={days}, "
         f"min_cluster_size={min_cluster_size}, min_unique_feeds={min_unique_feeds}, limit={limit}"
@@ -638,7 +660,7 @@ def compute_weekly_events(
             return existing_db_events
         return []
 
-    events = _build_events(valid, existing_db_events=existing_hash_to_summary)
+    events = _build_events(valid, existing_db_events=existing_hash_to_summary, summary_language=summary_language)
 
     active_hashes = set()
     for ev in events:

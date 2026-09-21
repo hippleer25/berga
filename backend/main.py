@@ -209,9 +209,34 @@ class ChatClearRequest(BaseModel):
     session_id: int | None = None
 
 
+class ResumeRequest(BaseModel):
+    language: str = "auto"
+
+
+class SummaryLanguageRequest(BaseModel):
+    language: str = "auto"
+
+
 class HighlightRequest(BaseModel):
     text: str
     color: str
+
+
+@app.get("/api/settings/summary-language")
+def settings_get_summary_language(user=Depends(get_current_user)):
+    from mota import summary_language
+
+    return {"language": summary_language.get_stored_language()}
+
+
+@app.post("/api/settings/summary-language")
+def settings_summary_language(body: SummaryLanguageRequest, user=Depends(get_current_user)):
+    """Sync the (global) summary language preference for the cluster worker."""
+    from mota import summary_language
+
+    normalized = summary_language.normalize_language(body.language)
+    ok = summary_language.set_stored_language(normalized)
+    return {"status": "ok", "language": normalized, "synced": ok}
 
 
 @app.post("/api/register")
@@ -835,8 +860,11 @@ def mota_session_delete(session_id: int, user: dict = Depends(get_current_user))
 
 
 @app.post("/api/mota/resume/{item_id}")
-def mota_resume(item_id: str, user=Depends(get_current_user)):
-    gen = article_resume.get(item_id, user)
+def mota_resume(item_id: str, resume_request: ResumeRequest = None, user=Depends(get_current_user)):
+    gen = article_resume.get(
+        item_id, user,
+        language=resume_request.language if resume_request else "auto",
+    )
     return StreamingResponse(
         gen,
         media_type="text/event-stream",
