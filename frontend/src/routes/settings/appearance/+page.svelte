@@ -52,6 +52,7 @@
     uiBorderColor,
     uiNavIndicator,
     uiChipIcons,
+    uiSettingsIconPlacement,
     uiDeckWidthPct,
     uiDeckHeightVw,
     uiDeckRadiusPct,
@@ -120,9 +121,12 @@
     type PageBg,
     applyPageBg,
     getSavedPageBg,
+    type SettingsIconPlacement,
+    applySettingsIconPlacement,
+    getSavedSettingsIconPlacement,
   } from '$lib/stores/uiPrefs';
   import { tabOrder, setTabOrder, TAB_DEFS, type TabId } from '$lib/config/tabs';
-  import { ChevronUp, RotateCcw } from '@lucide/svelte';
+  import { ChevronUp, RotateCcw, Settings } from '@lucide/svelte';
   import {
     showCoverImages,
     coverImagePosition,
@@ -221,6 +225,7 @@
   let navIndicatorVal = $state<NavIndicator>(getSavedNavIndicator());
   let navBgVal = $state<NavBg>(getSavedNavBg());
   let pageBgVal = $state<PageBg>(getSavedPageBg());
+  let settingsIconVal = $state<SettingsIconPlacement>(getSavedSettingsIconPlacement());
 
   const NAV_BG_OPTIONS: { value: NavBg; labelKey: string; color: string | null }[] = [
     { value: 'default', labelKey: 'settings.navColorDefault', color: null },
@@ -478,6 +483,9 @@
     pageBgVal = v; applyPageBg(v, true); uiPageBg.set(v);
     if (v !== 'theme') activeTheme = v === 'dark' ? 'berga' : 'berga-black';
   }
+  function setSettingsIcon(v: SettingsIconPlacement) {
+    settingsIconVal = v; applySettingsIconPlacement(v, true); uiSettingsIconPlacement.set(v);
+  }
   function toggleChipIcons() {
     chipIcons = !chipIcons; applyChipIcons(chipIcons, true); uiChipIcons.set(chipIcons);
   }
@@ -519,6 +527,7 @@
     navIndicatorVal = 'modern';
     navBgVal = 'berga-gray';
     pageBgVal = 'theme';
+    settingsIconVal = 'navbar';
     chipIcons = true;
     deckWidth = DECK_WIDTH_PCT_DEFAULT;
     deckHeight = DECK_HEIGHT_VW_DEFAULT;
@@ -857,6 +866,42 @@
           >
             <span class="navstyle-preview navstyle-preview--classic"><span></span><span></span><span></span></span>
             <span class="navstyle-label">{$t('settings.navIndicatorClassic')}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <span class="setting-label">{$t('settings.settingsIcon')}</span>
+        <div class="navstyle-picker">
+          <button
+            class="navstyle-card"
+            class:active={settingsIconVal === 'top'}
+            use:ripple
+            onclick={() => setSettingsIcon('top')}
+            aria-pressed={settingsIconVal === 'top'}
+          >
+            <span class="settings-icon-swatch settings-icon-swatch--top"><Settings size={12} /></span>
+            <span class="navstyle-label">{$t('settings.settingsIconTop')}</span>
+          </button>
+          <button
+            class="navstyle-card"
+            class:active={settingsIconVal === 'navbar'}
+            use:ripple
+            onclick={() => setSettingsIcon('navbar')}
+            aria-pressed={settingsIconVal === 'navbar'}
+          >
+            <span class="settings-icon-swatch settings-icon-swatch--navbar"><Settings size={12} /></span>
+            <span class="navstyle-label">{$t('settings.settingsIconNavbar')}</span>
+          </button>
+          <button
+            class="navstyle-card"
+            class:active={settingsIconVal === 'both'}
+            use:ripple
+            onclick={() => setSettingsIcon('both')}
+            aria-pressed={settingsIconVal === 'both'}
+          >
+            <span class="settings-icon-swatch settings-icon-swatch--both"><Settings size={12} /><Settings size={12} /></span>
+            <span class="navstyle-label">{$t('settings.settingsIconBoth')}</span>
           </button>
         </div>
       </div>
@@ -1529,6 +1574,27 @@
   }
   .navbg-swatch--theme {
     background: linear-gradient(135deg, var(--color-base-100) 0%, var(--color-base-200) 100%);
+  }
+
+  /* ── Interface: settings icon placement previews ───────────── */
+  .settings-icon-swatch {
+    position: relative;
+    width: 64px; height: 26px;
+    border-radius: var(--ui-radius-xs);
+    border: 1px solid var(--color-base-300);
+    background: var(--color-base-200);
+    overflow: hidden;
+    color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+  }
+  .settings-icon-swatch :global(svg) {
+    position: absolute;
+    left: 4px; bottom: 1px;
+  }
+  .settings-icon-swatch--top :global(svg) {
+    left: auto; bottom: auto; right: 4px; top: 1px;
+  }
+  .settings-icon-swatch--both :global(svg:first-child) {
+    left: auto; bottom: auto; right: 4px; top: 1px;
   }
 
   /* ── Interface: accent swatches ───────────────────────────── */

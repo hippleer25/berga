@@ -457,6 +457,26 @@ export function getSavedPageBg(): PageBg {
 
 export const uiPageBg: Writable<PageBg> = writable(getSavedPageBg());
 
+/* ── Settings icon placement (desktop) ──────────────────────────────────── */
+
+export type SettingsIconPlacement = 'top' | 'navbar' | 'both';
+const SETTINGS_ICON_KEY = 'ui-settings-icon-placement';
+const SETTINGS_ICON_VALUES: SettingsIconPlacement[] = ['top', 'navbar', 'both'];
+
+export function applySettingsIconPlacement(v: SettingsIconPlacement, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-settings-icon', v);
+	if (persist) localStorage.setItem(SETTINGS_ICON_KEY, v);
+}
+
+export function getSavedSettingsIconPlacement(): SettingsIconPlacement {
+	if (!browser) return 'navbar';
+	const v = localStorage.getItem(SETTINGS_ICON_KEY) as SettingsIconPlacement | null;
+	return v && SETTINGS_ICON_VALUES.includes(v) ? v : 'navbar';
+}
+
+export const uiSettingsIconPlacement: Writable<SettingsIconPlacement> = writable(getSavedSettingsIconPlacement());
+
 /* ── Desktop sidebar collapse ──────────────────────────────────────────── */
 
 const SIDEBAR_COLLAPSED_KEY = 'ui-sidebar-collapsed';
@@ -540,6 +560,7 @@ export function initUiPrefs() {
 	applyDeckRadiusPct(getSavedDeckRadiusPct());
 	applyWelcomeBold(getSavedWelcomeBold());
 	applyNavBg(getSavedNavBg());
+	applySettingsIconPlacement(getSavedSettingsIconPlacement());
 	applySidebarCollapsed(getSavedSidebarCollapsed());
 	applySidebarMargin(getSavedSidebarMargin());
 	applySidebarSize(getSavedSidebarSize());
@@ -575,6 +596,8 @@ export function resetUiPrefs() {
 	applyWelcomeBold(false, true);
 	uiNavBg.set('berga-gray');
 	applyNavBg('berga-gray', true);
+	uiSettingsIconPlacement.set('navbar');
+	applySettingsIconPlacement('navbar', true);
 	uiSidebarCollapsed.set(false);
 	applySidebarCollapsed(false, true);
 	uiSidebarMargin.set(SIDEBAR_MARGIN_DEFAULT);

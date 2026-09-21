@@ -513,6 +513,7 @@
 		border-top: 1px solid var(--glass-border, var(--color-base-200));
 		padding-top: 8px;
 	}
+	:global([data-settings-icon="top"]) .sidebar-bottom { display: none; }
 	.sidebar-bottom .sidebar-item {
 		width: 100%;
 		background: none;
