@@ -18,7 +18,8 @@ import {
 		Rss, FolderOpen, ChevronDown,
 		X, Check, Settings, Share2, Sparkles, Bookmark, Tag, RotateCw,
 	} from '@lucide/svelte';
-import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+ import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+ import TypedTitle from '$lib/components/TypedTitle.svelte';
  import { t } from 'svelte-i18n';
 import { apiFetch } from '$lib/api';
   import {
@@ -127,6 +128,38 @@ const PTR_WHEEL_IDLE_MS = 160;
 
     const SKELETON_INITIAL = Array.from({ length: 6 }, (_, i) => i);
     const SKELETON_MORE    = Array.from({ length: 3 }, (_, i) => i);
+
+    // ── Time-of-day greeting ─────────────────────────────────────────────────
+    let greetingKey = $state('');
+
+    function pickGreetingKey() {
+        const hour = new Date().getHours();
+        const period =
+            hour >= 5 && hour < 12
+                ? 'Morning'
+                : hour >= 12 && hour < 18
+                    ? 'Afternoon'
+                    : hour >= 18 && hour < 22
+                        ? 'Evening'
+                        : 'Night';
+        const options = [
+            { key: `greeting${period}`, weight: 40 },
+            { key: 'welcome', weight: 30 },
+            { key: 'hello', weight: 30 }
+        ];
+        const total = options.reduce((sum, opt) => sum + opt.weight, 0);
+        let roll = Math.random() * total;
+        for (const opt of options) {
+            roll -= opt.weight;
+            if (roll < 0) {
+                greetingKey = opt.key;
+                return;
+            }
+        }
+        greetingKey = options[options.length - 1].key;
+    }
+
+    pickGreetingKey();
 
     // ── View tracking ────────────────────────────────────────────────────────
     let viewObserver: IntersectionObserver | null = null;
@@ -787,7 +820,7 @@ if (res.ok) {
 
         <!-- Welcome Section -->
         <div class="welcome-section">
-            <h1 class="welcome-title">{$t('hometab.welcome')}</h1>
+            <h1 class="welcome-title"><TypedTitle text={$t(`hometab.${greetingKey}`)} /></h1>
         </div>
 
         <!-- Selection bar -->

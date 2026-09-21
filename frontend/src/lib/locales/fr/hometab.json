@@ -1,5 +1,10 @@
 {
   "welcome": "Bienvenue",
+  "hello": "Bonjour",
+  "greetingMorning": "Bonjour",
+  "greetingAfternoon": "Bon après-midi",
+  "greetingEvening": "Bonsoir",
+  "greetingNight": "Bonne nuit",
   "settings": "Paramètres",
   "cancelSelection": "Annuler la sélection",
   "selected": "sélectionné",
