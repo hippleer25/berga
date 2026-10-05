@@ -85,7 +85,7 @@ font-family: var(--font-page-title);
       <h1 class="gloock-regular berga-title text-8xl text-white font-bold">Berga</h1>
     </div>
     <div class="relative z-10 bg-base-100 rounded-t-3xl px-8 py-8 flex flex-col gap-4 shadow-lg">
-      <a href="/login" class="btn btn-md btn-primary w-full border-[1.5px] font-bold">{$t('welcome.login')}</a>
+      <a href="/login" class="btn btn-md btn-accent w-full border-[1.5px] font-bold">{$t('welcome.login')}</a>
       <a href="/signup" class="btn btn-md btn-outline w-full border-[1.5px] font-bold bg-base-200">{$t('welcome.signup')}</a>
     </div>
   </div>
@@ -98,7 +98,7 @@ font-family: var(--font-page-title);
       <h1 class="gloock-regular berga-title text-7xl text-white font-bold relative z-10">Berga</h1>
     </div>
     <div class="flex flex-col items-center justify-center gap-4 px-10">
-      <a href="/login" class="btn btn-md btn-primary w-full border-[1.5px] font-bold">{$t('welcome.login')}</a>
+      <a href="/login" class="btn btn-md btn-accent w-full border-[1.5px] font-bold">{$t('welcome.login')}</a>
       <a href="/signup" class="btn btn-md btn-outline w-full border-[1.5px] font-bold bg-base-200">{$t('welcome.signup')}</a>
     </div>
   </div>

@@ -7,6 +7,7 @@
 	import User from '@lucide/svelte/icons/user';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Highlighter from '@lucide/svelte/icons/highlighter';
+	import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { ripple } from '$lib/actions/ripple';
 	import { t } from 'svelte-i18n';
@@ -16,6 +17,7 @@
 		{ key: 'highlights', href: '/settings/highlights', icon: Highlighter },
 		{ key: 'tags', href: '/settings/tags', icon: Tag },
 		{ key: 'affinity', href: '/settings/affinity', icon: Sparkles },
+		{ key: 'feeds', href: '/settings/feeds-health', icon: HeartPulse },
 		{ key: 'subscriptions', href: '/settings/data', icon: Database },
 		{ key: 'account', href: '/settings/account', icon: User },
 	];

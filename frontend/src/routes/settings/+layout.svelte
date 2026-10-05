@@ -14,6 +14,7 @@
 	import User from '@lucide/svelte/icons/user';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Highlighter from '@lucide/svelte/icons/highlighter';
+	import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 	import { ripple } from '$lib/actions/ripple';
 	import { t } from 'svelte-i18n';
 	import ScreenShell from '$lib/components/ScreenShell.svelte';
@@ -24,6 +25,7 @@
 	const tabs = [
 		{ key: 'appearance', href: '/settings/appearance', icon: Palette },
 		{ key: 'highlights', href: '/settings/highlights', icon: Highlighter },
+		{ key: 'feeds', href: '/settings/feeds-health', icon: HeartPulse },
 		{ key: 'subscriptions', href: '/settings/data', icon: Database },
 		{ key: 'affinity', href: '/settings/affinity', icon: Sparkles },
 		{ key: 'tags', href: '/settings/tags', icon: Tag },

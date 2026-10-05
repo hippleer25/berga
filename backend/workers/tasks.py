@@ -38,14 +38,22 @@ def _get_all_feeds_sync() -> list[dict]:
 
 
 def _get_stale_feeds_sync() -> list[dict]:
-    """Synchronous DB call to get stale feeds."""
+    """Synchronous DB call to get stale feeds.
+
+    Feeds in a hard-failure loop (consecutive_errors >= 8 and errored within
+    the last 24h) are skipped — they retry roughly once a day when their
+    last_error_at ages out, instead of every refresh cycle. User-triggered
+    refreshes ignore this backoff.
+    """
     with get_db() as conn:
         cursor = conn.cursor(dictionary=True)
         try:
             cursor.execute(f"""
                 SELECT feed_url, feed_sha256 FROM feeds
-                WHERE last_parsed_at < NOW() - INTERVAL {STALE_HOURS} HOUR
-                OR last_parsed_at IS NULL
+                WHERE (last_parsed_at < NOW() - INTERVAL {STALE_HOURS} HOUR
+                    OR last_parsed_at IS NULL)
+                AND NOT (consecutive_errors >= 8
+                    AND last_error_at > NOW() - INTERVAL 24 HOUR)
             """)
             return cursor.fetchall()
         finally:
@@ -201,6 +209,41 @@ async def refresh_all_publisher_freq(ctx):
     return {"updated": updated}
 
 
+async def refresh_feed_stats(ctx, feed_sha256: str | None = None):
+    """
+    Recompute per-feed posting statistics (posts/week, weekday histogram,
+    weekly trend, auto-tag coverage) into the feed_stats table.
+    Pass feed_sha256 to recompute a single feed (e.g. after a URL fix),
+    otherwise the whole corpus is processed. Cron'd daily at 05:00.
+    """
+    from feed.stats import compute_feed_stats
+
+    if feed_sha256:
+        hashes = [feed_sha256]
+    else:
+        def _all_hashes() -> list[str]:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                try:
+                    cursor.execute("SELECT feed_sha256 FROM feeds")
+                    return [r[0] for r in cursor.fetchall()]
+                finally:
+                    cursor.close()
+
+        hashes = await asyncio.to_thread(_all_hashes)
+
+    def _compute() -> dict:
+        # Chunk to bound Qdrant scroll pressure per call.
+        results: dict = {}
+        for start in range(0, len(hashes), 20):
+            results.update(compute_feed_stats(hashes[start:start + 20]))
+        return results
+
+    results = await asyncio.to_thread(_compute)
+    logger.info("refresh_feed_stats completed for %d feeds", len(results))
+    return {"updated": len(results)}
+
+
 # ── Other jobs ─────────────────────────────────────────────────────────────────
 
 
@@ -231,6 +274,17 @@ async def parse_single_feed_for_user(ctx, user_id: int, feed_url: str):
     async with aiohttp.ClientSession() as session:
         result = await parse_and_save_feed_async(session, feed_url)
     await asyncio.to_thread(_evaluate_tags_for_users_sync, [user_id])
+
+    # Refresh stats for this one feed so the monitor reflects the result
+    # immediately (cheap: a single Qdrant scroll).
+    try:
+        import hashlib
+        from feed.stats import compute_feed_stats
+        sha = hashlib.sha256(feed_url.encode()).hexdigest()
+        await asyncio.to_thread(compute_feed_stats, [sha])
+    except Exception:
+        logger.warning("stats refresh after parse failed for %s", feed_url, exc_info=True)
+
     return result
 
 
@@ -999,6 +1053,35 @@ async def startup(ctx):
     await refresh_weekly_events(ctx)
     await refresh_auto_tags(ctx)
 
+    # Catch up per-feed statistics on boot when they're missing or >24h old.
+    if await asyncio.to_thread(_feed_stats_stale_sync):
+        try:
+            await refresh_feed_stats(ctx)
+        except Exception:
+            logger.warning("startup refresh_feed_stats failed", exc_info=True)
+
+
+def _feed_stats_stale_sync() -> bool:
+    """True when any feed lacks stats or has stats older than 24h."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) FROM feeds f
+                    LEFT JOIN feed_stats fs ON fs.feed_sha256 = f.feed_sha256
+                    WHERE fs.feed_sha256 IS NULL
+                       OR fs.updated_at < NOW() - INTERVAL 24 HOUR
+                    """
+                )
+                return int(cursor.fetchone()[0]) > 0
+            finally:
+                cursor.close()
+    except Exception:
+        logger.warning("could not check feed_stats staleness", exc_info=True)
+        return False
+
 
 # ── Worker settings ────────────────────────────────────────────────────────────
 
@@ -1013,6 +1096,7 @@ class WorkerSettings:
         refresh_all_feeds,
         refresh_weekly_events,
         refresh_all_publisher_freq,
+        refresh_feed_stats,
         parse_feeds_for_user,
         parse_single_feed_for_user,
         reembed_all,
@@ -1026,4 +1110,5 @@ class WorkerSettings:
         cron(refresh_weekly_events, hour=REFRESH_CRON_HOURS, minute=30),
         cron(refresh_all_publisher_freq, hour=3, minute=0),
         cron(refresh_auto_tags, hour=4, minute=0),
+        cron(refresh_feed_stats, hour=5, minute=0),
     ]

@@ -1,4 +1,4 @@
-name: dev_berga
+name: berga
 
 services:
   mysql:
@@ -94,7 +94,7 @@ services:
       - OMP_NUM_THREADS=2
       - TOKENIZERS_PARALLELISM=false
     ports:
-      - "7546:5746"
+      - "5746:5746"
     depends_on:
       mysql:
         condition: service_healthy
@@ -117,7 +117,7 @@ services:
     container_name: dev_berga_front
     restart: always
     ports:
-      - "6457:80"
+      - "4657:80"
     depends_on:
       - backend
     networks:

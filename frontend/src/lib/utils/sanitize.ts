@@ -42,7 +42,9 @@ export function sanitizeInlineHtml(html: string): string {
 		}
 		// Links: keep the text (previews shouldn't navigate/spam), drop the anchor.
 		if (tag === 'A') return el.textContent ?? '';
-		if (tag === 'BR') return '<br>';
+		// Line breaks become spaces (like the plainText fallback) so a leading
+		// <br> in feed HTML can't render as a blank first line in the preview.
+		if (tag === 'BR') return ' ';
 
 		const inner = Array.from(el.childNodes).map(walk).join('');
 		if (tag === 'P' || tag === 'DIV') return ` ${inner} `;

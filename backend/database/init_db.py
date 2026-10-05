@@ -224,6 +224,14 @@ def _migrate_smart_tags(cursor) -> None:
 def _migrate_feeds(cursor) -> None:
     _add_column_if_missing(cursor, "feeds", "last_error", "TEXT DEFAULT NULL")
     _add_column_if_missing(cursor, "feeds", "last_error_at", "DATETIME DEFAULT NULL")
+    _add_column_if_missing(cursor, "feeds", "consecutive_errors", "INT DEFAULT 0")
+    _add_column_if_missing(cursor, "feeds", "last_success_at", "DATETIME DEFAULT NULL")
+    _add_column_if_missing(cursor, "feeds", "last_http_status", "SMALLINT DEFAULT NULL")
+    _add_column_if_missing(cursor, "feeds", "last_fetch_ms", "INT DEFAULT NULL")
+
+
+def _migrate_feed_stats(cursor) -> None:
+    _add_column_if_missing(cursor, "feed_stats", "weekday_tag_counts", "JSON DEFAULT NULL")
 
 
 _TABLE_OPTIONS = f"DEFAULT CHARSET={_CHARSET} COLLATE={_COLLATE}"
@@ -424,6 +432,25 @@ def init_db():
                 INDEX idx_events_updated (updated_at)
         ) {_TABLE_OPTIONS}
         """)
+            cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS feed_stats (
+                feed_sha256 VARCHAR(64) PRIMARY KEY,
+                posts_4w INT DEFAULT 0,
+                posts_per_week FLOAT DEFAULT 0,
+                weekday_counts JSON DEFAULT NULL,
+                weekly_trend JSON DEFAULT NULL,
+                avg_gap_hours FLOAT DEFAULT NULL,
+                last_item_at DATETIME DEFAULT NULL,
+                classified_auto INT DEFAULT 0,
+                classified_manual INT DEFAULT 0,
+                classified_pct FLOAT DEFAULT NULL,
+                weekday_tag_counts JSON DEFAULT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (feed_sha256) REFERENCES feeds(feed_sha256) ON DELETE CASCADE
+            ) {_TABLE_OPTIONS}
+            """)
+            _migrate_feed_stats(cursor)
             _migrate_smart_tags(cursor)
             cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS article_cache (

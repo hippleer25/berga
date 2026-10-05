@@ -62,8 +62,11 @@ cd frontend && npm audit                         # JS vulnerability check
 | `auth/` | Registration, login (bcrypt + JWT), token verification |
 | `database/init_db.py` | MySQL pool + schema creation (idempotent, auto-migrates) |
 | `database/qdrant_utils.py` | Qdrant index helpers, payload indexes, publisher_freq |
-| `rss/parser.py` | Feed parsing + storage |
 | `rss/schedule.py` | User-scoped feed refresh orchestration |
+| `feed/health.py` | Feed-monitor API: `/api/feed-monitor` (health cols + `feed_stats` join incl. `weekday_by_tag` for the spider chart, status ok/failing/dead/silent/unknown; lazily enqueues a stats refresh when stale) and `/api/feed-monitor/tag-coverage` |
+| `feed/stats.py` | Per-feed posting stats (posts/4w, weekday histogram, 12-week trend, avg gap, smart-tag coverage % + per-tag weekday counts) computed via Qdrant scroll + `article_tags` counts, cached in `feed_stats`; arq job `refresh_feed_stats` (daily 05:00 + startup catch-up + one feed after each parse) |
+| `feed/fix.py` | Broken-feed repair (`/api/feed-monitor/{sha}/fix/analyze|apply`): regex + optional LLM (ROUTING tier) diagnosis, candidate RSS re-discovery anchored on the site **origin** (never the dead path) — feedfinder link-sniffing + DDG fallback + common/WordPress path & query probes — each live-validated with feedparser (title/entry count/latest post preview); apply delegates to `structure._edit_feed_url` |
+| `rss/parser.py` | Feed parsing + storage. Health hooks: `_record_feed_error` bumps `consecutive_errors`, success UPDATE resets it and stamps `last_success_at`/`last_http_status`/`last_fetch_ms`. Entry pub_dates are constructed UTC-aware (feedparser struct_times are UTC) — historical pre-fix rows keep the container-TZ skew | |
 | `intelligence/recommendations.py` | Three-tier ranking engine (personalised → cold-start → chronological) |
 | `intelligence/embeddings.py` | Numpy StaticEmbedding engine (HF `tokenizers` + safetensors np.memmap — no torch), Qdrant client singleton |
 | `intelligence/cluster.py` | Weekly event clustering via LLM (pure-numpy DBSCAN + k-NN eps — no sklearn) |

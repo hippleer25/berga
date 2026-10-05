@@ -41,6 +41,8 @@ from post import comments as cm
 from utils.opml import opml_import, opml_export
 from utils.regex_utils import validate_regex_pattern
 from feed.following_structure.structure import following_structure, StructureRequest, list_subscriptions, get_folder_info
+from feed.health import monitor_overview, tag_coverage as route_tag_coverage
+from feed import fix as feed_fix
 from mota import chat, article_resume
 
 from arq import create_pool
@@ -163,6 +165,14 @@ def _set_auth_cookie(response: Response, token: str):
 
 class FeedRequest(BaseModel):
     url: str
+
+
+class FeedMonitorRecompute(BaseModel):
+    feed_sha256: str | None = None
+
+
+class FeedFixApply(BaseModel):
+    new_url: str
 
 
 class BoostRequest(BaseModel):
@@ -335,6 +345,73 @@ async def parse_user_all(request: Request, user: dict = Depends(get_current_user
     else:
         asyncio.create_task(schedule.parse_user_all_async(user["id"]))
     return {"status": "accepted", "message": "Feed refresh started in background"}
+
+
+@app.get("/api/feed-monitor")
+async def feed_monitor(request: Request, user=Depends(get_current_user)):
+    data = monitor_overview(user["id"])
+    # Lazily self-heal stale/missing per-feed statistics. The fixed arq job id
+    # dedupes concurrent requests (and throttles to ~once/hour via keep_result),
+    # so opening the monitor is enough to populate stats without hammering Qdrant.
+    data["refreshing"] = False
+    if data.get("stale_stats", 0) > 0 and getattr(request.app.state, "arq", None):
+        try:
+            await request.app.state.arq.enqueue_job(
+                "refresh_feed_stats", _job_id="feed_stats_lazy_refresh"
+            )
+            data["refreshing"] = True
+        except Exception:
+            logger.warning("could not enqueue feed stats refresh", exc_info=True)
+    return data
+
+
+@app.get("/api/feed-monitor/tag-coverage")
+def feed_monitor_tag_coverage(user=Depends(get_current_user)):
+    return route_tag_coverage(user["id"])
+
+
+@app.post("/api/feed-monitor/recompute")
+def feed_monitor_recompute(body: FeedMonitorRecompute, user=Depends(get_current_user)):
+    """Recompute posting stats inline for this user's feeds (or one feed)."""
+    from feed.stats import compute_feed_stats
+    from database.init_db import get_db as _get_db
+
+    with _get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            if body.feed_sha256:
+                cursor.execute(
+                    "SELECT 1 FROM user_subscriptions WHERE user_id = %s AND feed_sha256 = %s",
+                    (user["id"], body.feed_sha256),
+                )
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Feed not found in your subscriptions")
+                hashes = [body.feed_sha256]
+            else:
+                cursor.execute(
+                    "SELECT feed_sha256 FROM user_subscriptions WHERE user_id = %s",
+                    (user["id"],),
+                )
+                hashes = [r[0] for r in cursor.fetchall()]
+        finally:
+            cursor.close()
+
+    results = compute_feed_stats(hashes)
+    return {"status": "ok", "updated": len(results)}
+
+
+@app.post("/api/feed-monitor/{feed_sha256}/fix/analyze")
+async def feed_monitor_fix_analyze(feed_sha256: str, user=Depends(get_current_user)):
+    """Diagnose a failing feed and return validated replacement-URL candidates."""
+    return await feed_fix.analyze(feed_sha256, user["id"])
+
+
+@app.post("/api/feed-monitor/{feed_sha256}/fix/apply")
+async def feed_monitor_fix_apply(feed_sha256: str, body: FeedFixApply, request: Request, user=Depends(get_current_user)):
+    """Apply a chosen replacement URL (delegates to edit_feed_url)."""
+    result = await feed_fix.apply_new_url(body.new_url, feed_sha256, user, request)
+    result["task"] = "fix_apply"
+    return result
 
 
 @app.post("/api/cluster/refresh")

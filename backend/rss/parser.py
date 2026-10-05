@@ -5,6 +5,7 @@ import logging
 import os
 import re as _re
 import socket
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -138,16 +139,18 @@ def _extract_image_url(entry: dict) -> str | None:
     return None
 
 
-async def fetch_feed_content(session: aiohttp.ClientSession, feed_url: str) -> bytes:
+async def fetch_feed_content(session: aiohttp.ClientSession, feed_url: str) -> tuple[bytes, int | None]:
+    """Fetch the feed body. Returns (raw_bytes, http_status)."""
     timeout = aiohttp.ClientTimeout(total=FEED_FETCH_TIMEOUT)
     async with session.get(feed_url, timeout=timeout, headers=_feed_fetch_headers()) as response:
-        response.raise_for_status()
         # Return raw bytes so feedparser can detect the charset from the
         # XML <?xml encoding?> declaration itself.
-        return await response.read()
+        content = await response.read()
+        response.raise_for_status()
+        return content, response.status
 
 
-def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None):
+def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None, fetch_meta: dict | None = None):
     parsed = feedparser.parse(raw_content if raw_content else feed_url)
     feed_sha256 = hashlib.sha256(feed_url.encode()).hexdigest()
 
@@ -169,6 +172,9 @@ def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None):
             elif "published_parsed" in feed_info and feed_info.published_parsed:
                 feed_last_update = datetime(*feed_info.published_parsed[:6])
 
+            _fetch_status = fetch_meta.get("status") if fetch_meta else None
+            _fetch_ms = fetch_meta.get("ms") if fetch_meta else None
+
             cursor.execute("""
             UPDATE feeds
             SET feed_title = %s,
@@ -181,12 +187,16 @@ def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None):
                 last_parsed_at = NOW(),
                 parsed = parsed + 1,
                 last_error = NULL,
-                last_error_at = NULL
+                last_error_at = NULL,
+                consecutive_errors = 0,
+                last_success_at = NOW(),
+                last_http_status = %s,
+                last_fetch_ms = %s
             WHERE feed_sha256 = %s
             """, (
                 title_feed, link_feed, description_feed,
                 lang_feed, icon_feed, feed_last_update,
-                entries_count, feed_sha256
+                entries_count, _fetch_status, _fetch_ms, feed_sha256
             ))
 
             get_embedding_model()
@@ -217,7 +227,10 @@ def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None):
                 for date_field in ("published_parsed", "updated_parsed"):
                     value = entry.get(date_field)
                     if value:
-                        pub_date = datetime(*value[:6])
+                        # feedparser struct_times are UTC-adjusted — construct
+                        # them with an explicit UTC tzinfo so .timestamp()
+                        # doesn't reinterpret them in the container timezone.
+                        pub_date = datetime(*value[:6], tzinfo=timezone.utc)
                         pub_timestamp = pub_date.timestamp()
                         break
 
@@ -271,7 +284,7 @@ def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None):
             cursor.close()
 
 
-def _record_feed_error(feed_url: str, error_msg: str) -> None:
+def _record_feed_error(feed_url: str, error_msg: str, status: int | None = None, ms: int | None = None) -> None:
     """Persist the last fetch/parse error on the feeds row so the UI can surface it."""
     feed_sha256 = hashlib.sha256(feed_url.encode()).hexdigest()
     truncated = (error_msg or "")[:500]
@@ -280,8 +293,16 @@ def _record_feed_error(feed_url: str, error_msg: str) -> None:
             cursor = conn.cursor()
             try:
                 cursor.execute(
-                    "UPDATE feeds SET last_error = %s, last_error_at = NOW() WHERE feed_sha256 = %s",
-                    (truncated, feed_sha256),
+                    """
+                    UPDATE feeds
+                    SET last_error = %s,
+                        last_error_at = NOW(),
+                        consecutive_errors = consecutive_errors + 1,
+                        last_http_status = %s,
+                        last_fetch_ms = %s
+                    WHERE feed_sha256 = %s
+                    """,
+                    (truncated, status, ms, feed_sha256),
                 )
                 conn.commit()
             finally:
@@ -300,10 +321,20 @@ async def parse_and_save_feed_async(
             "feed_url": feed_url,
             "result": {"status": "error", "message": "Feed URL rejected: internal/private address not allowed"},
         }
+
+    started = time.perf_counter()
     try:
-        raw_content = await fetch_feed_content(session, feed_url)
+        raw_content, status = await fetch_feed_content(session, feed_url)
+        fetched_ms = int((time.perf_counter() - started) * 1000)
+    except aiohttp.ClientResponseError as e:
+        _record_feed_error(feed_url, f"HTTP {e.status}: {e.message}", status=e.status,
+                           ms=int((time.perf_counter() - started) * 1000))
+        return {
+            "feed_url": feed_url,
+            "result": {"status": "error", "message": f"Fetch failed: HTTP {e.status}: {e.message}"},
+        }
     except Exception as e:
-        _record_feed_error(feed_url, f"Fetch failed: {e}")
+        _record_feed_error(feed_url, f"Fetch failed: {e}", ms=int((time.perf_counter() - started) * 1000))
         return {
             "feed_url": feed_url,
             "result": {"status": "error", "message": f"Fetch failed: {e}"},
@@ -314,9 +345,10 @@ async def parse_and_save_feed_async(
         parse_and_save_feed,
         feed_url,
         raw_content,
+        {"status": status, "ms": fetched_ms},
     )
     if isinstance(result, dict) and result.get("status") == "error":
-        _record_feed_error(feed_url, result.get("message", "Parse failed"))
+        _record_feed_error(feed_url, result.get("message", "Parse failed"), status=status, ms=fetched_ms)
     return {"feed_url": feed_url, "result": result}
 
 

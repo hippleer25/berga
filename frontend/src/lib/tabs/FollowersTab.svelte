@@ -695,13 +695,17 @@ async function loadSubscriptions(quiet = false) {
                                         <span class="feed-label">{feedDisplayTitle(feed)}</span>
 
                                         {#if feed.last_error}
-                                            <span
+                                            <button
                                                 class="feed-error-badge"
-                                                title="{$t('followerstab.feedError')}: {feed.last_error}"
-                                                role="status"
+                                                title="{$t('followerstab.feedError')}: {feed.last_error} — {$t('monitor.goToFeed')}"
+                                                aria-label="{$t('followerstab.feedError')}: {feed.last_error}"
+                                                onclick={(e) => {
+                                                    e.stopPropagation();
+                                                    goto('/settings/feeds-health?feed=' + feed.feed_sha256);
+                                                }}
                                             >
                                                 <AlertTriangle size={13} strokeWidth={2} />
-                                            </span>
+                                            </button>
                                         {/if}
 
                                         <button
@@ -1372,8 +1376,11 @@ async function loadSubscriptions(quiet = false) {
         align-items: center;
         flex-shrink: 0;
         color: var(--color-error, #e74c3c);
-        cursor: help;
+        cursor: pointer;
         opacity: 1;
+        border: none;
+        background: transparent;
+        padding: 0;
     }
 
     .more-btn {

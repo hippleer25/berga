@@ -14,8 +14,10 @@ import hashlib
 import json
 import numpy as np
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+from difflib import SequenceMatcher
 
 
 from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
@@ -433,7 +435,22 @@ def _run_clustering(vectors: np.ndarray, min_cluster_size: int) -> np.ndarray:
     return labels
 
 
-def _summarize_cluster(articles: list[dict], summary_language: str = "auto") -> str:
+def _validate_summary(articles: list[dict], summary: str | None) -> str | None:
+    """Reject LLM output that copies a member title instead of synthesizing.
+    Returns the summary if acceptable, else None."""
+    if not summary:
+        return None
+    cleaned = summary.replace("*", "").strip()
+    if not cleaned:
+        return None
+    for a in articles[:10]:
+        t = (a.get("title") or "").strip()
+        if t and _is_title_copy(cleaned, t):
+            return None
+    return cleaned
+
+
+def _headline_prompt(articles: list[dict], summary_language: str, stricter: bool = False) -> str:
     titles = [a.get("title", "") for a in articles[:10] if a.get("title")]
     titles_text = "\n".join(f"- {t}" for t in titles)
 
@@ -442,14 +459,20 @@ def _summarize_cluster(articles: list[dict], summary_language: str = "auto") -> 
     else:
         language_rule = "- Write in the language used by most headlines.\n"
 
-    logger.debug(f"[CLUSTER] Generating summary for cluster with {len(articles)} articles")
+    stricter_rule = (
+        "- Your previous answer merely repeated or lightly edited one of the headlines. "
+        "Write a completely NEW sentence restating the shared event in your own words.\n"
+        if stricter
+        else ""
+    )
 
-    prompt = (
+    return (
         "You are a newspaper editor. "
         "The headlines below cover the same event from this week.\n\n"
         "Task: write ONE new headline that synthesizes the shared event across ALL of them.\n"
         "Rules:\n"
         "- NEVER copy any single headline (or any part of one) verbatim — always synthesize.\n"
+        f"{stricter_rule}"
         "- Merge the common facts; drop outlet-specific details.\n"
         "- Direct sentence, journalistic headline style, no quotation marks.\n"
         "- Maximum 20 words.\n"
@@ -458,18 +481,36 @@ def _summarize_cluster(articles: list[dict], summary_language: str = "auto") -> 
         f"{titles_text}\n\nSynthesized headline:"
     )
 
-    result = generate_text(prompt, usage="summarize", max_tokens=256, max_retries=5)
+
+def _summarize_cluster(articles: list[dict], summary_language: str = "auto") -> str:
+    logger.debug(f"[CLUSTER] Generating summary for cluster with {len(articles)} articles")
+
+    prompt = _headline_prompt(articles, summary_language)
+    raw = generate_text(prompt, usage="summarize", max_tokens=256, max_retries=5)
+    result = _validate_summary(articles, raw)
+
+    if not result and raw:
+        logger.warning(
+            "[CLUSTER] LLM headline copied a member title — "
+            "retrying once with stricter synthesis rules"
+        )
+        result = _validate_summary(
+            articles,
+            generate_text(
+                _headline_prompt(articles, summary_language, stricter=True),
+                usage="summarize", max_tokens=256, max_retries=2,
+            ),
+        )
 
     if result:
         logger.info(f"[CLUSTER] Summary generated: \"{result}\"")
-    else:
-        logger.warning(
-            "[CLUSTER] LLM headline generation failed (returned empty/None after "
-            "retries) — falling back to first member title"
-        )
-        result = _fallback_title(articles)
+        return result
 
-    return result
+    logger.warning(
+        "[CLUSTER] LLM headline missing or copied a member title — "
+        "falling back to first member title"
+    )
+    return _fallback_title(articles)
 
 
 # Force regeneration of stored summaries on next run (one-shot escape hatch).
@@ -486,7 +527,42 @@ def _summary_is_stale(summary: str, articles: list[dict]) -> bool:
         return True
     for a in articles:
         t = (a.get("title") or "").strip().lower()
-        if t and t == s:
+        if t and (t == s or _is_title_copy(summary, a.get("title") or "")):
+            return True
+    return False
+
+
+# Similarity above this means the generated summary is effectively a copy of
+# a member post title, not a synthesis of the cluster.
+_COPY_SIMILARITY_THRESHOLD = 0.82
+# Only bother checking titles long enough for the ratio to be meaningful
+# (a 3-char title is noise; ratio degenerates on tiny strings).
+_COPY_MIN_TITLE_LEN = 12
+
+
+def _normalize_for_compare(text: str) -> str:
+    t = (text or "").lower()
+    t = re.sub(r"[^\w\s]", " ", t, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _is_title_copy(summary: str, title: str) -> bool:
+    """True when `summary` is semantically a copy of `title`: exact match,
+    containment, or high fuzzy similarity (handles LLM output that merely
+    tweaks punctuation/wording of a source headline)."""
+    n_sum = _normalize_for_compare(summary)
+    n_title = _normalize_for_compare(title)
+    if not n_sum or not n_title:
+        return False
+    if n_sum == n_title:
+        return True
+    if min(len(n_sum), len(n_title)) >= _COPY_MIN_TITLE_LEN and (
+        n_title in n_sum or n_sum in n_title
+    ):
+        return True
+    if len(n_title) >= _COPY_MIN_TITLE_LEN:
+        ratio = SequenceMatcher(None, n_sum, n_title).ratio()
+        if ratio >= _COPY_SIMILARITY_THRESHOLD:
             return True
     return False
 
