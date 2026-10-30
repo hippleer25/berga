@@ -299,6 +299,16 @@ def _count_unique_feeds(articles: list[dict]) -> int:
     return len(set(a.get("feed_sha256") for a in articles if a.get("feed_sha256")))
 
 
+def _trim_text(raw: str | None, max_chars: int = 240) -> str | None:
+    """Collapse whitespace and cap length (event payload fields)."""
+    if not raw:
+        return None
+    text = " ".join(str(raw).split())
+    if len(text) <= max_chars:
+        return text or None
+    return text[: max_chars - 1].rstrip() + "…"
+
+
 def _pairwise_cosine_dist(normalized: np.ndarray, block: int = 512) -> np.ndarray:
     """
     Cosine distance matrix (1 − X·Yᵀ) computed in blocks so the fp32
@@ -640,6 +650,8 @@ def _build_events(
                     "feed_sha256": a.get("feed_sha256"),
                     "feed_icon": a.get("feed_icon"),
                     "published_at": a.get("pub_date"),
+                    "image_url": a.get("image_url"),
+                    "description": _trim_text(a.get("description"), 240),
                 }
                 for a in articles
             ],

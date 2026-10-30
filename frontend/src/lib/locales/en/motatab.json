@@ -20,6 +20,7 @@
   "thinkingRunning": "Thinking…",
   "searchedLabel": "search executed",
   "searchedLabelPlural": "searches executed",
+  "streamInterrupted": "Stream interrupted — this answer may be incomplete. Try asking again or rephrase your question.",
   "feedPrompt": "Please read and summarize the articles I selected from my news feed.",
   "emptyResponse": "Could not generate a response. Please try again.",
   "connectionError": "Unknown error communicating with the server.",
@@ -39,5 +40,11 @@
   "confirmDelete": "Delete this chat?",
   "openSession": "Open conversation",
   "scrollToBottom": "Go to bottom",
-  "send": "Send (Enter)"
+  "send": "Send (Enter)",
+  "msgCopy": "Copy message",
+  "msgCopied": "Copied!",
+  "msgEdit": "Edit and resend",
+  "msgRegenerate": "Regenerate response",
+  "editing": "Editing message",
+  "cancelEdit": "Cancel edit"
 }

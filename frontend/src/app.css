@@ -1,5 +1,45 @@
 @import "tailwindcss";
-@plugin "daisyui";
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Berga design tokens
+   ─────────────────────────────────────────────────────────────────────────
+   The palette lives in Tailwind's @theme namespace so utility classes
+   (bg-base-100, text-base-content, border-accent…) keep working. The
+   [data-theme] blocks below repaint it at runtime — no component library
+   is involved. Two master design languages sit on top:
+
+     [data-ui-mode="elegant"] — editorial, square, serif, quiet contrast
+     [data-ui-mode="modern"]  — rounded, glossy, sans, vivid contrast
+   ───────────────────────────────────────────────────────────────────────── */
+
+@theme {
+	--color-base-100: oklch(0% 0 0);
+	--color-base-200: oklch(19% 0 0);
+	--color-base-300: oklch(22% 0 0);
+	--color-base-content: oklch(87.609% 0 0);
+
+	--color-primary: oklch(35% 0 0);
+	--color-primary-content: oklch(100% 0 0);
+	--color-secondary: oklch(35% 0 0);
+	--color-secondary-content: oklch(100% 0 0);
+	--color-accent: oklch(68% 0.17 85);
+	--color-accent-content: oklch(15% 0.05 85);
+	--color-neutral: oklch(35% 0 0);
+	--color-neutral-content: oklch(100% 0 0);
+
+	--color-info: oklch(42% 0.199 265.638);
+	--color-info-content: oklch(89.04% 0.062 264.052);
+	--color-success: oklch(44% 0.119 151.328);
+	--color-success-content: oklch(90.395% 0.035 142.495);
+	--color-warning: oklch(79% 0.184 86.047);
+	--color-warning-content: oklch(19.359% 0.042 109.769);
+	--color-error: oklch(50% 0.213 27.518);
+	--color-error-content: oklch(88% 0.062 18.334);
+
+	--font-sans: 'Inter', sans-serif;
+	--font-serif: 'Newsreader', serif;
+	--font-mono: 'JetBrains Mono', monospace;
+}
 
 @font-face {
 font-family: 'Manrope';
@@ -269,10 +309,59 @@ font-display: swap;
 }
 
 :root {
+/* Typography roles — repainted by the active design mode below. */
 --font-page-title: 'Newsreader', serif;
 --font-post-title: 'PT Serif', serif;
---font-article-body: 'Inter', sans-serif;
+--font-article-body: 'Source Serif 4', serif;
 --font-ui: 'Inter', sans-serif;
+
+/* ── Motion ──────────────────────────────────────────────────────────────
+   Every transition in the app should reference these. Movement must feel
+   fluid and concise: short durations, one shared decelerating curve. */
+--ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
+--ui-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+--ui-dur-1: 120ms;
+--ui-dur-2: 180ms;
+--ui-dur-3: 280ms;
+
+/* ── Text tones ──────────────────────────────────────────────────────────
+   Never go below 58% of base-content for readable copy. --ui-text-faint is
+   reserved for decorative separators, not for sentences. */
+--ui-text: var(--color-base-content);
+--ui-text-muted: color-mix(in oklch, var(--color-base-content) 74%, transparent);
+--ui-text-subtle: color-mix(in oklch, var(--color-base-content) 62%, transparent);
+--ui-text-faint: color-mix(in oklch, var(--color-base-content) 48%, transparent);
+
+/* ── Borders ─────────────────────────────────────────────────────────────
+   Mid-tone by default: visible enough to structure the page, never harsh. */
+--ui-border-width: 1px;
+--ui-border-color: color-mix(in oklch, var(--color-base-content) 24%, transparent);
+--ui-border-strong: color-mix(in oklch, var(--color-base-content) 38%, transparent);
+--ui-hairline: color-mix(in oklch, var(--color-base-content) 13%, transparent);
+
+/* ── Accent companions ───────────────────────────────────────────────────
+   The yellow is the single accent. These are derived tints plus one cool
+   companion used sparingly (links, secondary emphasis) for palette depth. */
+--color-accent-soft: color-mix(in oklch, var(--color-accent) 14%, transparent);
+--color-accent-line: color-mix(in oklch, var(--color-accent) 46%, transparent);
+--ui-accent-secondary: oklch(66% 0.11 248);
+
+/* ── Elevation ───────────────────────────────────────────────────────────
+   Short, low-radius shadows generated from base-content so they adapt to
+   light and dark without hardcoded rgba values. */
+--ui-shadow-1: 0 1px 1px color-mix(in oklch, var(--color-base-content) 9%, transparent);
+--ui-shadow-2: 0 1px 2px color-mix(in oklch, var(--color-base-content) 10%, transparent),
+	0 8px 24px -14px color-mix(in oklch, var(--color-base-content) 32%, transparent);
+--ui-shadow-3: 0 2px 4px color-mix(in oklch, var(--color-base-content) 12%, transparent),
+	0 24px 56px -28px color-mix(in oklch, var(--color-base-content) 46%, transparent);
+
+/* ── Control surface (gradient + relief) ─────────────────────────────────
+   --ui-gloss is layered over a solid fill to give buttons and pills an
+   inner light gradient, the Cloudflare-style sense of relief. */
+--ui-gloss: linear-gradient(180deg, rgb(255 255 255 / 0.08), transparent 62%);
+--ui-control-fill: var(--color-base-200);
+--ui-control-weight: 500;
+--ui-title-tracking: -0.015em;
 
 /* UI customization (overridden at runtime from uiPrefs) */
 --ui-radius-xs: 4px;
@@ -282,10 +371,15 @@ font-display: swap;
 --ui-radius-xl: 24px;
 --ui-radius-full: 999px;
 
+/* Shape presets — repainted by [data-ui-mode]; referenced by primitives. */
+--radius-box: 12px;
+--radius-field: 7px;
+--radius-selector: 999px;
+
 /* Floating deck (driven by uiPrefs — relative units, universal) */
 --deck-width: 73vw;
 --deck-height: 16vw;
---deck-radius: calc(var(--deck-height) * 27 / 100);
+--deck-radius: calc(var(--deck-height) * 17 / 100);
 
 /* Border option (driven by uiPrefs via data-border + vars) */
 --ui-border-width: 1px;
@@ -302,9 +396,9 @@ font-display: swap;
 --article-font-weight: 400;
 --article-letter-spacing: normal;
 --article-line-height: 1.8;
---article-max-width: 42rem;
+--article-max-width: 50rem;
 --article-title-max-width: 42rem;
---article-body-max-width: 42rem;
+--article-body-max-width: 50rem;
 --article-image-width: 100%;
 
 /* Post card */
@@ -361,51 +455,11 @@ textarea:focus:not(:focus-visible) {
   outline: none;
 }
 
-@plugin "daisyui/theme" {
-  name: "berga-black";
-  default: false;
-  prefersdark: false;
-  color-scheme: "light";
-
-  --color-base-100: oklch(100% 0 0);
-  --color-base-200: oklch(0.931 0 89.876);
-  /* --color-base-200: oklch(81% 0 0);*/
-  --color-base-300: oklch(78% 0 0);
-  --color-base-content: oklch(12.391% 0 0);
-
-  --color-primary: oklch(65% 0 0);
-  --color-primary-content: oklch(0% 0 0);
-  --color-secondary: oklch(65% 0 0);
-  --color-secondary-content: oklch(0% 0 0);
-  --color-accent: oklch(62% 0.15 90);
-  --color-accent-content: oklch(15% 0.05 90);
-  --color-neutral: oklch(65% 0 0);
-  --color-neutral-content: oklch(0% 0 0);
-
-  --color-info: oklch(58% 0.199 265.638);
-  --color-info-content: oklch(10.96% 0.062 264.052);
-  --color-success: oklch(56% 0.119 151.328);
-  --color-success-content: oklch(9.605% 0.035 142.495);
-  --color-warning: oklch(21% 0.184 86.047);
-  --color-warning-content: oklch(80.641% 0.042 109.769);
-  --color-error: oklch(50% 0.213 27.518);
-  --color-error-content: oklch(12% 0.062 18.334);
-
-  --radius-selector: 2rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 0;
-  --noise: 0;
-}
-@plugin "daisyui/theme" {
-  name: "berga";
-  default: true;
-  prefersdark: false;
-  color-scheme: "dark";
-
+/* ── Built-in themes ─────────────────────────────────────────────────────
+   Plain CSS palettes. The @theme block above holds the dark defaults; these
+   blocks make the choice explicit and runtime-switchable. */
+[data-theme="berga"] {
+  color-scheme: dark;
   --color-base-100: oklch(0% 0 0);
   --color-base-200: oklch(19% 0 0);
   --color-base-300: oklch(22% 0 0);
@@ -428,15 +482,82 @@ textarea:focus:not(:focus-visible) {
   --color-warning-content: oklch(19.359% 0.042 109.769);
   --color-error: oklch(50% 0.213 27.518);
   --color-error-content: oklch(88% 0.062 18.334);
+}
 
-  --radius-selector: 2rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 0;
-  --noise: 0;
+[data-theme="berga-black"] {
+  color-scheme: light;
+  --color-base-100: oklch(100% 0 0);
+  --color-base-200: oklch(0.931 0 89.876);
+  --color-base-300: oklch(78% 0 0);
+  --color-base-content: oklch(12.391% 0 0);
+
+  --color-primary: oklch(65% 0 0);
+  --color-primary-content: oklch(0% 0 0);
+  --color-secondary: oklch(65% 0 0);
+  --color-secondary-content: oklch(0% 0 0);
+  --color-accent: oklch(62% 0.15 90);
+  --color-accent-content: oklch(15% 0.05 90);
+  --color-neutral: oklch(65% 0 0);
+  --color-neutral-content: oklch(0% 0 0);
+
+  --color-info: oklch(58% 0.199 265.638);
+  --color-info-content: oklch(10.96% 0.062 264.052);
+  --color-success: oklch(56% 0.119 151.328);
+  --color-success-content: oklch(9.605% 0.035 142.495);
+  --color-warning: oklch(21% 0.184 86.047);
+  --color-warning-content: oklch(80.641% 0.042 109.769);
+  --color-error: oklch(50% 0.213 27.518);
+  --color-error-content: oklch(12% 0.062 18.334);
+}
+
+/* ── Master design languages ─────────────────────────────────────────────
+   Elegant is the default: editorial serif titles, square controls, quiet
+   relief. Modern leans sans, rounder and glossier. Individual overrides in
+   Appearance still win — these are only the starting point.
+   Font/radius presets are also applied through designMode.ts so the
+   settings UI stays in sync; the CSS here prevents first-paint flashes. */
+[data-ui-mode="elegant"],
+:root {
+  --font-page-title: 'Newsreader', serif;
+  --font-post-title: 'PT Serif', serif;
+  --font-article-body: 'Source Serif 4', serif;
+  --font-ui: 'Inter', sans-serif;
+
+  --ui-radius-xs: 2px;
+  --ui-radius-sm: 3px;
+  --ui-radius: 5px;
+  --ui-radius-lg: 6px;
+  --ui-radius-xl: 8px;
+
+  --ui-gloss: linear-gradient(180deg, rgb(255 255 255 / 0.07), transparent 64%);
+  --ui-control-weight: 500;
+  --ui-title-tracking: -0.012em;
+  --ui-shadow-2: 0 1px 1px color-mix(in oklch, var(--color-base-content) 12%, transparent),
+	0 10px 28px -20px color-mix(in oklch, var(--color-base-content) 38%, transparent);
+}
+
+[data-ui-mode="modern"] {
+  --font-page-title: 'Figtree', sans-serif;
+  --font-post-title: 'Figtree', sans-serif;
+  --font-article-body: 'Inter', sans-serif;
+  --font-ui: 'Inter', sans-serif;
+
+  --ui-radius-xs: 4px;
+  --ui-radius-sm: 7px;
+  --ui-radius: 12px;
+  --ui-radius-lg: 17px;
+  --ui-radius-xl: 24px;
+
+  --ui-gloss: linear-gradient(
+	180deg,
+	rgb(255 255 255 / 0.22),
+	rgb(255 255 255 / 0.03) 52%,
+	transparent
+  );
+  --ui-control-weight: 550;
+  --ui-title-tracking: -0.028em;
+  --ui-shadow-2: 0 1px 2px color-mix(in oklch, var(--color-base-content) 12%, transparent),
+	0 10px 30px -12px color-mix(in oklch, var(--color-base-content) 34%, transparent);
 }
 
 .input:focus-visible,
@@ -582,13 +703,39 @@ textarea:focus:not(:focus-visible) {
 /* ── Desktop sidebar collapse ───────────────────────────────────────────── */
 :root {
   --sidebar-w: 240px;
+  --dock-w: clamp(40px, 7.5vmin, 128px);
+  --dock-gap: clamp(3px, 0.9vmin, 7px);
+  --dock-inset: clamp(4px, 12vmin, 160px);
+  --dock-radius: calc(var(--dock-w) * 0.34);
+  --dock-pad-pct: 20;
+  --dock-shadow-strength: 0;
 }
 [data-sidebar-collapsed="on"] {
   --sidebar-w: 0px;
 }
 
+/* Desktop floating dock content offset: pages align their content with
+   max(var(--sidebar-w), …) — swapping the var swaps the whole layout. */
+[data-desktop-nav="dock"] {
+  --sidebar-w: calc(var(--dock-inset) + var(--dock-w) + clamp(6px, 1.2vmin, 18px));
+}
+
 /* ── Border option: outline chrome + controls ───────────────────────────── */
-[data-border="on"] .btn,
+:root {
+  /* Button/field border system: user can strip button borders globally
+     (ui-btn-borders) while keeping a gray fill for definition. Width is
+     preserved — only the color goes transparent — so nothing shifts. */
+  --btn-border-color: var(--ui-border-color);
+  --btn-border-strong: var(--ui-border-strong);
+  --btn-fill: transparent;
+}
+[data-btn-borders="off"] {
+  --btn-border-color: transparent;
+  --btn-border-strong: transparent;
+  --btn-fill: color-mix(in oklch, var(--color-base-200) 50%, transparent);
+}
+
+[data-border="on"] .ui-btn,
 [data-border="on"] input[type="text"],
 [data-border="on"] input[type="search"],
 [data-border="on"] input[type="email"],
@@ -603,7 +750,7 @@ textarea:focus:not(:focus-visible) {
   border-color: var(--ui-border-color);
 }
 
-[data-border="on"] .btn:not(.btn-ghost):not(.btn-link):not(.btn-circle):not(.btn-active):not(.btn-primary):not(.btn-secondary):not(.btn-accent):not(.btn-error):not(.btn-info):not(.btn-success):not(.btn-warning),
+[data-border="on"] .ui-btn:not(.ui-btn--ghost),
 [data-border="on"] .dropdown-content,
 [data-border="on"] .modal-box {
   border-style: solid;
@@ -615,6 +762,7 @@ textarea:focus:not(:focus-visible) {
 [data-border="on"] .top-bar,
 [data-border="on"] .post-card,
 [data-border="on"] .filter-chip,
+[data-border="on"] .action-btn,
 [data-border="on"] .navstyle-card,
 [data-border="on"] .taborder-row,
 [data-border="on"] .settings-group,
@@ -625,7 +773,270 @@ textarea:focus:not(:focus-visible) {
 }
 
 /* ── Filter pill icons toggle ───────────────────────────────────────────── */
+/* NOTE: only HomeTab filter pills (and the HomePreview replicas) — do NOT target
+   `.action-btn`: that class name is PostCard's footer action buttons. */
 [data-chip-icons="off"] .mode-btn > svg,
 [data-chip-icons="off"] .filter-chip > svg {
   display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UI primitives
+   Shared building blocks for every screen. Screens should compose these
+   instead of inventing one-off buttons/cards so the design stays coherent.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ui-btn {
+	position: relative;
+	overflow: hidden;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	min-height: 2.5rem;
+	padding: 0 1rem;
+	border: var(--ui-border-width) solid var(--btn-border-color, var(--ui-border-color));
+	border-radius: var(--ui-radius-sm);
+	background: var(--ui-gloss), var(--ui-control-fill);
+	color: var(--color-base-content);
+	font-family: var(--font-ui);
+	font-size: 0.875rem;
+	font-weight: var(--ui-control-weight);
+	line-height: 1;
+	letter-spacing: 0.005em;
+	white-space: nowrap;
+	text-decoration: none;
+	cursor: pointer;
+	box-shadow: var(--ui-shadow-1);
+	transition:
+		transform var(--ui-dur-1) var(--ui-ease),
+		box-shadow var(--ui-dur-2) var(--ui-ease),
+		border-color var(--ui-dur-2) var(--ui-ease),
+		color var(--ui-dur-2) var(--ui-ease);
+}
+
+.ui-btn:hover {
+	transform: translateY(-1px);
+	border-color: var(--ui-border-strong);
+	box-shadow: var(--ui-shadow-2);
+}
+
+.ui-btn:active {
+	transform: translateY(0) scale(0.985);
+	box-shadow: var(--ui-shadow-1);
+	transition-duration: var(--ui-dur-1);
+}
+
+.ui-btn:disabled,
+.ui-btn[aria-disabled='true'] {
+	opacity: 0.45;
+	pointer-events: none;
+}
+
+.ui-btn--accent {
+	background: var(--ui-gloss), var(--color-accent);
+	color: var(--color-accent-content);
+	border-color: color-mix(in oklch, var(--color-accent) 62%, var(--color-base-content) 16%);
+	box-shadow: var(--ui-shadow-1), inset 0 1px 0 rgb(255 255 255 / 0.22);
+}
+
+.ui-btn--accent:hover {
+	border-color: color-mix(in oklch, var(--color-accent) 78%, var(--color-base-content) 10%);
+	box-shadow: var(--ui-shadow-2), inset 0 1px 0 rgb(255 255 255 / 0.28);
+}
+
+.ui-btn--outline {
+	background: transparent;
+	box-shadow: none;
+	border-color: var(--btn-border-strong, var(--ui-border-strong));
+}
+
+.ui-btn--outline:hover {
+	background: color-mix(in oklch, var(--color-base-content) 6%, transparent);
+	box-shadow: var(--ui-shadow-1);
+}
+
+.ui-btn--ghost {
+	background: transparent;
+	border-color: transparent;
+	box-shadow: none;
+}
+
+.ui-btn--ghost:hover {
+	background: color-mix(in oklch, var(--color-base-content) 7%, transparent);
+	border-color: var(--ui-border-color);
+	box-shadow: none;
+}
+
+.ui-btn--danger {
+	background: var(--ui-gloss), var(--color-error);
+	color: var(--color-error-content);
+	border-color: color-mix(in oklch, var(--color-error) 70%, var(--color-base-content) 12%);
+}
+
+.ui-btn--success {
+	background: var(--ui-gloss), var(--color-success);
+	color: var(--color-success-content);
+	border-color: color-mix(in oklch, var(--color-success) 70%, var(--color-base-content) 12%);
+}
+
+.ui-btn--sm {
+	min-height: 2rem;
+	padding: 0 0.75rem;
+	font-size: 0.8125rem;
+}
+
+.ui-btn--lg {
+	min-height: 2.875rem;
+	padding: 0 1.375rem;
+	font-size: 0.9375rem;
+}
+
+.ui-btn--block {
+	width: 100%;
+}
+
+/* Pills — tags, filters, counters. Slightly tighter than buttons. */
+.ui-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.1875rem 0.5rem;
+	border: var(--ui-border-width) solid var(--ui-border-color);
+	border-radius: var(--ui-radius-full);
+	background: var(--ui-gloss), color-mix(in oklch, var(--color-base-200) 82%, transparent);
+	color: var(--ui-text-muted);
+	font-family: var(--font-ui);
+	font-size: 0.6875rem;
+	font-weight: 500;
+	line-height: 1.35;
+	white-space: nowrap;
+	transition:
+		border-color var(--ui-dur-2) var(--ui-ease),
+		color var(--ui-dur-2) var(--ui-ease),
+		background-color var(--ui-dur-2) var(--ui-ease);
+}
+
+.ui-pill:hover {
+	border-color: var(--ui-border-strong);
+	color: var(--ui-text);
+}
+
+.ui-pill--accent {
+	border-color: var(--color-accent-line);
+	color: var(--color-accent);
+	background: var(--color-accent-soft);
+}
+
+/* Cards — boxed surfaces with real relief. Lists should stay as rows. */
+.ui-card {
+	background: var(--color-base-100);
+	border: var(--ui-border-width) solid var(--ui-border-color);
+	border-radius: var(--ui-radius-lg);
+	box-shadow: var(--ui-shadow-2);
+}
+
+.ui-card--quiet {
+	box-shadow: var(--ui-shadow-1);
+}
+
+/* Fields — text inputs, selects, textareas. */
+.ui-field {
+	width: 100%;
+	min-height: 2.5rem;
+	padding: 0.5rem 0.75rem;
+	border: var(--ui-border-width) solid var(--ui-border-color);
+	border-radius: var(--ui-radius-sm);
+	background: color-mix(in oklch, var(--color-base-200) 72%, transparent);
+	color: var(--color-base-content);
+	font-family: var(--font-ui);
+	font-size: 0.875rem;
+	outline: none;
+	transition:
+		border-color var(--ui-dur-2) var(--ui-ease),
+		background-color var(--ui-dur-2) var(--ui-ease);
+}
+
+.ui-field::placeholder {
+	color: var(--ui-text-subtle);
+}
+
+.ui-field:hover {
+	border-color: var(--ui-border-strong);
+}
+
+/* Typography helpers — use these instead of arbitrary light grays. */
+.text-muted {
+	color: var(--ui-text-muted);
+}
+
+.text-subtle {
+	color: var(--ui-text-subtle);
+}
+
+.text-faint {
+	color: var(--ui-text-faint);
+}
+
+.ui-kicker {
+	font-family: var(--font-ui);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.09em;
+	text-transform: uppercase;
+	color: var(--ui-text-subtle);
+}
+
+.ui-divider {
+	height: 1px;
+	background: var(--ui-hairline);
+	border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-btn,
+	.ui-pill,
+	.ui-field {
+		transition-duration: 0ms;
+	}
+
+	.ui-btn:hover,
+	.ui-btn:active {
+		transform: none;
+	}
+}
+
+/* ── Spinner (replaces the component-library loading class) ───────────── */
+.loading {
+	display: inline-block;
+	width: 1.25rem;
+	height: 1.25rem;
+	border: 2px solid color-mix(in oklch, var(--color-base-content) 22%, transparent);
+	border-top-color: var(--color-accent);
+	border-radius: 50%;
+	animation: ui-spin 700ms linear infinite;
+}
+
+.loading-xs {
+	width: 0.75rem;
+	height: 0.75rem;
+	border-width: 1.5px;
+}
+
+.loading-sm {
+	width: 1rem;
+	height: 1rem;
+	border-width: 1.5px;
+}
+
+.loading-lg {
+	width: 1.75rem;
+	height: 1.75rem;
+	border-width: 2.5px;
+}
+
+@keyframes ui-spin {
+	to {
+		transform: rotate(360deg);
+	}
 }

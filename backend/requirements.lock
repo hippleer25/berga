@@ -12,13 +12,14 @@ bcrypt==4.0.1
 beautifulsoup4==4.15.0
 brotli==1.2.0
 bs4==0.0.2
-certifi==2026.7.22
+certifi==2026.10.23
 cffi==2.1.1
 chardet==7.6.0
 charset-normalizer==3.4.7
 click==8.5.0
 cryptography==50.0.1
 cssselect==1.5.0
+curl_cffi==0.17.0
 ddgs==9.14.4
 ecdsa==0.19.2
 fake-useragent==2.2.0

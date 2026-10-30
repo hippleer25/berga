@@ -125,7 +125,7 @@
 	onMount(() => {
 		load();
 		loadTags();
-		// Cross-link from feed error badges: /settings/feeds-health?feed=<sha>
+		// Cross-link from feed error badges: /settings/monitor?feed=<sha>
 		const sha = get(page).url.searchParams.get('feed');
 		if (sha) expandedSha = sha;
 	});
@@ -683,7 +683,7 @@
 					{$t('monitor.tagCoverageEmpty')}
 				</p>
 				<p class="detail-sub subtle">{$t('monitor.tagCoverageCta')}</p>
-				<button class="action-btn accent" use:ripple onclick={() => goto('/settings/tags')}>
+				<button class="action-btn accent" use:ripple onclick={() => goto('/settings/intelligence/tags')}>
 					<Tag size={13} />
 					<span>{$t('monitor.createTags')}</span>
 				</button>

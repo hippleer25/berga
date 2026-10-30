@@ -1,5 +1,8 @@
 {
-  "publications": "publications",
+  "publications": "posts",
   "sources": "sources",
-  "hoursAgo": "h ago"
+  "hoursAgo": "h ago",
+  "started": "since",
+  "fitTooltip": "How related this topic is to your reading profile",
+  "moreArticles": "more articles in this topic"
 }

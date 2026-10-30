@@ -9,10 +9,8 @@
 	import { page } from '$app/stores';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Palette from '@lucide/svelte/icons/palette';
-	import Database from '@lucide/svelte/icons/database';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import User from '@lucide/svelte/icons/user';
-	import Tag from '@lucide/svelte/icons/tag';
 	import Highlighter from '@lucide/svelte/icons/highlighter';
 	import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 	import { ripple } from '$lib/actions/ripple';
@@ -25,17 +23,13 @@
 	const tabs = [
 		{ key: 'appearance', href: '/settings/appearance', icon: Palette },
 		{ key: 'highlights', href: '/settings/highlights', icon: Highlighter },
-		{ key: 'feeds', href: '/settings/feeds-health', icon: HeartPulse },
-		{ key: 'subscriptions', href: '/settings/data', icon: Database },
-		{ key: 'affinity', href: '/settings/affinity', icon: Sparkles },
-		{ key: 'tags', href: '/settings/tags', icon: Tag },
+		{ key: 'monitor', href: '/settings/monitor', icon: HeartPulse },
+		{ key: 'intelligence', href: '/settings/intelligence', icon: Sparkles },
 		{ key: 'account', href: '/settings/account', icon: User },
 	];
 
 	function label(key: string): string {
-		return key === 'tags'
-			? $t('tags.title')
-			: $t(`settings.${key === 'subscriptions' ? 'subscriptions' : key}`);
+		return $t(`settings.${key}`);
 	}
 
 	function isActive(href: string): boolean {
@@ -210,7 +204,7 @@
 
 	.sidebar-inner {
 		display: flex; flex-direction: column; height: 100%;
-		padding: 24px var(--sidebar-item-margin, 16px) 12px; gap: 8px;
+		padding: 24px var(--sidebar-item-margin, 0.625rem) 12px; gap: 8px;
 	}
 	.brand { padding: 4px 8px 20px; }
 
@@ -226,7 +220,7 @@
 
 	.sidebar-item {
 		display: flex; align-items: center; gap: 12px;
-		padding: var(--sidebar-item-pad-y, 10px) var(--sidebar-item-margin, 16px);
+		padding: var(--sidebar-item-pad-y, 0.5rem) var(--sidebar-item-margin, 0.625rem);
 		border-radius: var(--ui-radius-sm);
 		border-left: 3px solid transparent;
 		text-decoration: none;

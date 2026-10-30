@@ -4,13 +4,14 @@
     import { goto } from '$app/navigation';
     import PostCard from '$lib/components/PostCard.svelte';
     import FollowFeedModal from '$lib/components/FollowFeedModal.svelte';
-    import { Search } from '@lucide/svelte';
+    import { Search, ArrowLeft } from '@lucide/svelte';
     import { t } from 'svelte-i18n';
 import { get } from 'svelte/store';
     import { apiFetch } from '$lib/api';
     import { syncFeedItemTags, type TagRef } from '$lib/utils/syncFeedTags';
     import { subscriptionChanged } from '$lib/stores/subscription';
     import ScreenShell from '$lib/components/ScreenShell.svelte';
+    import { closeScreen } from '$lib/utils/screenStack';
 
 type Tab = 'articles' | 'feeds';
 
@@ -154,20 +155,30 @@ const res = await apiFetch(
 
         <!-- ── Header & Search ──────────────────────────── -->
         <header class="page-header">
-            <form class="search-form" onsubmit={handleSearch}>
-                <div class="search-wrap">
-                    <input
-                        class="search-input"
-                        type="search"
-                        placeholder="{$t('searchtab.placeholder', { default: 'Search posts, feeds, or topics...' })}"
-                        bind:value={searchQuery}
-                        autocomplete="off"
-                        autocorrect="off"
-                        spellcheck="false"
-                    />
-                    <Search size={18} class="search-icon" />
-                </div>
-            </form>
+            <div class="search-row">
+                <button
+                    class="back-btn"
+                    onclick={() => closeScreen()}
+                    title="{$t('article.backToFeed')}"
+                    aria-label="{$t('article.backToFeed')}"
+                >
+                    <ArrowLeft size={18} />
+                </button>
+                <form class="search-form" onsubmit={handleSearch}>
+                    <div class="search-wrap">
+                        <input
+                            class="search-input"
+                            type="search"
+                            placeholder="{$t('searchtab.placeholder', { default: 'Search posts, feeds, or topics...' })}"
+                            bind:value={searchQuery}
+                            autocomplete="off"
+                            autocorrect="off"
+                            spellcheck="false"
+                        />
+                        <Search size={18} class="search-icon" />
+                    </div>
+                </form>
+            </div>
         </header>
 
         <!-- Tab bar -->
@@ -191,6 +202,13 @@ const res = await apiFetch(
                     <span>{$t('search.feeds')}</span>
                 </button>
             </div>
+
+            {#if activeTab === 'articles' && !articleLoading && !articleError && articleResults.length > 0}
+                <p class="results-meta">
+                    {articleResults.length} {articleResults.length !== 1 ? $t('search.results') : $t('search.result')} {$t('search.for')}
+                    <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
+                </p>
+            {/if}
         </div>
 
         <div class="results-wrap">
@@ -208,10 +226,6 @@ const res = await apiFetch(
                         {$t('search.noArticleResults')} <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
                     </p>
                 {:else}
-                    <p class="results-meta">
-{articleResults.length} {articleResults.length !== 1 ? $t('search.results') : $t('search.result')} {$t('search.for')}
-                <span class="query-label">"{decodeURIComponent($page.params.query ?? '')}"</span>
-                    </p>
                     {#each articleResults as item}
                         <PostCard {item} server="" tags={item.tags || []} userTags={tagList} onTagClick={(tag) => goto(`/home?tag_id=${tag.tag_id}`)} onTagChange={handleTagChange} />
                     {/each}
@@ -263,7 +277,7 @@ const res = await apiFetch(
 {/if}
 
 <style>
-/* ── Centralizer Logic (Idêntico ao HomeTab) ─────────────── */
+    /* ── Centralizer Logic (Idêntico ao HomeTab) ─────────────── */
     .main-content {
         max-width: 42rem;
         margin: 0 auto;
@@ -277,12 +291,25 @@ const res = await apiFetch(
         }
     }
 
+    /* Search page images follow their own radius/alignment knobs (Auto = theme default). */
+    .page-root {
+        --cover-image-radius: var(--search-cover-image-radius, var(--ui-radius-sm));
+        --cover-image-align: var(--search-cover-image-align, center);
+        --cover-image-align-margin: var(--search-cover-image-align-margin, auto);
+    }
+
     /* ── Header & Search ──────────────────────────── */
     .page-header {
         padding: 24px 0 0;
     }
 
-    .search-form { width: 100%; }
+    .search-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .search-form { flex: 1; width: 100%; }
     .search-wrap {
         display: flex;
         align-items: center;
@@ -294,6 +321,30 @@ const res = await apiFetch(
         height: 46px;
         transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
     }
+
+    .back-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 46px;
+        height: 46px;
+        padding: 0;
+        background: transparent;
+        border: 1px solid var(--ui-border-color);
+        border-radius: var(--ui-radius-sm);
+        color: var(--color-base-content);
+        cursor: pointer;
+        transition: border-color var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+                    transform var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+                    box-shadow var(--ui-dur-1, 150ms) var(--ui-ease, ease);
+    }
+    .back-btn:hover {
+        border-color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+        transform: translateY(-1px);
+        box-shadow: var(--ui-shadow-1);
+    }
+    .back-btn:active { transform: translateY(0); }
     .search-wrap:focus-within {
         background: var(--color-base-100);
         border-color: var(--color-accent);
@@ -309,6 +360,11 @@ const res = await apiFetch(
     }
     .search-input::placeholder { color: color-mix(in oklch, var(--color-base-content) 35%, transparent); }
     .search-input::-webkit-search-cancel-button { display: none; }
+    .search-input:focus,
+    .search-input:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+    }
 
     .search-wrap :global(.search-icon) {
         flex-shrink: 0;
@@ -320,38 +376,48 @@ const res = await apiFetch(
     /* ── Tab bar (Pill Style) ──────────────────────────────── */
 .tab-bar {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 16px 0 12px;
   touch-action: pan-y;
 }
 
     .mode-pill {
         display: flex;
-        background: var(--color-base-200);
-        border-radius: calc(var(--ui-radius-sm) + 3px);
-        padding: 3px;
-        gap: 2px;
+        border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
+        border-radius: var(--ui-radius-sm);
+        padding: 0;
+        gap: 0;
         flex-shrink: 0;
+        background: var(--btn-fill, transparent);
+        overflow: hidden; /* clips hover/active fill to the pill's own curve */
     }
     .mode-btn {
         display: flex;
         align-items: center;
         gap: 5px;
-        padding: 6px 14px;
-        border-radius: var(--ui-radius-sm);
+        padding: 7px 14px;
+        border-radius: 0;
         border: none;
         background: transparent;
         font-size: 13px;
         font-weight: 500;
-        color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
         cursor: pointer;
-        transition: background 150ms ease, color 150ms ease, font-weight 0ms;
+        transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
         white-space: nowrap;
     }
+    .mode-btn:hover {
+        color: var(--color-base-content);
+    }
     .mode-btn.active {
-        background: var(--color-base-100);
+        /* Fills its parcel of the big pill edge-to-edge: no gap ring */
+        background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
         color: var(--color-base-content);
         font-weight: 700;
-        box-shadow: 0 1px 3px color-mix(in oklch, black 10%, transparent);
+        /* Relief stays inside, since the outer shadow would be clipped */
+        box-shadow: inset 0 1px 0 color-mix(in oklch, white 22%, transparent);
     }
 
     /* ── Results wrap ─────────────────────────────────────────────────────── */
@@ -380,7 +446,13 @@ const res = await apiFetch(
     .results-meta {
         font-size: 13px;
         color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
-        padding: 12px 0 4px;
+        margin: 0 0 0 auto;
+        padding: 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: right;
     }
 
     .query-label {
@@ -422,7 +494,7 @@ const res = await apiFetch(
     .sub-icon {
         width: 28px;
         height: 28px;
-        border-radius: var(--ui-radius-xs);
+        border-radius: var(--search-cover-image-radius, var(--ui-radius-xs));
         flex-shrink: 0;
         object-fit: cover;
         background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
@@ -431,7 +503,7 @@ const res = await apiFetch(
     .sub-fallback {
         width: 28px;
         height: 28px;
-        border-radius: var(--ui-radius-xs);
+        border-radius: var(--search-cover-image-radius, var(--ui-radius-xs));
         flex-shrink: 0;
         display: flex;
         align-items: center;

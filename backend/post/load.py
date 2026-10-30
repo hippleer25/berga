@@ -9,6 +9,7 @@ from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
 from intelligence.similar import get_similar_articles
 from post.comments import get_comment as _get_comment
 from i18n.locale_map import accept_language_header
+from utils.fetch_client import fetch_html
 
 logger = logging.getLogger(__name__)
 
@@ -21,23 +22,6 @@ def _base_headers() -> dict:
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": accept_language_header(),
     }
-
-
-_session: requests.Session | None = None
-
-
-def _get_session() -> requests.Session:
-    global _session
-    if _session is None:
-        _session = requests.Session()
-        _session.headers.update(_base_headers())
-    return _session
-
-
-def _refresh_session_locale() -> None:
-    global _session
-    if _session is not None:
-        _session.headers["Accept-Language"] = accept_language_header()
 
 
 def _resolve_images(html: str, base_url: str) -> str:
@@ -221,12 +205,11 @@ def get(user_id: int, item_id: str):
         }
 
     try:
-        _refresh_session_locale()
-        session = _get_session()
-        response = session.get(url, timeout=15)
-        response.raise_for_status()
+        html, via = fetch_html(url, headers=_base_headers(), timeout=15)
+        if not html:
+            raise requests.RequestException(f"all fetch tiers exhausted (via={via})")
 
-        doc = Document(response.text)
+        doc = Document(html)
         content_html = _resolve_images(doc.summary(), url)
         content_html = _clean_html(content_html)
 

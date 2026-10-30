@@ -16,7 +16,7 @@
 - **`backend/`** — Python 3.12 FastAPI app (port 5746). Two processes via supervisord:
   - `uvicorn` API server (`main.py` entrypoint)
   - `arq` background worker (`workers/settings.WorkerSettings`) for feed refresh, clustering, publisher-freq recalc
-- **`frontend/`** — SvelteKit 5 + Svelte 5 app with `adapter-static` (SPA mode, fallback `index.html`). Tailwind CSS v4 + DaisyUI v5. LightningCSS transformer.
+- **`frontend/`** — SvelteKit 5 + Svelte 5 app with `adapter-static` (SPA mode, fallback `index.html`). Tailwind CSS v4 (design tokens declared in `@theme`, no component library) + LightningCSS. Capacitor 8 for Android builds.
 - **Infrastructure** — Docker Compose: MySQL 8, Qdrant (vector DB), Redis 7 (arq broker + cache), backend, frontend
 
 ## Dev Commands
@@ -85,6 +85,38 @@ cd frontend && npm audit                         # JS vulnerability check
 | `mota/article_resume.py` | Article summarization (streaming SSE) |
 | `workers/tasks.py` | arq job definitions + WorkerSettings (cron every 6h for feeds, 6h for events, daily publisher freq) |
 
+## Design Guidelines (UI)
+
+Berga must read as a **premium, editorial product**, not generic AI slop. Every screen should feel polished, complete and alive. The north star is the balance between modern craft and timeless elegance.
+
+**Doctrine**
+
+- **Elegance first.** The reading experience is the product. Set type like a publication: serif display/title faces, generous rhythm, strong hierarchy.
+- **Modern × timeless**, balanced by customization: rounded shapes and sans faces coexist with square corners and serifs. The user decides the balance in Appearance.
+- **Master design languages** (`data-ui-mode` on `<html>`, managed by `src/lib/stores/designMode.ts`):
+  - `elegant` (default) — serif titles/body, squarer corners, quiet relief.
+  - `modern` — sans titles, rounder corners, glossy gradients and stronger relief.
+  - Individual font/radius overrides always win over the mode preset.
+- **Borders are structural.** Buttons, pills, cards, inputs and chrome carry a **mid-tone border** (`--ui-border-color`, ~24% of `base-content`), not a barely visible hairline. Border width/color are user-customizable (`data-border`).
+- **Accent = yellow.** `--color-accent` is the single accent. Selection, focus and highlights use it. A cool companion (`--ui-accent-secondary`) may be used sparingly for palette depth. Never introduce a second competing accent.
+- **Relief, not flatness.** Use short-radius, low-spread shadows (`--ui-shadow-1/2/3`) on cards, modals and controls. Buttons/pills layer `--ui-gloss` over a solid fill for an inner gradient (Cloudflare 2026 style). Avoid Material-style elevation and avoid floating everything.
+- **Contrast floor.** Body copy uses `--color-base-content`. Secondary copy never below `--ui-text-subtle` (~62%); `--ui-text-faint` is for decorative separators only. **Do not use very light gray text.**
+- **Frozen glass belongs to chrome**, not content: nav bars, top bars, overlays (via `--glass-*`, `data-glass`). Cards and reading surfaces stay opaque.
+- **Motion is fluid and concise.** Use `--ui-ease` with `--ui-dur-1/2/3`. Hover must bring the surface to life (border + short lift + shadow), not merely fade opacity. Respect `prefers-reduced-motion`.
+- **Lists are rows, boxes are cards.** Feeds keep the `PostCard` rhythm (hairline separators, no nested boxes). Box a piece of content only when it stands on its own.
+- **Square + rounded balance.** Elegant mode leans square (`--ui-radius-sm` 3px); modern leans rounded (7px+). Never mix pill, round and square vocabularies arbitrarily inside one view.
+- **Desktop and mobile are first-class.** Layouts must frame fluidly on both; no fixed pixel assumptions for core surfaces.
+- **UI copy is English** in code and default locale (all 5 locales still get translations).
+
+**References to keep in mind** — Obsidian (concise icons, light contrast), JSTOR (serif impact, expressive square buttons), Cloudflare 2026 (inner gradients, vivid modern chrome), Tailscale (weightless layout, complementary palettes), Claude (serif × modern AI, boxes with real relief), NYT (marked borders, formal reading), Spotify (clear info hierarchy, good outlines). Berga's current best references are `PostCard.svelte` and the article page (`/a/[id]`) — evolve them, don't regress them.
+
+**Implementation**
+
+- Tokens live in `frontend/src/app.css` (palette in `@theme`, themes in `[data-theme]`, modes in `[data-ui-mode]`). Radius/fonts/accent/borders/glass are runtime-overridable via `src/lib/stores/uiPrefs.ts` + `src/lib/stores/designMode.ts`.
+- Prefer the primitives: `.ui-btn` (+ `--accent/--outline/--ghost/--danger/--success/--sm/--lg/--block`), `.ui-pill`, `.ui-card`, `.ui-field`, `.text-muted/.text-subtle/.text-faint`, `.ui-kicker`. `$lib/components/ui/Button.svelte` wraps `.ui-btn`.
+- Screens are styled with scoped CSS that **consumes these tokens**; avoid one-off hex colors, ad-hoc shadows and arbitrary radii. Any new color/radius/shadow should be a token first.
+- DaisyUI was removed in favor of this token system. Do not add a component library back.
+
 ## Frontend Structure
 
 - `src/routes/` — SvelteKit pages. Tab-based layout under `(tabs)/`
@@ -116,3 +148,5 @@ cd frontend && npm audit                         # JS vulnerability check
 - **Comments in .env** have spaces around `=`** (e.g. `CACHE_KEY = "weekly_events_cache"`) which may cause parsing issues in some tools — the `docker-compose env_file` directive handles this, but shell sourcing might not.
 - **All dependencies are pinned** — `requirements.txt` uses `==` for every package (no `>=`). The full transitive tree is frozen in `requirements.lock` (generated from `pip freeze` inside the Docker image). The Dockerfile installs from `requirements.lock`, not `requirements.txt`. To update a dependency: bump it in `requirements.txt`, rebuild the image, run `pip freeze > requirements.lock` inside the container, and commit the lock file.
 - **Frontend deps are pinned** — `package.json` uses exact versions (no `^` or `~`). `npm ci` in Docker reads from `package-lock.json`. To update: change `package.json`, run `npm install`, commit both files.
+- **Design-mode presets never clobber overrides** — `applyDesignMode()` only writes fonts/radius for roles without a saved `font-*` / `ui-radius-*` key. `initDesignMode()` must run after `initAppearance()` and `initUiPrefs()` (layout `onMount`) or the stored radius wins twice.
+- **Pre-paint theme bootstrap** — `app.html` sets `data-theme`, `data-ui-mode`, `data-page-bg`, nav/sidebar attrs inline before CSS paint. Any new appearance pref that causes a first-paint flash should be added there too.

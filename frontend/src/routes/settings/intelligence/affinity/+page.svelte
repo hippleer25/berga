@@ -302,6 +302,8 @@ await apiFetch('/api/affinity/boost', {
 		font-size: 14px; color: var(--color-base-content); line-height: 1;
 		-webkit-appearance: none; appearance: none;
 	}
+	.affinity-input:focus,
+	.affinity-input:focus-visible { outline: none !important; box-shadow: none !important; }
 	.affinity-input::placeholder { color: color-mix(in oklch, var(--color-base-content) 35%, transparent); }
 	.search-icon-sm { flex-shrink: 0; color: color-mix(in oklch, var(--color-base-content) 40%, transparent); }
 

@@ -32,6 +32,8 @@ bs4==0.0.2
 
 # HTTP
 requests==2.34.2
+# curl-cffi: TLS/HTTP2 Chrome-impersonation fetcher (Cloudflare tier-1 fallback)
+curl-cffi==0.17.0
 aiohttp[speedups]==3.13.5
 charset-normalizer==3.4.7
 

@@ -25,6 +25,7 @@ import requests
 from readability import Document
 from ddgs import DDGS
 from i18n.locale_map import ddg_region, accept_language_header
+from utils.fetch_client import fetch, clean_ai_text
 
 logger = logging.getLogger(__name__)
 
@@ -199,29 +200,32 @@ def extract_text_from_url(url: str) -> str:
         return ""
 
     try:
-        response = requests.get(url, headers=_headers(), timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
+        result = fetch(url, headers=_headers(), timeout=REQUEST_TIMEOUT)
+        raw = result.text
+        if not raw:
+            raise requests.RequestException(result.via or "empty response")
 
-        # readability extracts the main article block as HTML
-        doc = Document(response.text)
-        content_html = doc.summary()
+        if result.via == "jina":
+            # Jina Reader returns clean markdown/plain text — skip readability
+            clean = re.sub(r"\s+", " ", raw).strip()
+        else:
+            # readability extracts the main article block as HTML
+            doc = Document(raw)
+            content_html = doc.summary()
 
-        if not content_html:
-            return ""
+            if not content_html:
+                return ""
 
-        # Strip HTML tags — AI needs plain text, not markup
-        clean = re.sub(r"<script[^>]*>.*?</script>", " ", content_html, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r"<style[^>]*>.*?</style>",  " ", clean,        flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r"<[^>]+>", " ", clean)
-        clean = re.sub(r"\s+", " ", clean).strip()
+            # Strip HTML tags — AI needs plain text, not markup
+            clean = clean_ai_text(content_html)
 
         if len(clean) < 100:
             logger.debug(f"readability retornou conteúdo muito curto para {url}")
             return ""
 
-        result = clean[:MAX_TEXT_CHARS]
-        _set_cached_body(url, result)
-        return result
+        result_text = clean[:MAX_TEXT_CHARS]
+        _set_cached_body(url, result_text)
+        return result_text
 
     except requests.RequestException as e:
         logger.warning(f"Falha ao buscar {url}: {e}")
@@ -366,7 +370,7 @@ def search_articles_online(
             "pub_timestamp":    int(pub_dt.timestamp()) if pub_dt else None,
             "author":           source,
             "feed_title":       source,
-            "feed_icon":        f"https://www.google.com/s2/favicons?domain={url}&sz=128",
+            "feed_icon":        f"https://icons.duckduckgo.com/ip3/{_domain(url)}.ico",
             "feed_link":        f"https://{_domain(url)}",
             "similarity_score": similarity,
             "search_type":      "online",

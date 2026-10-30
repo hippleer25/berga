@@ -31,7 +31,7 @@ from intelligence.saved import get_saved
 from intelligence.similar import get_similar_articles
 from intelligence.cluster import get_cached_events, compute_weekly_events, set_cached_events, CLUSTER_LIMIT, load_events_from_db
 from intelligence.cluster_store import build_reverse_index, set_cluster_index
-from intelligence.affinity import analyze_affinity, boost_affinity, remove_affinity_boost
+from intelligence.affinity import analyze_affinity, boost_affinity, remove_affinity_boost, attach_cluster_affinity
 from search.item.search_item import search_articles_by_text
 from search.feed.search_feed_urls import feeds
 from search.feed import search_feed_online
@@ -208,6 +208,7 @@ class ChatRequest(BaseModel):
     folder_id: str | None = None
     feed_sha256: str | None = None
     session_id: int | None = None
+    regenerate: bool = False
     articles: list[ArticleInput] = []
 
 
@@ -217,6 +218,12 @@ class SessionRenameRequest(BaseModel):
 
 class ChatClearRequest(BaseModel):
     session_id: int | None = None
+
+
+class ChatTruncateRequest(BaseModel):
+    session_id: int
+    mode: Literal["edit", "regenerate"]
+    content: str | None = None
 
 
 class ResumeRequest(BaseModel):
@@ -752,6 +759,12 @@ async def weekly_events(request: Request, response: Response, limit: int = CLUST
         return CACHE_HEADERS["events"]
 
     async def _cache_and_return(events_list, cached_flag: bool):
+        # Per-user enrichment (affinity % per cluster). Best-effort: any
+        # failure just leaves the payload without the extra field.
+        try:
+            await asyncio.to_thread(attach_cluster_affinity, user["id"], events_list)
+        except Exception as e:
+            logger.warning("[EVENTS] Cluster affinity attach failed user=%s: %s", user.get("id"), e)
         payload = {"events": events_list[:limit], "total": len(events_list), "cached": cached_flag}
         headers = _apply_event_headers(len(payload["events"]))
         etag = _etag_for(payload)
@@ -934,6 +947,41 @@ def mota_session_delete(session_id: int, user: dict = Depends(get_current_user))
     if not ok:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"status": "ok"}
+
+
+@app.post("/api/chat/truncate")
+def mota_chat_truncate(payload: ChatTruncateRequest, user: dict = Depends(get_current_user)):
+    """Roll a session back: 'edit' drops a user message (+follow-ups) so it can
+    be re-sent rewritten; 'regenerate' drops the last assistant answer so the
+    same turn is re-run. Redis hot cache is cleared so history re-hydrates."""
+    from mota import chat_sessions, conversation
+
+    user_id = user["id"]
+    if not payload.mode:
+        raise HTTPException(status_code=422, detail="mode is required")
+    if payload.mode == "edit":
+        if not payload.content or not payload.content.strip():
+            raise HTTPException(status_code=422, detail="content is required for edit")
+        msg_id = chat_sessions.find_last_message_id(
+            user_id, payload.session_id, "user", payload.content
+        )
+        if msg_id is None:
+            raise HTTPException(status_code=404, detail="Message not found")
+    else:
+        msg_id = chat_sessions.find_last_message_id(
+            user_id, payload.session_id, "assistant"
+        )
+        if msg_id is None:
+            raise HTTPException(status_code=404, detail="No assistant message found")
+    ok = chat_sessions.truncate_from(user_id, payload.session_id, msg_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Truncate failed")
+    conversation.clear(user_id, payload.session_id)
+    session = chat_sessions.get_session(user_id, payload.session_id)
+    return {
+        "status": "ok",
+        "message_count": int((session or {}).get("message_count") or 0),
+    }
 
 
 @app.post("/api/mota/resume/{item_id}")

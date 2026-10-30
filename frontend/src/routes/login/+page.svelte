@@ -423,7 +423,7 @@ font-family: var(--font-page-title);
 
     .action-btn.primary {
         background: var(--color-accent);
-        color: var(--color-base-100);
+        color: #fff;
         border-color: var(--color-accent);
         padding: 10px 24px;
     }

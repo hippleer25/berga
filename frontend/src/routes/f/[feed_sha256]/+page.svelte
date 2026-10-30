@@ -913,37 +913,42 @@ touch-action: pan-y;
 
     .mode-pill {
         display: flex;
-        background: var(--color-base-200);
-        border-radius: calc(var(--ui-radius-sm) + 3px);
-        padding: 3px;
-        gap: 2px;
+        border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
+        border-radius: var(--ui-radius-sm);
+        padding: 0;
+        gap: 0;
         flex-shrink: 0;
+        background: var(--btn-fill, transparent);
+        overflow: hidden; /* clips hover/active fill to the pill's own curve */
     }
 
     .mode-btn {
         display: flex;
         align-items: center;
         gap: 5px;
-        padding: 6px 14px;
-        border-radius: var(--ui-radius-sm);
+        padding: 7px 14px;
+        border-radius: 0;
         border: none;
         background: transparent;
         font-size: 13px;
         font-weight: 500;
-        color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
         cursor: pointer;
-        transition:
-            background 150ms ease,
-            color 150ms ease,
-            font-weight 0ms;
+        transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
         white-space: nowrap;
     }
 
+    .mode-btn:hover {
+        color: var(--color-base-content);
+    }
+
     .mode-btn.active {
-        background: var(--color-base-100);
+        /* Fills its parcel of the big pill edge-to-edge: no gap ring */
+        background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
         color: var(--color-base-content);
         font-weight: 700;
-        box-shadow: 0 1px 3px color-mix(in oklch, black 10%, transparent);
+        /* Relief stays inside, since the outer shadow would be clipped */
+        box-shadow: inset 0 1px 0 color-mix(in oklch, white 22%, transparent);
     }
 
     /* ── Feed Wrap ───────────────────────────────────────────── */

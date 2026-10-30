@@ -180,6 +180,7 @@ def _stream_general(user_message: str, history: list[dict], session_id: str | No
         msgs,
         max_tokens=SYNTHESIS_OUTPUT_TOKENS,
         usage="synthesis",
+        auto_continue=SYNTHESIS_MAX_CONTINUATIONS,
         session_id=session_id,
     ):
         yield chunk
@@ -385,8 +386,9 @@ def receive(chat_request, user) -> Iterator[str]:
             conversation_id = None
         if conversation_id is not None and not chat_sessions.session_exists(user_id, conversation_id):
             conversation_id = None
-    if user_id and conversation_id is None:
+    if user_id and conversation_id is None and not getattr(chat_request, "regenerate", False):
         # New session: created lazily on the first message of a chat.
+        # A regenerate turn re-runs an existing session — no creation.
         conversation_id = chat_sessions.create_session(user_id, chat_request.message)
         created_session = conversation_id is not None
         if not created_session:
@@ -444,10 +446,14 @@ def _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_pers
     """Shares the same persistence for normal completion and client disconnects."""
     if not user_id or conversation_id is None:
         return
-    user_message = chat_request.message
-    conversation.save_turn(user_id, "user", user_message, session_id=conversation_id)
     from mota import chat_sessions
-    chat_sessions.append_message(user_id, conversation_id, "user", user_message)
+    is_regenerate = bool(getattr(chat_request, "regenerate", False))
+    user_message = chat_request.message
+    if not is_regenerate:
+        # The user message is already in the history for regenerate turns;
+        # persisting it again would duplicate the turn.
+        conversation.save_turn(user_id, "user", user_message, session_id=conversation_id)
+        chat_sessions.append_message(user_id, conversation_id, "user", user_message)
     if assistant_chunks:
         assistant_response = "".join(assistant_chunks)
         if assistant_response.strip():

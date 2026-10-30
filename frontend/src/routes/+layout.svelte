@@ -15,6 +15,7 @@
 	import { drawerOpen } from '$lib/stores/drawer';
 	import { initAppearance } from '$lib/utils/appearance';
 	import { initUiPrefs } from '$lib/stores/uiPrefs';
+	import { initDesignMode } from '$lib/stores/designMode';
 	import { sessionChecked, sessionLoggedIn } from '$lib/stores/session';
 	import { stackedScreenOpen } from '$lib/stores/swipe';
 	import { splitTab, splitSide } from '$lib/stores/splitView';
@@ -63,6 +64,7 @@
 		}
 		initAppearance();
 		initUiPrefs();
+		initDesignMode();
 
 		if (Capacitor.isNativePlatform()) {
 			requestAnimationFrame(() => {

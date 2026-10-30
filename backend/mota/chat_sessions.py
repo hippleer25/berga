@@ -243,6 +243,85 @@ def get_messages(user_id: int, session_id: int) -> list[dict]:
         return []
 
 
+def find_last_message_id(
+    user_id: int, session_id: int, role: str, content: Optional[str] = None
+) -> Optional[int]:
+    """Id of the newest message of a role, optionally matching exact content."""
+    if not user_id or not session_id:
+        return None
+    attempts = [content, (content or "").strip()] if content else [None]
+    for target in attempts:
+        try:
+            with _db() as conn:
+                cursor = conn.cursor()
+                try:
+                    if target is None:
+                        cursor.execute(
+                            """SELECT m.id FROM chat_messages m
+                               JOIN chat_sessions s ON s.id = m.session_id
+                               WHERE s.user_id = %s AND m.session_id = %s AND m.role = %s
+                               ORDER BY m.id DESC LIMIT 1""",
+                            (user_id, session_id, role),
+                        )
+                    else:
+                        cursor.execute(
+                            """SELECT m.id FROM chat_messages m
+                               JOIN chat_sessions s ON s.id = m.session_id
+                               WHERE s.user_id = %s AND m.session_id = %s
+                                 AND m.role = %s AND m.content = %s
+                               ORDER BY m.id DESC LIMIT 1""",
+                            (user_id, session_id, role, target),
+                        )
+                    row = cursor.fetchone()
+                finally:
+                    cursor.close()
+            if row is not None:
+                return row[0]
+        except Exception as e:
+            logger.warning(f"[SESSIONS] find_message_id failed session={session_id}: {e}")
+            return None
+    return None
+
+
+def truncate_from(user_id: int, session_id: int, from_msg_id: int) -> bool:
+    """Delete a message and everything after it; recompute message_count.
+
+    Ownership is enforced via the chat_sessions join. Fails closed.
+    """
+    if not user_id or not session_id or not from_msg_id:
+        return False
+    try:
+        with _db() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(
+                    """DELETE m FROM chat_messages m
+                       JOIN chat_sessions s ON s.id = m.session_id
+                       WHERE s.user_id = %s AND s.id = %s AND m.id >= %s""",
+                    (user_id, session_id, from_msg_id),
+                )
+                deleted = cursor.rowcount
+                cursor.execute(
+                    """UPDATE chat_sessions s
+                       LEFT JOIN (
+                           SELECT session_id, COUNT(*) AS n
+                           FROM chat_messages GROUP BY session_id
+                       ) c ON c.session_id = s.id
+                       SET s.message_count = COALESCE(c.n, 0),
+                           s.updated_at = CURRENT_TIMESTAMP
+                       WHERE s.id = %s AND s.user_id = %s""",
+                    (session_id, user_id),
+                )
+                conn.commit()
+            finally:
+                cursor.close()
+        logger.info(f"[SESSIONS] Truncated {deleted} messages session={session_id} from={from_msg_id}")
+        return True
+    except Exception as e:
+        logger.warning(f"[SESSIONS] truncate_from failed session={session_id}: {e}")
+        return False
+
+
 def set_ai_title(user_id: int, session_id: int, title: str) -> bool:
     """Write the AI-generated title (used by the arq title job).
 

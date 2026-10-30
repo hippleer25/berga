@@ -1,7 +1,7 @@
 <script lang="ts">
 import { afterNavigate, replaceState } from '$app/navigation';
 import { swipeOffset, swipeDragging, activeTabIdx, navVisible } from '$lib/stores/swipe';
-import { orderedTabs, TAB_LOADERS, type TabId } from '$lib/config/tabs';
+import { orderedTabs, TAB_LOADERS, activeTabId as activeTabIdStore, type TabId } from '$lib/config/tabs';
 import { onMount } from 'svelte';
 import type { Component } from 'svelte';
 import NavRevealZone from '$lib/components/NavRevealZone.svelte';
@@ -52,6 +52,7 @@ onMount(async () => {
   const idx = tabs.findIndex(t => path === t.href || path.startsWith(t.href + '/'));
   activeIdx = Math.max(0, idx);
   activeTabId = tabs[activeIdx].id;
+  activeTabIdStore.set(activeTabId);
   activeTabIdx.set(activeIdx);
   snapTo(activeIdx, false);
   await loadTab(activeTabId);
@@ -72,6 +73,7 @@ afterNavigate(async ({ to }) => {
     if (idx !== activeIdx) {
       activeIdx = idx;
       activeTabId = tabs[idx].id;
+      activeTabIdStore.set(activeTabId);
       activeTabIdx.set(idx);
       snapTo(idx, true);
     }
@@ -142,7 +144,6 @@ function onTouchMove(e: TouchEvent) {
 	}
 	if (axis !== 'h') return;
 
-        e.preventDefault();
         isDragging = true;
 
         const now = e.timeStamp;
@@ -203,6 +204,7 @@ function onTouchMove(e: TouchEvent) {
   requestAnimationFrame(async () => {
     activeIdx = newIdx;
     activeTabId = $orderedTabs[newIdx].id;
+    activeTabIdStore.set(activeTabId);
     activeTabIdx.set(newIdx);
     dragPx = 0; // $effect propagates swipeOffset=0
     await loadTab(activeTabId);
@@ -266,6 +268,8 @@ function onTouchMove(e: TouchEvent) {
         overflow: clip;
         width: 100%;
         height: 100dvh;
+        /* Horizontal swipe between tabs is ours; vertical scroll stays native */
+        touch-action: pan-y;
     }
 
     .track {

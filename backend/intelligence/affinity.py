@@ -357,3 +357,125 @@ def remove_affinity_boost(user_id: int, term: str, direction: str) -> dict:
         user_id, term, direction,
     )
     return {"success": True, "direction": direction, "term": term}
+
+# ── Cluster affinity attachment (weekly events enrichment) ────────────────────
+
+def attach_cluster_affinity(user_id: int, events: list[dict]) -> list[dict]:
+    """
+    Annotate each weekly event with an ``affinity_pct`` score (0–100) — how
+    much the cluster's articles match the user's reading profile.
+
+    Mirrors analyze_affinity()'s effective-vector blending, but scores whole
+    clusters: one Qdrant batch retrieve grabs the stored vectors of every
+    cluster member (they were indexed at ingest), then a mean-cosine contrast
+    against the user's effective pos/neg profile yields a raw score per
+    event. The scores are converted to a relative in-request percentile so
+    the UI can show "how much more this cluster is for you than the others"
+    without any global calibration.
+
+    Users without vectors are returned untouched — the frontend hides the
+    chip when the field is absent. Failures never break the events payload.
+    """
+    if not events:
+        return events
+
+    try:
+        row = _get_user_rows(user_id)
+        if not row:
+            return events
+
+        from intelligence.recommendations import AFFINITY_WEIGHT
+        from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
+
+        pos_vec = _safe_json_loads_vector(row.get("pos_vector"))
+        aff_pos = _safe_json_loads_vector(row.get("affinity_pos_vector"))
+        neg_vec = _safe_json_loads_vector(row.get("neg_vector"))
+        aff_neg = _safe_json_loads_vector(row.get("affinity_neg_vector"))
+
+        if pos_vec is not None and aff_pos is not None:
+            eff_pos = np.array(
+                blend_vectors(pos_vec.tolist(), aff_pos.tolist(), AFFINITY_WEIGHT),
+                dtype=np.float64,
+            )
+        elif pos_vec is not None:
+            eff_pos = pos_vec
+        elif aff_pos is not None:
+            eff_pos = aff_pos
+        else:
+            return events
+
+        if neg_vec is not None and aff_neg is not None:
+            eff_neg = np.array(
+                blend_vectors(neg_vec.tolist(), aff_neg.tolist(), AFFINITY_WEIGHT),
+                dtype=np.float64,
+            )
+        elif neg_vec is not None:
+            eff_neg = neg_vec
+        elif aff_neg is not None:
+            eff_neg = aff_neg
+        else:
+            eff_neg = None
+
+        # Collect unique article ids across all events — one Qdrant call.
+        ids: list[str] = []
+        seen: set[str] = set()
+        for event in events:
+            for article in event.get("articles", []):
+                item_id = article.get("item_id")
+                if item_id and item_id not in seen:
+                    seen.add(item_id)
+                    ids.append(item_id)
+        if not ids:
+            return events
+
+        client = get_qdrant_client()
+        points = client.retrieve(
+            collection_name=COLLECTION_NAME,
+            ids=ids,
+            with_payload=False,
+            with_vectors=True,
+        )
+        vec_map = {str(p.id): np.asarray(p.vector, dtype=np.float64) for p in points}
+        if not vec_map:
+            return events
+
+        raw_scores: list[float] = []
+        for event in events:
+            sims_pos: list[float] = []
+            sims_neg: list[float] = []
+            for article in event.get("articles", []):
+                vec = vec_map.get(str(article.get("item_id") or ""))
+                if vec is None:
+                    continue
+                sims_pos.append(cosine_similarity(vec, eff_pos))
+                if eff_neg is not None:
+                    sims_neg.append(cosine_similarity(vec, eff_neg))
+            if not sims_pos:
+                raw_scores.append(float("nan"))
+                continue
+            sim_pos = float(np.mean(sims_pos))
+            sim_neg = float(np.mean(sims_neg)) if sims_neg else 0.0
+            raw_scores.append(sim_pos - (0.5 * sim_neg))
+
+        # In-request relative percentile → 0–100. The mid-rank offset keeps
+        # tiny responses meaningful (a single cluster sits at a neutral 50).
+        arr = np.asarray(raw_scores, dtype=np.float64)
+        order = np.argsort(arr, kind="stable")
+        ranks = np.empty(len(order), dtype=np.float64)
+        spans = np.arange(len(order), dtype=np.float64)
+        ranks[order] = spans
+        span = max(len(events), 1)
+        for event, rank, score in zip(events, ranks, raw_scores):
+            if math.isnan(score) or math.isinf(score):
+                event["affinity_pct"] = 50
+                continue
+            event["affinity_pct"] = int(max(1, min(100, round(100.0 * (rank + 0.5) / span))))
+
+        logger.debug(
+            "[AFFINITY] Cluster affinity attached: user=%s events=%s points=%s",
+            user_id, len(events), len(vec_map),
+        )
+    except Exception as e:
+        logger.warning("[AFFINITY] Cluster affinity attach failed user=%s: %s", user_id, e)
+
+    return events

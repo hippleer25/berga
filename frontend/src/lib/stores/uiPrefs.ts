@@ -72,6 +72,16 @@ export function getSavedRadiusControl(): number {
 	return readRadius(RADIUS_CONTROL_KEY, RADIUS_CONTROL_MIN, RADIUS_CONTROL_MAX, RADIUS_CONTROL_DEFAULT);
 }
 
+/** Whether the user explicitly chose a surface radius (vs. the mode preset). */
+export function hasSavedRadiusSurface(): boolean {
+	return browser && localStorage.getItem(RADIUS_SURFACE_KEY) !== null;
+}
+
+/** Whether the user explicitly chose a control radius (vs. the mode preset). */
+export function hasSavedRadiusControl(): boolean {
+	return browser && localStorage.getItem(RADIUS_CONTROL_KEY) !== null;
+}
+
 /** One-time migration from the legacy single ui-radius knob. */
 function migrateLegacyRadius() {
 	if (!browser) return;
@@ -91,6 +101,32 @@ function migrateLegacyRadius() {
 export const uiRadiusSurface: Writable<number> = writable(getSavedRadiusSurface());
 export const uiRadiusControl: Writable<number> = writable(getSavedRadiusControl());
 
+/* ── Row highlight radius (hover / active / selected backgrounds) ─────────
+   The tint that lights up post rows and event clusters on hover. 0 = Auto:
+   follows --ui-radius-lg so it inherits the surface aesthetic; any value
+   above 0 overrides it explicitly. */
+
+export const HOVER_RADIUS_MIN = 0;
+export const HOVER_RADIUS_MAX = 32;
+export const HOVER_RADIUS_DEFAULT = 0;
+const HOVER_RADIUS_KEY = 'ui-hover-radius';
+
+export function applyHoverRadius(px: number, persist = false) {
+	if (!browser) return;
+	const v = clamp(px, HOVER_RADIUS_MIN, HOVER_RADIUS_MAX);
+	document.documentElement.style.setProperty(
+		'--ui-hover-radius',
+		v > 0 ? `${v}px` : 'var(--ui-radius-lg)'
+	);
+	if (persist) localStorage.setItem(HOVER_RADIUS_KEY, String(v));
+}
+
+export function getSavedHoverRadius(): number {
+	return readRadius(HOVER_RADIUS_KEY, HOVER_RADIUS_MIN, HOVER_RADIUS_MAX, HOVER_RADIUS_DEFAULT);
+}
+
+export const uiHoverRadius: Writable<number> = writable(getSavedHoverRadius());
+
 /* ── Floating deck sizing (relative proportions, universal across devices) ──
    Width is a % of the screen, height is a % of screen width (vw), and the
    corner radius is a % of the deck height — so every device ends up with
@@ -108,7 +144,7 @@ const DECK_HEIGHT_VW_KEY = 'ui-deck-height-vw';
 
 export const DECK_RADIUS_PCT_MIN = 0;
 export const DECK_RADIUS_PCT_MAX = 50;
-export const DECK_RADIUS_PCT_DEFAULT = 27;
+export const DECK_RADIUS_PCT_DEFAULT = 17;
 const DECK_RADIUS_PCT_KEY = 'ui-deck-radius-pct';
 
 /** Legacy px-based keys — migrated to the relative keys once. */
@@ -188,22 +224,151 @@ function migrateLegacyDeck() {
 	for (const k of DECK_LEGACY_KEYS) localStorage.removeItem(k);
 }
 
-/* ── Home welcome title weight ───────────────────────────────────────────── */
+/* ── Mobile bottom navbar sizing ────────────────────────────────────────── */
 
-const WELCOME_BOLD_KEY = 'ui-welcome-bold';
+export const MNAV_ICON_SIZE_MIN = 16;
+export const MNAV_ICON_SIZE_MAX = 28;
+export const MNAV_ICON_SIZE_DEFAULT = 21;
+const MNAV_ICON_SIZE_KEY = 'ui-mnav-icon-size';
 
-export function applyWelcomeBold(on: boolean, persist = false) {
+export const MNAV_ICON_BOX_MIN = 22;
+export const MNAV_ICON_BOX_MAX = 40;
+export const MNAV_ICON_BOX_DEFAULT = 28;
+const MNAV_ICON_BOX_KEY = 'ui-mnav-icon-box';
+
+export const MNAV_LABEL_SIZE_MIN = 9;
+export const MNAV_LABEL_SIZE_MAX = 14;
+export const MNAV_LABEL_SIZE_DEFAULT = 11;
+const MNAV_LABEL_SIZE_KEY = 'ui-mnav-label-size';
+
+export const MNAV_LABEL_GAP_MIN = 0;
+export const MNAV_LABEL_GAP_MAX = 8;
+export const MNAV_LABEL_GAP_DEFAULT = 2;
+const MNAV_LABEL_GAP_KEY = 'ui-mnav-label-gap';
+
+export const MNAV_HEIGHT_MIN = 52;
+export const MNAV_HEIGHT_MAX = 88;
+export const MNAV_HEIGHT_DEFAULT = 64;
+const MNAV_HEIGHT_KEY = 'ui-mnav-height';
+
+const MNAV_LABELS_KEY = 'ui-mnav-labels';
+
+export type MnavItemRadius = 'theme' | 'round' | 'square';
+const MNAV_RADIUS_KEY = 'ui-mnav-radius';
+const MNAV_RADIUS_VALUES: MnavItemRadius[] = ['theme', 'round', 'square'];
+
+export function applyMnavIconSize(px: number, persist = false) {
 	if (!browser) return;
-	document.documentElement.setAttribute('data-welcome-bold', on ? 'on' : 'off');
-	if (persist) localStorage.setItem(WELCOME_BOLD_KEY, on ? 'true' : 'false');
+	const v = clamp(px, MNAV_ICON_SIZE_MIN, MNAV_ICON_SIZE_MAX);
+	document.documentElement.style.setProperty('--mnav-icon-size', `${v}px`);
+	if (persist) localStorage.setItem(MNAV_ICON_SIZE_KEY, String(v));
 }
 
-export function getSavedWelcomeBold(): boolean {
-	if (!browser) return false;
-	return localStorage.getItem(WELCOME_BOLD_KEY) === 'true';
+export function applyMnavIconBox(px: number, persist = false) {
+	if (!browser) return;
+	const v = clamp(px, MNAV_ICON_BOX_MIN, MNAV_ICON_BOX_MAX);
+	document.documentElement.style.setProperty('--mnav-iconbox-h', `${v}px`);
+	if (persist) localStorage.setItem(MNAV_ICON_BOX_KEY, String(v));
 }
 
-export const uiWelcomeBold: Writable<boolean> = writable(getSavedWelcomeBold());
+export function applyMnavLabelSize(px: number, persist = false) {
+	if (!browser) return;
+	const v = clamp(px, MNAV_LABEL_SIZE_MIN, MNAV_LABEL_SIZE_MAX);
+	document.documentElement.style.setProperty('--mnav-label-size', `${v}px`);
+	if (persist) localStorage.setItem(MNAV_LABEL_SIZE_KEY, String(v));
+}
+
+export function applyMnavLabelGap(px: number, persist = false) {
+	if (!browser) return;
+	const v = clamp(px, MNAV_LABEL_GAP_MIN, MNAV_LABEL_GAP_MAX);
+	document.documentElement.style.setProperty('--mnav-label-gap', `${v}px`);
+	if (persist) localStorage.setItem(MNAV_LABEL_GAP_KEY, String(v));
+}
+
+export function applyMnavHeight(px: number, persist = false) {
+	if (!browser) return;
+	const v = clamp(px, MNAV_HEIGHT_MIN, MNAV_HEIGHT_MAX);
+	document.documentElement.style.setProperty('--mnav-height', `${v}px`);
+	if (persist) localStorage.setItem(MNAV_HEIGHT_KEY, String(v));
+}
+
+export function applyMnavLabels(on: boolean, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-mnav-labels', on ? 'on' : 'off');
+	if (persist) localStorage.setItem(MNAV_LABELS_KEY, on ? 'true' : 'false');
+}
+
+export function applyMnavItemRadius(mode: MnavItemRadius, persist = false) {
+	if (!browser) return;
+	const root = document.documentElement;
+	if (mode === 'theme') root.style.removeProperty('--mnav-item-radius');
+	else if (mode === 'round') root.style.setProperty('--mnav-item-radius', 'calc(var(--mnav-iconbox-h, 28px) / 2)');
+	else root.style.setProperty('--mnav-item-radius', '0px');
+	if (persist) localStorage.setItem(MNAV_RADIUS_KEY, mode);
+}
+
+export function getSavedMnavIconSize(): number {
+	return readRadius(MNAV_ICON_SIZE_KEY, MNAV_ICON_SIZE_MIN, MNAV_ICON_SIZE_MAX, MNAV_ICON_SIZE_DEFAULT);
+}
+
+export function getSavedMnavIconBox(): number {
+	return readRadius(MNAV_ICON_BOX_KEY, MNAV_ICON_BOX_MIN, MNAV_ICON_BOX_MAX, MNAV_ICON_BOX_DEFAULT);
+}
+
+export function getSavedMnavLabelSize(): number {
+	return readRadius(MNAV_LABEL_SIZE_KEY, MNAV_LABEL_SIZE_MIN, MNAV_LABEL_SIZE_MAX, MNAV_LABEL_SIZE_DEFAULT);
+}
+
+export function getSavedMnavLabelGap(): number {
+	return readRadius(MNAV_LABEL_GAP_KEY, MNAV_LABEL_GAP_MIN, MNAV_LABEL_GAP_MAX, MNAV_LABEL_GAP_DEFAULT);
+}
+
+export function getSavedMnavHeight(): number {
+	return readRadius(MNAV_HEIGHT_KEY, MNAV_HEIGHT_MIN, MNAV_HEIGHT_MAX, MNAV_HEIGHT_DEFAULT);
+}
+
+export function getSavedMnavLabels(): boolean {
+	if (!browser) return true;
+	return localStorage.getItem(MNAV_LABELS_KEY) !== 'false';
+}
+
+export function getSavedMnavItemRadius(): MnavItemRadius {
+	if (!browser) return 'theme';
+	const v = localStorage.getItem(MNAV_RADIUS_KEY) as MnavItemRadius | null;
+	return v && MNAV_RADIUS_VALUES.includes(v) ? v : 'theme';
+}
+
+export const uiMnavIconSize: Writable<number> = writable(getSavedMnavIconSize());
+export const uiMnavIconBox: Writable<number> = writable(getSavedMnavIconBox());
+export const uiMnavLabelSize: Writable<number> = writable(getSavedMnavLabelSize());
+export const uiMnavLabelGap: Writable<number> = writable(getSavedMnavLabelGap());
+export const uiMnavHeight: Writable<number> = writable(getSavedMnavHeight());
+export const uiMnavLabels: Writable<boolean> = writable(getSavedMnavLabels());
+export const uiMnavItemRadius: Writable<MnavItemRadius> = writable(getSavedMnavItemRadius());
+
+/* ── Home welcome title style ───────────────────────────────────────────── */
+
+const WELCOME_BOLD_LEGACY_KEY = 'ui-welcome-bold';
+
+export type WelcomeStyle = 'regular' | 'normal' | 'bold' | 'italic';
+const WELCOME_STYLE_KEY = 'ui-welcome-style';
+const WELCOME_STYLE_VALUES: WelcomeStyle[] = ['regular', 'normal', 'bold', 'italic'];
+
+export function applyWelcomeStyle(style: WelcomeStyle, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-welcome-style', style);
+	if (persist) localStorage.setItem(WELCOME_STYLE_KEY, style);
+}
+
+export function getSavedWelcomeStyle(): WelcomeStyle {
+	if (!browser) return 'normal';
+	const v = localStorage.getItem(WELCOME_STYLE_KEY) as WelcomeStyle | null;
+	if (v && WELCOME_STYLE_VALUES.includes(v)) return v;
+	// Legacy binary toggle: true → bold, false → normal (weight now lives in CSS)
+	return localStorage.getItem(WELCOME_BOLD_LEGACY_KEY) === 'true' ? 'bold' : 'normal';
+}
+
+export const uiWelcomeStyle: Writable<WelcomeStyle> = writable(getSavedWelcomeStyle());
 
 /* ── Bottom nav style ───────────────────────────────────────────────────── */
 
@@ -222,6 +387,162 @@ export function getSavedNavStyle(): NavStyle {
 }
 
 export const uiNavStyle: Writable<NavStyle> = writable(getSavedNavStyle());
+
+/* ── Desktop navigation model ───────────────────────────────────────────── */
+
+export type DesktopNavModel = 'sidebar' | 'dock';
+const DESKTOP_NAV_KEY = 'ui-desktop-nav';
+
+export function applyDesktopNav(model: DesktopNavModel, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-desktop-nav', model);
+	if (persist) localStorage.setItem(DESKTOP_NAV_KEY, model);
+}
+
+export function getSavedDesktopNav(): DesktopNavModel {
+	if (!browser) return 'sidebar';
+	return localStorage.getItem(DESKTOP_NAV_KEY) === 'dock' ? 'dock' : 'sidebar';
+}
+
+export const uiDesktopNav: Writable<DesktopNavModel> = writable(getSavedDesktopNav());
+
+/* ── Desktop dock sizing (relative units — screen-size independent) ───────
+   Width is a % of the viewport's smaller dimension (vmin) clamped to sane
+   px bounds, and the corner radius is a % of the dock width — so a 720p
+   laptop and a 4K panel end up with the same proportions. */
+
+export const DOCK_WIDTH_MIN = 4;
+export const DOCK_WIDTH_MAX = 18;
+export const DOCK_WIDTH_DEFAULT = 7.5;
+const DOCK_WIDTH_KEY = 'ui-dock-width-vmin';
+
+export const DOCK_RADIUS_MIN = 0;
+export const DOCK_RADIUS_MAX = 50;
+export const DOCK_RADIUS_DEFAULT = 34;
+const DOCK_RADIUS_KEY = 'ui-dock-radius-pct';
+
+/* Inner padding between icon and dock border, as a % of the dock width. */
+export const DOCK_PAD_MIN = 2;
+export const DOCK_PAD_MAX = 25;
+export const DOCK_PAD_DEFAULT = 20;
+const DOCK_PAD_KEY = 'ui-dock-pad-pct';
+
+/* Distance between the dock and the screen's left edge, in vmin. */
+export const DOCK_INSET_MIN = 0.5;
+export const DOCK_INSET_MAX = 20;
+export const DOCK_INSET_DEFAULT = 12;
+const DOCK_INSET_KEY = 'ui-dock-inset-vmin';
+
+/* Dock length as a % of the viewport height. 0 = Auto: the dock hugs its
+   content (fit-content); above 0 it is stretched and its items center. */
+export const DOCK_HEIGHT_MIN = 0;
+export const DOCK_HEIGHT_MAX = 90;
+export const DOCK_HEIGHT_DEFAULT = 0;
+const DOCK_HEIGHT_KEY = 'ui-dock-height-pct';
+
+export function applyDockHeightPct(v: number, persist = false) {
+	if (!browser) return;
+	const val = clamp(v, DOCK_HEIGHT_MIN, DOCK_HEIGHT_MAX);
+	const root = document.documentElement;
+	if (val <= 0) root.style.removeProperty('--dock-h');
+	else root.style.setProperty('--dock-h', `${val}vh`);
+	if (persist) localStorage.setItem(DOCK_HEIGHT_KEY, String(val));
+}
+
+export function getSavedDockHeightPct(): number {
+	return readRadius(DOCK_HEIGHT_KEY, DOCK_HEIGHT_MIN, DOCK_HEIGHT_MAX, DOCK_HEIGHT_DEFAULT);
+}
+
+/* Dock density scale, %: multiplies both the gap between icons and the
+   wall padding (icon↔border). 0 = navbar hugs the icons, 200 = airy. */
+export const DOCK_SPACING_MIN = 0;
+export const DOCK_SPACING_MAX = 200;
+export const DOCK_SPACING_DEFAULT = 100;
+const DOCK_SPACING_KEY = 'ui-dock-spacing-pct';
+
+/* Dock shadow intensity: 0 = no shadow, 100 = the design default. */
+export const DOCK_SHADOW_MIN = 0;
+export const DOCK_SHADOW_MAX = 100;
+export const DOCK_SHADOW_DEFAULT = 0;
+const DOCK_SHADOW_KEY = 'ui-dock-shadow';
+
+export function applyDockWidthVmin(v: number, persist = false) {
+	if (!browser) return;
+	const val = clamp(v, DOCK_WIDTH_MIN, DOCK_WIDTH_MAX);
+	document.documentElement.style.setProperty('--dock-w', `clamp(40px, ${val}vmin, 128px)`);
+	applyDockRadiusPct(get(uiDockRadiusPct));
+	if (persist) localStorage.setItem(DOCK_WIDTH_KEY, String(val));
+}
+
+export function applyDockRadiusPct(v: number, persist = false) {
+	if (!browser) return;
+	const val = clamp(v, DOCK_RADIUS_MIN, DOCK_RADIUS_MAX);
+	document.documentElement.style.setProperty(
+		'--dock-radius',
+		`calc(var(--dock-w, 72px) * ${val} / 100)`
+	);
+	if (persist) localStorage.setItem(DOCK_RADIUS_KEY, String(val));
+}
+
+export function applyDockPadPct(v: number, persist = false) {
+	if (!browser) return;
+	const val = clamp(v, DOCK_PAD_MIN, DOCK_PAD_MAX);
+	document.documentElement.style.setProperty('--dock-pad-pct', String(val));
+	if (persist) localStorage.setItem(DOCK_PAD_KEY, String(val));
+}
+
+export function applyDockInsetVmin(v: number, persist = false) {
+	if (!browser) return;
+	const val = clamp(v, DOCK_INSET_MIN, DOCK_INSET_MAX);
+	document.documentElement.style.setProperty('--dock-inset', `clamp(4px, ${val}vmin, 160px)`);
+	if (persist) localStorage.setItem(DOCK_INSET_KEY, String(val));
+}
+
+export function applyDockSpacingPct(v: number, persist = false) {
+	if (!browser) return;
+	const val = clamp(v, DOCK_SPACING_MIN, DOCK_SPACING_MAX);
+	document.documentElement.style.setProperty('--dock-space', String(val / 100));
+	if (persist) localStorage.setItem(DOCK_SPACING_KEY, String(val));
+}
+
+export function applyDockShadowPct(v: number, persist = false) {
+	if (!browser) return;
+	const val = clamp(v, DOCK_SHADOW_MIN, DOCK_SHADOW_MAX);
+	document.documentElement.style.setProperty('--dock-shadow-strength', String(val / 100));
+	if (persist) localStorage.setItem(DOCK_SHADOW_KEY, String(val));
+}
+
+export function getSavedDockWidthVmin(): number {
+	return readRadius(DOCK_WIDTH_KEY, DOCK_WIDTH_MIN, DOCK_WIDTH_MAX, DOCK_WIDTH_DEFAULT);
+}
+
+export function getSavedDockRadiusPct(): number {
+	return readRadius(DOCK_RADIUS_KEY, DOCK_RADIUS_MIN, DOCK_RADIUS_MAX, DOCK_RADIUS_DEFAULT);
+}
+
+export function getSavedDockPadPct(): number {
+	return readRadius(DOCK_PAD_KEY, DOCK_PAD_MIN, DOCK_PAD_MAX, DOCK_PAD_DEFAULT);
+}
+
+export function getSavedDockInsetVmin(): number {
+	return readRadius(DOCK_INSET_KEY, DOCK_INSET_MIN, DOCK_INSET_MAX, DOCK_INSET_DEFAULT);
+}
+
+export function getSavedDockSpacingPct(): number {
+	return readRadius(DOCK_SPACING_KEY, DOCK_SPACING_MIN, DOCK_SPACING_MAX, DOCK_SPACING_DEFAULT);
+}
+
+export function getSavedDockShadowPct(): number {
+	return readRadius(DOCK_SHADOW_KEY, DOCK_SHADOW_MIN, DOCK_SHADOW_MAX, DOCK_SHADOW_DEFAULT);
+}
+
+export const uiDockWidthVmin: Writable<number> = writable(getSavedDockWidthVmin());
+export const uiDockRadiusPct: Writable<number> = writable(getSavedDockRadiusPct());
+export const uiDockPadPct: Writable<number> = writable(getSavedDockPadPct());
+export const uiDockInsetVmin: Writable<number> = writable(getSavedDockInsetVmin());
+export const uiDockHeightPct: Writable<number> = writable(getSavedDockHeightPct());
+export const uiDockSpacingPct: Writable<number> = writable(getSavedDockSpacingPct());
+export const uiDockShadowPct: Writable<number> = writable(getSavedDockShadowPct());
 
 /* ── Frosted glass ──────────────────────────────────────────────────────── */
 
@@ -296,7 +617,7 @@ export const BORDER_WIDTH_MIN = 1;
 export const BORDER_WIDTH_MAX = 3;
 
 function defaultBorderColor(): string {
-	return `color-mix(in oklch, var(--color-base-content) 16%, transparent)`;
+	return `color-mix(in oklch, var(--color-base-content) 24%, transparent)`;
 }
 
 export function applyBorder(
@@ -355,10 +676,29 @@ function syncBorder(persist = false) {
 	);
 }
 
+/* ── Button borders toggle ──────────────────────────────────────────────── */
+
+const BUTTON_BORDERS_KEY = 'ui-btn-borders';
+
+export function applyButtonBorders(on: boolean, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-btn-borders', on ? 'on' : 'off');
+	if (persist) localStorage.setItem(BUTTON_BORDERS_KEY, on ? 'true' : 'false');
+}
+
+export function getSavedButtonBorders(): boolean {
+	if (!browser) return true;
+	const v = localStorage.getItem(BUTTON_BORDERS_KEY);
+	return v === null ? true : v === 'true';
+}
+
+export const uiButtonBorders: Writable<boolean> = writable(getSavedButtonBorders());
+
 /* ── Nav indicator ───────────────────────────────────────────────────────── */
 
-export type NavIndicator = 'modern' | 'classic';
+export type NavIndicator = 'modern' | 'classic' | 'none';
 const NAV_INDICATOR_KEY = 'ui-nav-indicator';
+const NAV_INDICATOR_VALUES: NavIndicator[] = ['modern', 'classic', 'none'];
 
 export function applyNavIndicator(style: NavIndicator, persist = false) {
 	if (!browser) return;
@@ -368,7 +708,8 @@ export function applyNavIndicator(style: NavIndicator, persist = false) {
 
 export function getSavedNavIndicator(): NavIndicator {
 	if (!browser) return 'modern';
-	return localStorage.getItem(NAV_INDICATOR_KEY) === 'classic' ? 'classic' : 'modern';
+	const v = localStorage.getItem(NAV_INDICATOR_KEY) as NavIndicator | null;
+	return v && NAV_INDICATOR_VALUES.includes(v) ? v : 'modern';
 }
 
 export const uiNavIndicator: Writable<NavIndicator> = writable(getSavedNavIndicator());
@@ -497,41 +838,17 @@ export function getSavedSidebarCollapsed(): boolean {
 
 export const uiSidebarCollapsed: Writable<boolean> = writable(getSavedSidebarCollapsed());
 
-/* ── Desktop sidebar item margin ───────────────────────────────────────── */
-
-export const SIDEBAR_MARGIN_MIN = 0;
-export const SIDEBAR_MARGIN_MAX = 40;
-export const SIDEBAR_MARGIN_DEFAULT = 16;
-const SIDEBAR_MARGIN_KEY = 'ui-sidebar-margin';
-
-export function applySidebarMargin(px: number, persist = false) {
-	if (!browser) return;
-	const v = clamp(px, SIDEBAR_MARGIN_MIN, SIDEBAR_MARGIN_MAX);
-	document.documentElement.style.setProperty('--sidebar-item-margin', `${v}px`);
-	if (persist) localStorage.setItem(SIDEBAR_MARGIN_KEY, String(v));
-}
-
-export function getSavedSidebarMargin(): number {
-	if (!browser) return SIDEBAR_MARGIN_DEFAULT;
-	const v = Number(localStorage.getItem(SIDEBAR_MARGIN_KEY));
-	return Number.isFinite(v) && v >= SIDEBAR_MARGIN_MIN && v <= SIDEBAR_MARGIN_MAX
-		? v
-		: SIDEBAR_MARGIN_DEFAULT;
-}
-
-export const uiSidebarMargin: Writable<number> = writable(getSavedSidebarMargin());
-
-/* ── Home welcome top space (title ↔ top of page) ──────────────────────── */
+/* ── Home welcome top space (title ↔ top of page, rem — universal) ─────── */
 
 export const WELCOME_SPACE_MIN = 0;
-export const WELCOME_SPACE_MAX = 64;
-export const WELCOME_SPACE_DEFAULT = 4;
+export const WELCOME_SPACE_MAX = 4;
+export const WELCOME_SPACE_DEFAULT = 0;
 const WELCOME_SPACE_KEY = 'ui-welcome-space';
 
-export function applyWelcomeSpace(px: number, persist = false) {
+export function applyWelcomeSpace(rem: number, persist = false) {
 	if (!browser) return;
-	const v = clamp(px, WELCOME_SPACE_MIN, WELCOME_SPACE_MAX);
-	document.documentElement.style.setProperty('--welcome-space-top', `${v}px`);
+	const v = clamp(rem, WELCOME_SPACE_MIN, WELCOME_SPACE_MAX);
+	document.documentElement.style.setProperty('--welcome-space-top', `${v}rem`);
 	if (persist) localStorage.setItem(WELCOME_SPACE_KEY, String(v));
 }
 
@@ -545,17 +862,41 @@ export function getSavedWelcomeSpace(): number {
 
 export const uiWelcomeSpace: Writable<number> = writable(getSavedWelcomeSpace());
 
-/* ── Desktop sidebar pill size (vertical padding) ──────────────────────── */
+/* ── Desktop sidebar knob sizes (rem — universal) ──────────────────────── */
 
-export const SIDEBAR_SIZE_MIN = 4;
-export const SIDEBAR_SIZE_MAX = 20;
-export const SIDEBAR_SIZE_DEFAULT = 10;
+export const SIDEBAR_MARGIN_MIN = 0;
+export const SIDEBAR_MARGIN_MAX = 2.5;
+export const SIDEBAR_MARGIN_DEFAULT = 0.625;
+const SIDEBAR_MARGIN_KEY = 'ui-sidebar-margin';
+
+export function applySidebarMargin(rem: number, persist = false) {
+	if (!browser) return;
+	const v = clamp(rem, SIDEBAR_MARGIN_MIN, SIDEBAR_MARGIN_MAX);
+	document.documentElement.style.setProperty('--sidebar-item-margin', `${v}rem`);
+	if (persist) localStorage.setItem(SIDEBAR_MARGIN_KEY, String(v));
+}
+
+export function getSavedSidebarMargin(): number {
+	if (!browser) return SIDEBAR_MARGIN_DEFAULT;
+	const v = Number(localStorage.getItem(SIDEBAR_MARGIN_KEY));
+	return Number.isFinite(v) && v >= SIDEBAR_MARGIN_MIN && v <= SIDEBAR_MARGIN_MAX
+		? v
+		: SIDEBAR_MARGIN_DEFAULT;
+}
+
+export const uiSidebarMargin: Writable<number> = writable(getSavedSidebarMargin());
+
+/* ── Desktop sidebar pill size (vertical padding, rem) ─────────────────── */
+
+export const SIDEBAR_SIZE_MIN = 0.25;
+export const SIDEBAR_SIZE_MAX = 1.25;
+export const SIDEBAR_SIZE_DEFAULT = 0.5;
 const SIDEBAR_SIZE_KEY = 'ui-sidebar-size';
 
-export function applySidebarSize(px: number, persist = false) {
+export function applySidebarSize(rem: number, persist = false) {
 	if (!browser) return;
-	const v = clamp(px, SIDEBAR_SIZE_MIN, SIDEBAR_SIZE_MAX);
-	document.documentElement.style.setProperty('--sidebar-item-pad-y', `${v}px`);
+	const v = clamp(rem, SIDEBAR_SIZE_MIN, SIDEBAR_SIZE_MAX);
+	document.documentElement.style.setProperty('--sidebar-item-pad-y', `${v}rem`);
 	if (persist) localStorage.setItem(SIDEBAR_SIZE_KEY, String(v));
 }
 
@@ -575,7 +916,15 @@ export function initUiPrefs() {
 	migrateLegacyRadius();
 	applyRadiusSurfaces(getSavedRadiusSurface());
 	applyRadiusControls(getSavedRadiusControl());
+	applyHoverRadius(getSavedHoverRadius());
 	applyNavStyle(getSavedNavStyle());
+	applyDesktopNav(getSavedDesktopNav());
+	applyDockWidthVmin(getSavedDockWidthVmin());
+	applyDockRadiusPct(getSavedDockRadiusPct());
+	applyDockPadPct(getSavedDockPadPct());
+	applyDockInsetVmin(getSavedDockInsetVmin());
+	applyDockHeightPct(getSavedDockHeightPct());
+	applyDockShadowPct(getSavedDockShadowPct());
 	applyGlass(getSavedGlass());
 	applyAccent(getSavedAccent());
 	syncBorder();
@@ -585,23 +934,52 @@ export function initUiPrefs() {
 	applyDeckWidthPct(getSavedDeckWidthPct());
 	applyDeckHeightVw(getSavedDeckHeightVw());
 	applyDeckRadiusPct(getSavedDeckRadiusPct());
-	applyWelcomeBold(getSavedWelcomeBold());
+	applyWelcomeStyle(getSavedWelcomeStyle());
 	applyWelcomeSpace(getSavedWelcomeSpace());
 	applyNavBg(getSavedNavBg());
+	applyButtonBorders(getSavedButtonBorders());
 	applySettingsIconPlacement(getSavedSettingsIconPlacement());
 	applySidebarCollapsed(getSavedSidebarCollapsed());
 	applySidebarMargin(getSavedSidebarMargin());
 	applySidebarSize(getSavedSidebarSize());
+	applyMnavHeight(getSavedMnavHeight());
+	applyMnavIconSize(getSavedMnavIconSize());
+	applyMnavIconBox(getSavedMnavIconBox());
+	applyMnavLabelSize(getSavedMnavLabelSize());
+	applyMnavLabelGap(getSavedMnavLabelGap());
+	applyMnavLabels(getSavedMnavLabels());
+	applyMnavItemRadius(getSavedMnavItemRadius());
 	applyPageBg(getSavedPageBg());
 }
 
 export function resetUiPrefs() {
 	uiRadiusSurface.set(RADIUS_SURFACE_DEFAULT);
-	applyRadiusSurfaces(RADIUS_SURFACE_DEFAULT, true);
+	applyRadiusSurfaces(RADIUS_SURFACE_DEFAULT);
+	localStorage.removeItem(RADIUS_SURFACE_KEY);
 	uiRadiusControl.set(RADIUS_CONTROL_DEFAULT);
-	applyRadiusControls(RADIUS_CONTROL_DEFAULT, true);
+	applyRadiusControls(RADIUS_CONTROL_DEFAULT);
+	localStorage.removeItem(RADIUS_CONTROL_KEY);
+	uiHoverRadius.set(HOVER_RADIUS_DEFAULT);
+	applyHoverRadius(HOVER_RADIUS_DEFAULT);
+	localStorage.removeItem(HOVER_RADIUS_KEY);
 	uiNavStyle.set('bar');
 	applyNavStyle('bar', true);
+	uiDesktopNav.set('sidebar');
+	applyDesktopNav('sidebar', true);
+	uiDockWidthVmin.set(DOCK_WIDTH_DEFAULT);
+	applyDockWidthVmin(DOCK_WIDTH_DEFAULT, true);
+	uiDockRadiusPct.set(DOCK_RADIUS_DEFAULT);
+	applyDockRadiusPct(DOCK_RADIUS_DEFAULT, true);
+	uiDockPadPct.set(DOCK_PAD_DEFAULT);
+	applyDockPadPct(DOCK_PAD_DEFAULT, true);
+	uiDockInsetVmin.set(DOCK_INSET_DEFAULT);
+	applyDockInsetVmin(DOCK_INSET_DEFAULT, true);
+	uiDockHeightPct.set(DOCK_HEIGHT_DEFAULT);
+	applyDockHeightPct(DOCK_HEIGHT_DEFAULT, true);
+	uiDockSpacingPct.set(DOCK_SPACING_DEFAULT);
+	applyDockSpacingPct(DOCK_SPACING_DEFAULT, true);
+	uiDockShadowPct.set(DOCK_SHADOW_DEFAULT);
+	applyDockShadowPct(DOCK_SHADOW_DEFAULT, true);
 	uiGlass.set(true);
 	applyGlass(true, true);
 	uiAccent.set(null);
@@ -620,8 +998,8 @@ export function resetUiPrefs() {
 	applyDeckHeightVw(DECK_HEIGHT_VW_DEFAULT, true);
 	uiDeckRadiusPct.set(DECK_RADIUS_PCT_DEFAULT);
 	applyDeckRadiusPct(DECK_RADIUS_PCT_DEFAULT, true);
-	uiWelcomeBold.set(false);
-	applyWelcomeBold(false, true);
+	uiWelcomeStyle.set('normal');
+	applyWelcomeStyle('normal', true);
 	uiWelcomeSpace.set(WELCOME_SPACE_DEFAULT);
 	applyWelcomeSpace(WELCOME_SPACE_DEFAULT, true);
 	uiNavBg.set('berga-gray');
@@ -634,6 +1012,22 @@ export function resetUiPrefs() {
 	applySidebarMargin(SIDEBAR_MARGIN_DEFAULT, true);
 	uiSidebarSize.set(SIDEBAR_SIZE_DEFAULT);
 	applySidebarSize(SIDEBAR_SIZE_DEFAULT, true);
+	uiMnavHeight.set(MNAV_HEIGHT_DEFAULT);
+	applyMnavHeight(MNAV_HEIGHT_DEFAULT, true);
+	uiMnavIconSize.set(MNAV_ICON_SIZE_DEFAULT);
+	applyMnavIconSize(MNAV_ICON_SIZE_DEFAULT, true);
+	uiMnavIconBox.set(MNAV_ICON_BOX_DEFAULT);
+	applyMnavIconBox(MNAV_ICON_BOX_DEFAULT, true);
+	uiMnavLabelSize.set(MNAV_LABEL_SIZE_DEFAULT);
+	applyMnavLabelSize(MNAV_LABEL_SIZE_DEFAULT, true);
+	uiMnavLabelGap.set(MNAV_LABEL_GAP_DEFAULT);
+	applyMnavLabelGap(MNAV_LABEL_GAP_DEFAULT, true);
+	uiMnavLabels.set(true);
+	applyMnavLabels(true, true);
+	uiMnavItemRadius.set('theme');
+	applyMnavItemRadius('theme', true);
 	uiPageBg.set('theme');
 	applyPageBg('theme', true);
+	uiButtonBorders.set(true);
+	applyButtonBorders(true, true);
 }

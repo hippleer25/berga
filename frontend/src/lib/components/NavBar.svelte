@@ -28,7 +28,8 @@
 	import { ripple } from '$lib/actions/ripple';
 	import {
 		applySidebarCollapsed,
-		uiSidebarCollapsed
+		uiSidebarCollapsed,
+		uiDesktopNav
 	} from '$lib/stores/uiPrefs';
 
 	const tabIdx = $derived($activeTabIdx);
@@ -76,6 +77,28 @@
 		applySidebarCollapsed(next, true);
 	}
 
+	// ── Desktop floating dock: expand after ~2s of sustained hover ────────
+	/** Hover dwell (ms) before the dock expands to the right. */
+	const DOCK_EXPAND_DWELL = 2000;
+
+	let expanded = $state(false);
+	let dockTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function dockEnter() {
+		if (dockTimer) clearTimeout(dockTimer);
+		dockTimer = setTimeout(() => (expanded = true), DOCK_EXPAND_DWELL);
+	}
+
+	function dockLeave() {
+		if (dockTimer) clearTimeout(dockTimer);
+		dockTimer = undefined;
+		expanded = false;
+	}
+
+	$effect(() => () => { if (dockTimer) clearTimeout(dockTimer); });
+
+	const settingsActive = $derived($page.url.pathname.startsWith('/settings'));
+
 	// ── Swipe-down-to-hide gesture (mobile only) ────────────────────────────
 	let navEl: HTMLElement;
 
@@ -118,7 +141,6 @@
 			navDragging.set(true);
 		}
 		if (gAxis !== 'v') return;
-		e.preventDefault();
 		if (Math.abs(dy) > 4) dragMoved = true;
 		const dt = e.timeStamp - lastT;
 		if (dt > 0) velY = velY * 0.3 + ((tch.clientY - lastY) / dt) * 0.7;
@@ -261,12 +283,89 @@
 	</div>
 </aside>
 
+<!-- ── Desktop Floating Dock (left, vertical, icon-only) ─────────────────── -->
+<div
+	class="dock-wrap"
+	class:expanded
+	role="presentation"
+	onmouseenter={dockEnter}
+	onmouseleave={dockLeave}
+>
+	<nav class="dock" aria-label="{$t('navbar.mainNav')}">
+		{#each $orderedTabs as tab, i (tab.id)}
+			{@const active = tabIdx === i}
+			{@const pinned = $splitTab === tab.id}
+			<a
+				href={tab.href}
+				class="dock-item"
+				class:active
+				class:pinned
+				aria-current={active ? 'page' : undefined}
+				title={expanded ? undefined : $t(`navbar.${tab.id}`)}
+				draggable="true"
+				onclick={e => navClick(e, tab)}
+				oncontextmenu={e => navCtx(e, tab)}
+				ondragstart={e => navDragStart(e, tab)}
+				ondragend={navDragEnd}
+			>
+				<span class="dock-icon">
+					<span class="nav-pill"></span>
+					<tab.icon size={24} strokeWidth={active ? 2.2 : 1.7} />
+				</span>
+				<span class="dock-label">{$t(`navbar.${tab.id}`)}</span>
+			</a>
+		{/each}
+
+		{#if $splitTab}
+			<!-- Split is alive: mini inverter/closer ride at the dock's tail -->
+			<div class="dock-divider"></div>
+			<button
+				class="dock-item"
+				use:ripple
+				onclick={invertSplit}
+				title={expanded ? undefined : $t('navbar.splitInvert')}
+				aria-label={$t('navbar.splitInvert')}
+			>
+				<span class="dock-icon"><ArrowLeftRight size={22} strokeWidth={1.8} /></span>
+				<span class="dock-label">{$t('navbar.splitInvert')}</span>
+			</button>
+			<button
+				class="dock-item"
+				use:ripple
+				onclick={closeSplit}
+				title={expanded ? undefined : $t('navbar.splitClose')}
+				aria-label={$t('navbar.splitClose')}
+			>
+				<span class="dock-icon"><X size={22} strokeWidth={1.8} /></span>
+				<span class="dock-label">{$t('navbar.splitClose')}</span>
+			</button>
+		{/if}
+	</nav>
+
+	<nav class="dock dock-sub" aria-label="{$t('settings.title')}">
+		<button
+			class="dock-item"
+			class:active={settingsActive}
+			use:ripple
+			onclick={() => goto('/settings')}
+			title={expanded ? undefined : $t('settings.title')}
+			aria-label={$t('settings.title')}
+		>
+			<span class="dock-icon">
+				<span class="nav-pill"></span>
+				<Settings size={24} strokeWidth={settingsActive ? 2.2 : 1.7} />
+			</span>
+			<span class="dock-label">{$t('settings.title')}</span>
+		</button>
+	</nav>
+</div>
+
 {#if ctxMenu}
 	<NavContextMenu pos={{ x: ctxMenu.x, y: ctxMenu.y }} tab={ctxMenu.tab} onClose={() => (ctxMenu = null)} />
 {/if}
 
 <!-- ── Floating expand button (desktop, sidebar collapsed) ── -->
-{#if $uiSidebarCollapsed}
+{#if $uiSidebarCollapsed && $uiDesktopNav !== 'dock'}
 	<button
 		class="sidebar-expand"
 		use:ripple
@@ -285,7 +384,7 @@
 		position: fixed;
 		bottom: 0; left: 0; right: 0;
 		z-index: 50;
-		height: 64px;
+		height: var(--mnav-height, 64px);
 		padding: 0 8px env(safe-area-inset-bottom, 8px);
 		align-items: center;
 		justify-content: center;
@@ -342,12 +441,12 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 2px;
+		gap: var(--mnav-label-gap, 2px);
 		flex: 1;
 		max-width: 80px;
 		height: 100%;
 		padding: 6px 4px;
-		border-radius: var(--ui-radius-sm);
+		border-radius: var(--mnav-item-radius, var(--ui-radius-sm));
 		text-decoration: none;
 		-webkit-tap-highlight-color: transparent;
 		color: color-mix(in oklch, var(--color-base-content) 58%, transparent);
@@ -366,7 +465,13 @@
 		align-items: center;
 		justify-content: center;
 		width: 52px;
-		height: 28px;
+		height: var(--mnav-iconbox-h, 28px);
+	}
+	/* Icon glyph scales with the --mnav-icon-size knob (CSS wins over the
+	   size attribute set on the <svg>, which stays as SSR fallback). */
+	.nav-icon :global(svg) {
+		width: var(--mnav-icon-size, 21px);
+		height: var(--mnav-icon-size, 21px);
 	}
 	.nav-pill {
 		position: absolute;
@@ -403,12 +508,16 @@
 	}
 
 	.nav-label {
-		font-size: 11px;
+		font-size: var(--mnav-label-size, 11px);
 		font-weight: 500;
 		letter-spacing: 0.02em;
 	}
 	.nav-item.active .nav-label {
 		font-weight: 700;
+	}
+	/* Icons-only mode (settings: Mobile navbar → Labels) */
+	:global(html[data-mnav-labels="off"]) .mobile-nav .nav-label {
+		display: none;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -446,17 +555,23 @@
 			justify-content: center;
 			width: 32px;
 			height: 32px;
-			border: none;
+			border: 1px solid var(--ui-border-color);
 			border-radius: var(--ui-radius-sm);
 			background: transparent;
 			color: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 55%, transparent);
 			cursor: pointer;
-			transition: color 150ms ease, background 150ms ease;
+			transition: border-color var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+				transform var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+				box-shadow var(--ui-dur-1, 150ms) var(--ui-ease, ease);
 			-webkit-tap-highlight-color: transparent;
 		}
 		.sidebar-collapse:hover {
-			color: var(--nav-bg-content, var(--color-base-content));
-			background: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 10%, transparent);
+			border-color: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 45%, transparent);
+			transform: translateY(-1px);
+			box-shadow: var(--ui-shadow-1);
+		}
+		.sidebar-collapse:active {
+			transform: translateY(0);
 		}
 	}
 	.sidebar-top {
@@ -484,10 +599,17 @@
 			color: var(--nav-bg-content, var(--color-base-content));
 			cursor: pointer;
 			box-shadow: 0 2px 10px color-mix(in oklch, black 12%, transparent);
-			transition: background 150ms ease;
+			transition: border-color var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+				transform var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+				box-shadow var(--ui-dur-1, 150ms) var(--ui-ease, ease);
 		}
 		.sidebar-expand:hover {
-			background: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 8%, var(--nav-bg, var(--color-base-100)));
+			border-color: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 45%, transparent);
+			transform: translateY(-1px);
+			box-shadow: var(--ui-shadow-1);
+		}
+		.sidebar-expand:active {
+			transform: translateY(0);
 		}
 		:global(.covered) ~ .sidebar-expand { pointer-events: none; }
 	}
@@ -496,7 +618,7 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		padding: 24px var(--sidebar-item-margin, 16px) 12px;
+		padding: 24px var(--sidebar-item-margin, 0.625rem) 12px;
 		gap: 8px;
 	}
 
@@ -572,7 +694,7 @@
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		padding: var(--sidebar-item-pad-y, 10px) var(--sidebar-item-margin, 16px);
+		padding: var(--sidebar-item-pad-y, 0.5rem) var(--sidebar-item-margin, 0.625rem);
 		border-radius: var(--ui-radius-sm);
 		border-left: 3px solid transparent;
 		text-decoration: none;
@@ -615,5 +737,229 @@
 
 	.sidebar-item.active .s-label {
 		font-weight: 700;
+	}
+
+	/* ── Desktop floating dock ─────────────────────────────────────────── */
+	/* Vertical icon-only rail floating on the screen's left edge; a second
+	   sub-dock below it hosts settings. Sustained hover (2s) expands both
+	   docks to the right, revealing tab labels over an overlay (content
+	   doesn't reflow). All dimensions key off --dock-w, which is vmin-based
+	   with px clamps — 720p and 4K render with identical proportions. */
+
+	.dock-wrap {
+		display: none;
+	}
+	@media (min-width: 768px) {
+		:global([data-desktop-nav="dock"]) .dock-wrap {
+			display: flex;
+			position: fixed;
+			top: 50%;
+			left: var(--dock-inset, 12px);
+			z-index: 55;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: clamp(6px, 1.4vmin, 14px);
+			transform: translateY(-50%);
+		}
+		:global([data-desktop-nav="dock"]) .sidebar { display: none; }
+
+		.dock {
+			--dock-expand-w: calc(var(--dock-w, 72px) + clamp(9.5rem, 24vmin, 17rem));
+			--dock-pad: calc(var(--dock-w, 72px) * (var(--dock-pad-pct, 10) / 100));
+			--dock-item-inset: var(--dock-pad);
+			--dock-item-size: calc(var(--dock-w, 72px) - var(--dock-item-inset) * 2);
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			width: var(--dock-w, 72px);
+			height: var(--dock-h, fit-content);
+			padding: var(--dock-pad) 0;
+			gap: calc(var(--dock-gap, clamp(3px, 0.9vmin, 7px)) * var(--dock-space, 1));
+			background: var(--nav-glass-strong, color-mix(in oklch, var(--nav-bg, var(--color-base-100)) 82%, transparent));
+			backdrop-filter: var(--glass-blur);
+			-webkit-backdrop-filter: var(--glass-blur);
+			border: var(--ui-border-width, 1px) solid var(--ui-border-color, var(--glass-border));
+			border-radius: var(--dock-radius, calc(var(--dock-w, 72px) * 0.34));
+			box-shadow:
+				0 8px 20px color-mix(in oklch, black calc(10% * var(--dock-shadow-strength, 1)), transparent),
+				0 1px 4px color-mix(in oklch, black calc(6% * var(--dock-shadow-strength, 1)), transparent);
+			overflow: hidden;
+			transition:
+				width 300ms cubic-bezier(0.22, 1, 0.36, 1),
+				box-shadow 300ms ease,
+				transform 220ms var(--ui-ease, ease);
+		}
+		:global([data-glass="off"]) .dock {
+			background: var(--nav-bg, var(--color-base-100));
+		}
+
+		.dock-wrap.expanded .dock {
+			width: var(--dock-expand-w);
+			box-shadow:
+				0 12px 28px color-mix(in oklch, black calc(13% * var(--dock-shadow-strength, 1)), transparent),
+				0 2px 8px color-mix(in oklch, black calc(6% * var(--dock-shadow-strength, 1)), transparent);
+		}
+
+		.dock-wrap.expanded .dock-item {
+			width: calc(var(--dock-expand-w) - var(--dock-item-inset) * 2);
+		}
+		.dock-wrap.expanded .dock-item .dock-icon {
+			width: var(--dock-item-size, 58px);
+		}
+
+		.dock-item {
+			position: relative;
+			display: flex;
+			align-items: center;
+			gap: calc(clamp(10px, 1.6vmin, 14px) * var(--dock-space, 1));
+			width: var(--dock-item-size, 58px);
+			height: var(--dock-item-size, 58px);
+			flex-shrink: 0;
+			padding: 0;
+			border: none;
+			background: transparent;
+			cursor: pointer;
+			justify-content: flex-start;
+			/* Buttons carry UA text-align:center — labels must sit flush left */
+			text-align: left;
+			color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+			text-decoration: none;
+			border-radius: calc(var(--dock-radius, calc(var(--dock-w, 72px) * 0.34)) * 0.82);
+			margin: 0 var(--dock-item-inset, 7px);
+			overflow: hidden;
+			transition:
+				width 300ms cubic-bezier(0.22, 1, 0.36, 1),
+				color 150ms ease,
+				background 150ms ease;
+		}
+		.dock-item:hover {
+			color: var(--color-base-content);
+			background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+		}
+		.dock-item.active {
+			color: var(--color-accent);
+		}
+
+		.dock-icon {
+			position: relative;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 100%;
+			height: 100%;
+			flex-shrink: 0;
+		}
+		.dock-icon :global(svg) {
+			/* Scales with the item box (not the dock), so the inner-padding
+			   slider actually closes/opens the gap between icon and border.
+			   0.5 keeps the default 10% pad visually identical to 0.4×dock-w. */
+			width: calc(var(--dock-item-size, 58px) * 0.5);
+			height: calc(var(--dock-item-size, 58px) * 0.5);
+		}
+
+		/* Active pill mirrors the mobile nav's indicator */
+		.dock-item .nav-pill {
+			position: absolute;
+			inset: 10%;
+			border-radius: var(--ui-radius-full);
+			background: transparent;
+			opacity: 0;
+			transform: scale(0.5);
+			transition:
+				background 220ms ease,
+				transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1),
+				opacity 200ms ease;
+		}
+		.dock-item.active .nav-pill {
+			background: color-mix(in oklch, var(--color-accent) 16%, transparent);
+			opacity: 1;
+			transform: scale(1);
+		}
+		.dock-item.active:active .nav-pill {
+			transform: scale(0.94);
+		}
+
+		/* Pinned in the split viewer: dot on the icon's corner */
+		.dock-item.pinned::after {
+			content: '';
+			position: absolute;
+			top: 18%;
+			right: 16%;
+			width: calc(var(--dock-item-size, 58px) * 0.125);
+			height: calc(var(--dock-item-size, 58px) * 0.125);
+			border-radius: var(--ui-radius-full);
+			background: var(--color-accent);
+			opacity: 0.9;
+		}
+
+		.dock-label {
+			width: 0;
+			min-width: 0;
+			overflow: hidden;
+			white-space: nowrap;
+			font-size: 14px;
+			font-weight: 500;
+			letter-spacing: 0.01em;
+			opacity: 0;
+			transform: translateX(-8px);
+			transition:
+				opacity 220ms ease,
+				transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+			visibility: hidden;
+		}
+		.dock-item.active .dock-label {
+			font-weight: 700;
+		}
+		.dock-wrap.expanded .dock-label {
+			width: clamp(8rem, 20vmin, 14rem);
+			opacity: 1;
+			transform: none;
+			visibility: visible;
+		}
+		/* Thin "|" hairline centered in the icon–label gap, revealed with the label */
+		.dock-wrap.expanded .dock-label::before {
+			content: '';
+			display: inline-block;
+			width: 1px;
+			height: calc(var(--dock-item-size, 58px) * 0.22);
+			background: var(--ui-border-color, var(--glass-border, var(--color-base-200)));
+			border-radius: 1px;
+			vertical-align: -0.08em;
+			margin-left: calc(clamp(10px, 1.6vmin, 14px) * var(--dock-space, 1) / -2);
+			margin-right: calc(clamp(10px, 1.6vmin, 14px) * var(--dock-space, 1) / 2);
+		}
+
+		.dock-divider {
+			width: calc(var(--dock-w, 72px) * 0.5);
+			height: 1px;
+			flex-shrink: 0;
+			background: var(--glass-border, var(--color-base-200));
+			margin: 2px 0;
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			.dock,
+			.dock-label,
+			.dock-item .nav-pill {
+				transition: none !important;
+			}
+		}
+	}
+
+	/* ── Active indicator "none": no background on any selected tab ────── */
+	:global([data-nav-indicator="none"]) .nav-item.active .nav-pill {
+		background: transparent;
+		opacity: 0;
+		transform: none;
+	}
+	:global([data-nav-indicator="none"]) .dock-item.active .nav-pill {
+		background: transparent;
+		opacity: 0;
+		transform: none;
+	}
+	:global([data-nav-indicator="none"]) .sidebar-item.active,
+	:global([data-nav-indicator="none"]) .sidebar-bottom .sidebar-item.active {
+		background: transparent;
 	}
 </style>

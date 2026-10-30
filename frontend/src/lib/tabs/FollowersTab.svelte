@@ -701,7 +701,7 @@ async function loadSubscriptions(quiet = false) {
                                                 aria-label="{$t('followerstab.feedError')}: {feed.last_error}"
                                                 onclick={(e) => {
                                                     e.stopPropagation();
-                                                    goto('/settings/feeds-health?feed=' + feed.feed_sha256);
+                                                    goto('/settings/monitor?feed=' + feed.feed_sha256);
                                                 }}
                                             >
                                                 <AlertTriangle size={13} strokeWidth={2} />
@@ -965,23 +965,23 @@ async function loadSubscriptions(quiet = false) {
   padding: 24px 0 0;
 }
 
-/* ── Search Input ──────────────────────────────────────── */
+/* ── Search Input (EventsTab parity) ───────────────────── */
 .search-wrap {
   display: flex;
   align-items: center;
   gap: 12px;
   background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
-  border: 1px solid var(--color-base-300);
+  border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
   border-radius: var(--ui-radius-sm);
   padding: 0 16px;
-  height: 46px;
-  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  height: 48px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 180ms ease;
 }
 
     .search-wrap:focus-within {
-        background: var(--color-base-100);
         border-color: var(--color-accent);
-        box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 15%, transparent);
     }
 
 .search-input {
@@ -993,12 +993,20 @@ async function loadSubscriptions(quiet = false) {
   font-size: 15px;
   color: var(--color-base-content);
   line-height: 1;
+  caret-color: var(--color-accent);
+  user-select: text;
   -webkit-appearance: none;
   appearance: none;
 }
 
+    .search-input:focus,
+    .search-input:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
     .search-input::placeholder {
-        color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+        color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
     }
 
     .search-input::-webkit-search-cancel-button,
@@ -1008,7 +1016,7 @@ async function loadSubscriptions(quiet = false) {
 
     :global(.search-icon) {
         flex-shrink: 0;
-        color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
         transition: color 180ms ease;
     }
 
@@ -1044,18 +1052,16 @@ async function loadSubscriptions(quiet = false) {
 }
 
 .action-btn {
-	flex: 1;
 	display: flex;
 	align-items: center;
-	justify-content: center;
-	gap: 6px;
-	padding: 8px 12px;
+	gap: 5px;
+	padding: 6px 12px;
 	border-radius: var(--ui-radius-sm);
-	border: 1px solid var(--color-base-300);
-	background: transparent;
+	border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
+	background: var(--btn-fill, transparent);
 	font-size: 13px;
 	font-weight: 500;
-	color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+	color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
 	cursor: pointer;
 	transition: background 130ms, color 130ms, border-color 130ms;
 	white-space: nowrap;
@@ -1064,6 +1070,7 @@ async function loadSubscriptions(quiet = false) {
 .action-btn:hover {
 	background: var(--color-base-200);
 	color: var(--color-base-content);
+	border-color: var(--btn-border-strong, var(--ui-border-strong));
 }
 
 /* ── Tree Body ──────────────────────────────────────────── */
@@ -1570,7 +1577,7 @@ font-family: var(--font-page-title);
         padding: 10px 12px 10px 36px;
         font-size: 13.5px;
         background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
-        border: 1px solid var(--color-base-300);
+        border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
         border-radius: var(--ui-radius-sm);
         color: var(--color-base-content);
         outline: none;

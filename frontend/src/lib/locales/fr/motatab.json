@@ -20,6 +20,7 @@
   "thinkingRunning": "Réflexion…",
   "searchedLabel": "recherche exécutée",
   "searchedLabelPlural": "recherches exécutées",
+  "streamInterrupted": "Flux interrompu — cette réponse peut être incomplète. Reposez la question ou reformulez-la.",
   "feedPrompt": "Veuillez lire et résumer les articles que j'ai sélectionnés dans mon flux d'actualités.",
   "emptyResponse": "Impossible de générer une réponse. Veuillez réessayer.",
   "connectionError": "Erreur inconnue lors de la communication avec le serveur.",
@@ -39,5 +40,11 @@
   "confirmDelete": "Supprimer cette conversation ?",
   "openSession": "Ouvrir la conversation",
   "scrollToBottom": "Aller en bas",
-  "send": "Envoyer (Entrée)"
+  "send": "Envoyer (Entrée)",
+  "msgCopy": "Copier le message",
+  "msgCopied": "Copié !",
+  "msgEdit": "Modifier et renvoyer",
+  "msgRegenerate": "Régénérer la réponse",
+  "editing": "Modification du message",
+  "cancelEdit": "Annuler la modification"
 }

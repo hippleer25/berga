@@ -19,17 +19,20 @@ RECENCY_HALF_LIFE_DAYS = 7.0
 RECENCY_BOOST_WEIGHT = 0.4
 
 # Output token budget for the final chat synthesis stream.
-# Default 1024 (down from stream_llm_response's 2048 default) — news
-# answers should be concise; raise if you need longer explanations.
-SYNTHESIS_OUTPUT_TOKENS = int(os.getenv("SYNTHESIS_OUTPUT_TOKENS", "1024"))
+# Default 2048 — deep explanations (economy digests, etc.) routinely need
+# more than the old 1024; detailed answers grow via auto-continuations.
+SYNTHESIS_OUTPUT_TOKENS = int(os.getenv("SYNTHESIS_OUTPUT_TOKENS", "2048"))
 
 # Output budget when the router classifies the answer as expected-brief
 # ("expect_brief": true) — a couple of sentences.
 SYNTHESIS_BRIEF_OUTPUT_TOKENS = int(os.getenv("SYNTHESIS_BRIEF_OUTPUT_TOKENS", "384"))
 
 # Seamless continuations when synthesis hits finish_reason=length
-# (max_tokens cap). 1 = one continue call per turn; 0 disables.
-SYNTHESIS_MAX_CONTINUATIONS = int(os.getenv("SYNTHESIS_MAX_CONTINUATIONS", "1"))
+# (max_tokens cap). Each slot is one desktop-sized "continue exactly where
+# you stopped" call, so long answers end on real sentences, never mid-word.
+# 6 keeps the total bounded (~14k tokens) while effectively guaranteeing
+# completion; 0 disables.
+SYNTHESIS_MAX_CONTINUATIONS = int(os.getenv("SYNTHESIS_MAX_CONTINUATIONS", "6"))
 
 POSTS_PER_QUERY_LOCAL_ONLINE = {
     1: 6,

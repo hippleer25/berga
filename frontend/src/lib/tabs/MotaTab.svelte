@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
+  import { fade } from 'svelte/transition';
   import Send from '@lucide/svelte/icons/send';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronUp from '@lucide/svelte/icons/chevron-up';
@@ -15,8 +16,11 @@
   import Plus from '@lucide/svelte/icons/plus';
   import X from '@lucide/svelte/icons/x';
   import Pencil from '@lucide/svelte/icons/pencil';
+  import Copy from '@lucide/svelte/icons/copy';
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import History from '@lucide/svelte/icons/history';
+  import { activeTabId } from '$lib/config/tabs';
   import { pendingMotaPosts, navVisible } from '$lib/stores/swipe';
   import {
     chatSessions,
@@ -47,6 +51,7 @@
     queries?: string[];
     thinking?: string;
     thinkingCollapsed?: boolean;
+    interrupted?: boolean;
   };
 
   type SourceMode = 'local' | 'online' | 'mixed';
@@ -76,11 +81,124 @@
   let dropdownRef = $state<HTMLElement>();
 
   let chatAbort: AbortController | null = null;
+  let activeAssistantId: number | null = null;
+
+  // ── Message actions (copy / edit / regenerate) ──────────────────────────
+  let copiedId = $state<number | null>(null);
+  let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+  // id of the user message being edited, plus the pre-edit text (used to
+  // locate the turn server-side when truncating its history)
+  let editingId = $state<number | null>(null);
+  let editingOriginal = $state('');
+  let truncating = $state(false);
+
+  // ── Stream-liveliness watchdog ───────────────────────────────────────────
+  // A stream can die silently (app backgrounded, network drop): the fetch
+  // reader neither resolves nor rejects, so the answer would freeze with a
+  // blinking cursor forever. We heartbeat on every SSE line; after
+  // STALL_TIMEOUT_MS with no progress the turn is considered dead and the
+  // answer is resynced from its server-side session persistence (chat
+  // receive() persists partial answers on disconnect).
+  const STALL_TIMEOUT_MS = 20_000;
+  const STALL_CHECK_MS = 5_000;
+  let lastChunkAt = 0;
+  let stallTimer: ReturnType<typeof setInterval> | null = null;
+  let recovering = false;
+
+  function noteChunk() {
+    lastChunkAt = Date.now();
+  }
+
+  function startStallWatchdog(assistantId: number) {
+    stopStallWatchdog();
+    lastChunkAt = Date.now();
+    stallTimer = setInterval(() => {
+      if (!loading) { stopStallWatchdog(); return; }
+      if (Date.now() - lastChunkAt > STALL_TIMEOUT_MS) {
+        void recoverInterruptedTurn(assistantId);
+      }
+    }, STALL_CHECK_MS);
+  }
+
+  function stopStallWatchdog() {
+    if (stallTimer) {
+      clearInterval(stallTimer);
+      stallTimer = null;
+    }
+  }
+
+  async function recoverInterruptedTurn(assistantId: number) {
+    if (recovering || !loading) return;
+    recovering = true;
+    try {
+      const sessionId = get(currentSessionId);
+      lastChunkAt = Date.now(); // hold the watchdog while we resync
+      let serverContent = '';
+      let serverSources: Source[] | undefined = undefined;
+      if (sessionId != null) {
+        try {
+          const res = await apiFetch(`/api/chat/sessions/${sessionId}/messages`);
+          if (res.ok) {
+            const data = await res.json();
+            const list: any[] = Array.isArray(data.messages) ? data.messages : [];
+            const serverAssist = [...list].reverse().find(m => m.role === 'assistant' && (m.content || '').trim());
+            if (serverAssist) {
+              serverContent = serverAssist.content || '';
+              if (Array.isArray(serverAssist.sources) && serverAssist.sources.length) {
+                serverSources = serverAssist.sources;
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // Kill the dead stream first so the loop's catch/finally can't fight
+      // with the recovery below.
+      abortChat();
+      stopStallWatchdog();
+      loading = false;
+      streaming = false;
+      waitingPhase = null;
+      error = '';
+
+      const streamedLen = getStreamedLength(assistantId);
+      let msg = messages.find((m: Message) => m.id === assistantId);
+      if (serverContent && serverContent.length > streamedLen) {
+        // Server persisted more text than the client saw: swap in the
+        // server's copy. The stream there stopped at the same collapse
+        // point, so flag the turn as cut short.
+        if (!msg) {
+          msg = { role: 'assistant', content: '', id: assistantId } as Message;
+          messages = [...messages, msg];
+        }
+        msg.content = serverContent;
+        if (serverSources) msg.sources = serverSources;
+        if (msg) msg.interrupted = true;
+      } else if (!serverContent && streamedLen === 0) {
+        // Nothing to show at all — drop the empty placeholder.
+        messages = messages.filter((m: Message) => m.id !== assistantId);
+      } else {
+        // Client already had everything the server persisted (only tail
+        // events like sources/done were lost) — complete the UI quietly.
+        if (msg && serverSources && !msg.sources) msg.sources = serverSources;
+      }
+      await scrollToBottom(false);
+    } finally {
+      recovering = false;
+    }
+  }
+
+  function getStreamedLength(assistantId: number): number {
+    return messages.find((m: Message) => m.id === assistantId)?.content.length ?? 0;
+  }
 
   let showScrollBtn = $state(false);
-  let inputButtonsMultiLine = $state(false);
 
   let hasStarted = $derived(messages.some(m => m.role === 'user'));
+
+  const reducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let waitingMessages = $derived.by(() => ({
     thinking: get(t)('motatab.waitThinking'),
@@ -102,57 +220,46 @@
     return opt ? opt.labelShort : get(t)('motatab.sourceMixedShort');
   });
 
-  const STORAGE_KEY = 'mota:messages';
-  const SESSION_KEY = 'mota:session';
-  const SESSION_ID_KEY = 'mota:session-id';
+  /** Grace period after leaving the Mota tab before the chat resets. */
+  const RESET_DELAY_MS = 30_000;
 
-  function saveMessages() {
-    try {
-      const trimmed = messages.slice(-30);
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
-    } catch {}
+  let resetTimer: ReturnType<typeof setTimeout> | null = null;
+  let wasActive = false;
+
+  // Leave the Mota tab → schedule a fresh blank session. Returning within
+  // RESET_DELAY_MS cancels it and keeps the conversation (and any stream
+  // still running) exactly as-is. The reset runs even while streaming: the
+  // server persists the partial answer to the session, so history stays
+  // recoverable from the Sessions overlay.
+  function scheduleReset() {
+    if (resetTimer) return;
+    resetTimer = setTimeout(() => {
+      resetTimer = null;
+      resetChat();
+    }, RESET_DELAY_MS);
   }
 
-  function loadMessages() {
-    try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          messages = parsed;
-          idCounter = Math.max(...parsed.map((m: Message) => m.id)) + 1;
-        }
-      }
-    } catch {}
+  function cancelReset() {
+    if (resetTimer) {
+      clearTimeout(resetTimer);
+      resetTimer = null;
+    }
   }
 
-  // A brand-new browser session starts a fresh chat: locally-stored
-  // messages are cleared, but durable sessions stay available via the
-  // Sessions overlay (MySQL, server-side).
-  function ensureFreshSession() {
-    try {
-      if (sessionStorage.getItem(SESSION_KEY)) return;
-      sessionStorage.setItem(SESSION_KEY, '1');
-      sessionStorage.removeItem(STORAGE_KEY);
-      sessionStorage.removeItem(SESSION_ID_KEY);
-    } catch {}
-  }
+  $effect(() => {
+    const active = $activeTabId === 'mota';
+    if (wasActive && !active) scheduleReset();
+    else if (active) cancelReset();
+    wasActive = active;
+  });
 
-  function persistSessionId(id: number | null) {
-    try {
-      if (id != null) sessionStorage.setItem(SESSION_ID_KEY, String(id));
-      else sessionStorage.removeItem(SESSION_ID_KEY);
-    } catch {}
+  function resetChat() {
+    cancelReset();
+    newChat();
+    sessionsOpen.set(false);
   }
 
   onMount(() => {
-    ensureFreshSession();
-    try {
-      const sid = sessionStorage.getItem(SESSION_ID_KEY);
-      if (sid) currentSessionId.set(parseInt(sid, 10) || null);
-    } catch {}
-    if ($currentSessionId != null) loadMessages();
-
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
         dropdownOpen = false;
@@ -169,21 +276,28 @@
     }
     document.addEventListener('keydown', handleKeydown);
 
-    // bfcache eligibility: abort in-flight chat stream only on real page
-    // unload — hiding the tab (switching windows) must NOT kill the stream.
-    const onPageHide = () => abortChat();
-    window.addEventListener('pagehide', onPageHide);
+    // Stream freezes get handled without killing the stream: the visibility
+    // hook + stall watchdog resync the answer from server-side persistence.
+    const onVisibility = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        loading && streaming &&
+        lastChunkAt && Date.now() - lastChunkAt > STALL_TIMEOUT_MS / 2
+      ) {
+        void recoverInterruptedTurn(activeAssistantId ?? -1);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeydown);
-      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onVisibility);
+      cancelReset();
+      stopStallWatchdog();
+      if (copiedTimer) { clearTimeout(copiedTimer); copiedTimer = null; }
       abortChat();
     };
-  });
-
-  $effect(() => {
-    persistSessionId($currentSessionId);
   });
 
   $effect(() => {
@@ -233,37 +347,146 @@
     textareaRef.style.height = 'auto';
     const maxHeight = parseFloat(getComputedStyle(textareaRef).maxHeight) || 135;
     textareaRef.style.height = Math.min(textareaRef.scrollHeight, maxHeight) + 'px';
-    inputButtonsMultiLine = textareaRef.scrollHeight > 46;
   }
 
   async function sendMessage() {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || truncating) return;
+
+    if (editingId != null) {
+      await submitEdit(text);
+      return;
+    }
 
     input = '';
     dropdownOpen = false;
     if (textareaRef) textareaRef.style.height = 'auto';
-    inputButtonsMultiLine = false;
 
     messages = [...messages, { role: 'user', content: text, id: idCounter++ }];
-    saveMessages();
     await scrollToBottom(true);
 
     await streamResponse(text);
   }
 
+  // ── Copy / edit / regenerate ──────────────────────────────
+  async function copyMessage(msg: Message) {
+    if (!msg.content) return;
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      copiedId = msg.id;
+      if (copiedTimer) clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => {
+        copiedId = null;
+        copiedTimer = null;
+      }, 2000);
+    } catch {}
+  }
+
+  function startEdit(msg: Message) {
+    if (loading || editingId != null || msg.fromFeed) return;
+    editingId = msg.id;
+    editingOriginal = msg.content;
+    input = msg.content;
+    textareaRef?.focus();
+    autoResize();
+    scrollToBottom(false);
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    editingOriginal = '';
+    input = '';
+    dropdownOpen = false;
+    if (textareaRef) textareaRef.style.height = 'auto';
+  }
+
+  async function submitEdit(text: string) {
+    const originalId = editingId;
+    const original = editingOriginal;
+    const sessionId = get(currentSessionId);
+
+    if (sessionId != null) {
+      truncating = true;
+      try {
+        const res = await apiFetch('/api/chat/truncate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, mode: 'edit', content: original }),
+        });
+        if (!res.ok) {
+          error = `Error ${res.status}`;
+          return;
+        }
+      } catch {
+        return;
+      } finally {
+        truncating = false;
+      }
+    }
+
+    cancelEdit();
+    const idx = messages.findIndex((m: Message) => m.id === originalId);
+    if (idx >= 0) messages = messages.slice(0, idx);
+    dropdownOpen = false;
+    if (textareaRef) textareaRef.style.height = 'auto';
+
+    messages = [...messages, { role: 'user', content: text, id: idCounter++ }];
+    await scrollToBottom(true);
+    await streamResponse(text);
+  }
+
+  async function regenerateMessage() {
+    if (loading || truncating || editingId != null) return;
+    let aiIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') { aiIdx = i; break; }
+    }
+    if (aiIdx < 0) return;
+    let userIdx = -1;
+    for (let i = aiIdx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') { userIdx = i; break; }
+    }
+    if (userIdx < 0) return;
+
+    const userMsg = messages[userIdx];
+    const sessionId = get(currentSessionId);
+    if (sessionId == null) return;
+
+    truncating = true;
+    try {
+      const res = await apiFetch('/api/chat/truncate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, mode: 'regenerate' }),
+      });
+      if (!res.ok) {
+        error = `Error ${res.status}`;
+        return;
+      }
+    } catch {
+      return;
+    } finally {
+      truncating = false;
+    }
+
+    messages = messages.slice(0, aiIdx);
+    await scrollToBottom(false);
+    await streamResponse(userMsg.content, undefined, true);
+  }
+
   function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && editingId != null) { e.preventDefault(); cancelEdit(); return; }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
   function newChat() {
     abortChat();
+    cancelEdit();
     messages = [];
     error = '';
     idCounter = 0;
     waitingPhase = null;
     currentSessionId.set(null);
-    try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
   }
 
   // ── Sessions manager ─────────────────────────────────────
@@ -320,6 +543,7 @@
   async function resumeSession(s: ChatSession) {
     closeSessions();
     abortChat();
+    cancelEdit();
     try {
       const res = await apiFetch(`/api/chat/sessions/${s.id}/messages`);
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -335,8 +559,6 @@
       messages = loaded;
       error = '';
       currentSessionId.set(s.id);
-      persistSessionId(s.id);
-      saveMessages();
       await scrollToBottom(false);
     } catch (e: any) {
       error = e?.message || String(e);
@@ -389,13 +611,14 @@
     dropdownOpen = !dropdownOpen;
   }
 
-  async function streamResponse(text: string, posts?: any[]) {
+  async function streamResponse(text: string, posts?: any[], regenerate = false) {
     loading = true;
     streaming = true;
     waitingPhase = null;
     error = '';
 
     const assistantId = idCounter++;
+    activeAssistantId = assistantId;
     messages = [...messages, { role: 'assistant', content: '', id: assistantId }];
 
     chatAbort = new AbortController();
@@ -421,6 +644,7 @@
           source_mode: preset.mode,
           scope: preset.scope,
           session_id: $currentSessionId,
+          regenerate,
           articles,
         }),
         signal: chatAbort.signal,
@@ -430,6 +654,8 @@
         const errText = await res.text().catch(() => '');
         throw new Error(errText || `Error ${res.status}`);
       }
+
+      startStallWatchdog(assistantId);
 
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
@@ -449,6 +675,7 @@
 
           const data = trimmed.slice(6);
           if (data === '[DONE]') continue;
+          noteChunk();
 
           let parsed: any;
           try { parsed = JSON.parse(data); } catch { continue; }
@@ -484,9 +711,19 @@
       }
     } catch (e: any) {
       if (e?.name !== 'AbortError') {
-        error = e.message || String(e);
+        // Network-level failure: don't blank the partial. Give the server a
+        // beat to persist on disconnect, then try to complete the turn from
+        // its session history before surfacing an error.
+        activeAssistantId = assistantId;
+        await new Promise(r => setTimeout(r, 1500));
+        await recoverInterruptedTurn(assistantId);
+        while (recovering) await new Promise(r => setTimeout(r, 200));
+        if (!messages.find((m: Message) => m.id === assistantId)?.content) {
+          error = e.message || String(e);
+        }
       }
     } finally {
+      stopStallWatchdog();
       loading = false;
       streaming = false;
       waitingPhase = null;
@@ -496,7 +733,6 @@
       if (lastMsg?.role === 'assistant' && !lastMsg.content.trim()) {
         messages = messages.filter((m: Message) => m.id !== assistantId);
       }
-      saveMessages();
     }
   }
 
@@ -607,12 +843,6 @@
   <header class="top-header">
     <div class="main-content top-header-inner">
       <div class="top-header-actions">
-        <button class="header-icon-btn" onclick={openSessions} title="{$t('motatab.sessionsTitle')}" aria-label="{$t('motatab.sessions')}">
-          <History size={20} />
-        </button>
-        <button class="header-icon-btn" onclick={() => { closeSessions(); newChat(); }} title="{$t('motatab.newChat')}" aria-label="{$t('motatab.newChat')}">
-          <Plus size={20} />
-        </button>
         <button class="settings-btn" onclick={() => goto('/settings')} aria-label="Settings">
           <Settings size={20} />
         </button>
@@ -717,6 +947,11 @@
 
  <!-- ── Scrollable messages ────────────────────────────────────────── -->
  <div class="scroll-wrap">
+  {#if !hasStarted}
+   <div class="empty-hero" transition:fade={{ duration: reducedMotion ? 0 : 180 }} aria-hidden="true">
+    <img src="/icons/berga_128.png" alt="" draggable="false" />
+   </div>
+  {/if}
   <main
    bind:this={scrollContainer}
    onscroll={handleScroll}
@@ -741,6 +976,28 @@
          </div>
         {:else}
          <div class="user-bubble">{msg.content}</div>
+        {/if}
+        {#if !loading && !truncating}
+         <div class="msg-actions">
+          <button
+            class="msg-action-btn"
+            onclick={() => copyMessage(msg)}
+            title={copiedId === msg.id ? $t('motatab.msgCopied') : $t('motatab.msgCopy')}
+            aria-label={copiedId === msg.id ? $t('motatab.msgCopied') : $t('motatab.msgCopy')}
+          >
+            {#if copiedId === msg.id}<Check size={13} />{:else}<Copy size={13} />{/if}
+          </button>
+          {#if !msg.fromFeed && editingId == null}
+           <button
+             class="msg-action-btn"
+             onclick={() => startEdit(msg)}
+             title={$t('motatab.msgEdit')}
+             aria-label={$t('motatab.msgEdit')}
+           >
+            <Pencil size={13} />
+           </button>
+          {/if}
+         </div>
         {/if}
        </div>
       {:else}
@@ -783,12 +1040,15 @@
             <div class="queries-row">
               <span class="queries-label">{msg.queries.length} {msg.queries.length === 1 ? $t('motatab.searchedLabel') : $t('motatab.searchedLabelPlural')}</span>
               {#each msg.queries as q}
-                <span class="query-chip" title={q}>{q}</span>
+                <span class="query-chip" title={q}><span class="query-chip-text">{q}</span></span>
               {/each}
             </div>
           {/if}
           {#if msg.content || !isLast}
             <div class="ai-prose">{@html isStreaming ? renderMarkdownWithCursor(msg.content) : renderMarkdown(msg.content)}</div>
+            {#if msg.interrupted}
+              <p class="stream-interrupted">{$t('motatab.streamInterrupted')}</p>
+            {/if}
           {/if}
         {/if}
 
@@ -823,9 +1083,32 @@
             {/if}
           </div>
         {/if}
-       </div>
-      {/if}
-     {/each}
+
+        {#if !isStreamingEmpty && !loading && !truncating}
+          <div class="ai-actions">
+            <button
+              class="msg-action-btn"
+              onclick={() => copyMessage(msg)}
+              title={copiedId === msg.id ? $t('motatab.msgCopied') : $t('motatab.msgCopy')}
+              aria-label={copiedId === msg.id ? $t('motatab.msgCopied') : $t('motatab.msgCopy')}
+            >
+              {#if copiedId === msg.id}<Check size={13} />{:else}<Copy size={13} />{/if}
+            </button>
+            {#if isLast && editingId == null}
+              <button
+                class="msg-action-btn"
+                onclick={regenerateMessage}
+                title={$t('motatab.msgRegenerate')}
+                aria-label={$t('motatab.msgRegenerate')}
+              >
+                <RotateCcw size={13} />
+              </button>
+            {/if}
+          </div>
+        {/if}
+        </div>
+       {/if}
+      {/each}
     </div>
 
     {#if error}
@@ -875,6 +1158,21 @@
       </div>
       {/if}
 
+      {#if editingId != null}
+      <div class="editing-banner">
+        <Pencil size={12} />
+        <span>{$t('motatab.editing')}</span>
+        <button
+          class="editing-cancel"
+          onclick={cancelEdit}
+          title={$t('motatab.cancelEdit')}
+          aria-label={$t('motatab.cancelEdit')}
+        >
+          <X size={13} />
+        </button>
+      </div>
+      {/if}
+
       <textarea
         bind:this={textareaRef}
         bind:value={input}
@@ -885,22 +1183,41 @@
         class="chat-textarea"
       ></textarea>
 
-      <div class="input-buttons" class:pin-bottom={inputButtonsMultiLine}>
-        <button
-          class="mode-trigger"
-          onclick={toggleDropdown}
-          aria-expanded={dropdownOpen}
-          aria-haspopup="listbox"
-          title="{$t('motatab.sourceMode')}"
-        >
-          <span class="mode-trigger-label">{currentSourceLabel}</span>
-          <ChevronUp size={14} />
-        </button>
+      <div class="composer-bottom">
+        <div class="composer-tools">
+          <button
+            class="composer-icon-btn"
+            onclick={openSessions}
+            title="{$t('motatab.sessionsTitle')}"
+            aria-label="{$t('motatab.sessions')}"
+          >
+            <History size={17} />
+          </button>
+          <button
+            class="composer-icon-btn"
+            onclick={() => { closeSessions(); newChat(); }}
+            title="{$t('motatab.newChat')}"
+            aria-label="{$t('motatab.newChat')}"
+          >
+            <Plus size={17} />
+          </button>
+
+          <button
+            class="mode-trigger"
+            onclick={toggleDropdown}
+            aria-expanded={dropdownOpen}
+            aria-haspopup="listbox"
+            title="{$t('motatab.sourceMode')}"
+          >
+            <span class="mode-trigger-label">{currentSourceLabel}</span>
+            <ChevronUp size={14} />
+          </button>
+        </div>
 
         <button
           class="send-btn {input.trim() && !loading ? 'ready' : 'idle'}"
           onclick={sendMessage}
-          disabled={loading || !input.trim()}
+          disabled={loading || truncating || !input.trim()}
           title="{$t('motatab.send')}"
         >
           <Send size={15} />
@@ -940,6 +1257,11 @@
    margin-right: auto;
   }
   :global([data-settings-icon="navbar"]) .settings-btn { display: none; }
+  /* Mirror HomeTab: with the settings button gone the header collapses —
+     keep the welcome title at the same height as the home greeting. */
+  :global([data-settings-icon="navbar"]) .welcome-section {
+   margin-top: 36px;
+  }
  }
 
  /* ── Top Header (persistent) ─────────────────────── */
@@ -984,17 +1306,27 @@
 
  /* ── Welcome Section (matches HomeTab) ─────────────── */
  .welcome-section {
-  padding-top: 4px;
+  padding-top: var(--welcome-space-top, 0rem);
   padding-bottom: 16px;
  }
  .welcome-title {
   font-family: var(--font-page-title);
   font-size: 2.25rem;
-  font-weight: 400;
+  font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--color-base-content);
   margin: 0;
   line-height: 1.1;
+ }
+ :global([data-welcome-style="regular"]) .welcome-title {
+  font-weight: 400;
+ }
+ :global([data-welcome-style="bold"]) .welcome-title {
+  font-weight: 800;
+ }
+ :global([data-welcome-style="italic"]) .welcome-title {
+  font-style: italic;
+  font-weight: 500;
  }
  .welcome-subtitle {
   font-size: 15px;
@@ -1006,6 +1338,23 @@
 
 .feed-wrap {
   border-top: 1px solid var(--color-base-300);
+ }
+
+ /* ── Empty-state hero (grayed logo, centered) ──────── */
+ .empty-hero {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+ }
+ .empty-hero img {
+  width: 84px;
+  height: 84px;
+  filter: grayscale(1);
+  opacity: 0.35;
+  user-select: none;
  }
 
  /* ── Scroll Wrap & Chat Scroll ────────────────────────── */
@@ -1054,7 +1403,8 @@
 
  .msg-user {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
  }
 
  /* ── Feed posts bubble ───────────────────────────────── */
@@ -1113,6 +1463,38 @@
   line-height: 1.55;
   word-break: break-word;
   border: 1px solid var(--color-base-300);
+ }
+
+ /* ── Message action rails (copy / edit / regenerate) ─── */
+ .msg-actions,
+ .ai-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-top: 5px;
+ }
+ .msg-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+  cursor: pointer;
+  transition:
+    color var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+    border-color var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+    background var(--ui-dur-1, 150ms) var(--ui-ease, ease);
+ }
+ .msg-action-btn:hover {
+  color: color-mix(in oklch, var(--color-base-content) 78%, transparent);
+  border-color: var(--ui-border-color, var(--color-base-300));
+  background: color-mix(in oklch, var(--color-base-content) 6%, transparent);
  }
 
  /* ── AI block ────────────────────────────────────────── */
@@ -1194,9 +1576,17 @@
   padding: 3px 10px;
   border-radius: 999px;
   background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
-  border: 1px solid color-mix(in oklch, var(--color-base-300) 70%, transparent);
+  border: 1px solid var(--btn-border-color, color-mix(in oklch, var(--color-base-300) 70%, transparent));
   font-size: 11.5px;
   color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+ }
+ /* The outer chip is a flex container, where text-overflow: ellipsis has no
+    effect and overflow: hidden clips the last glyph hard at the content
+    edge. Shrink the *inner* text instead — the ellipsis renders against the
+    intact right padding. */
+ .query-chip-text {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1317,7 +1707,7 @@
   gap: 8px;
   padding: 6px 8px;
   border-radius: var(--ui-radius-sm);
-  border: 1px solid color-mix(in oklch, var(--color-base-300) 70%, transparent);
+  border: 1px solid var(--btn-border-color, color-mix(in oklch, var(--color-base-300) 70%, transparent));
   background: color-mix(in oklch, var(--color-base-200) 45%, transparent);
   text-decoration: none;
   transition: background 130ms, border-color 130ms;
@@ -1377,6 +1767,12 @@
  @keyframes fadePulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 
  /* ── Error ──────────────────────────────────────────── */
+ .stream-interrupted {
+  font-size: 12px;
+  font-style: italic;
+  color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+  margin: 6px 0 0;
+ }
  .error-wrap {
   display: flex;
   justify-content: center;
@@ -1402,12 +1798,14 @@
   background: transparent;
   -webkit-appearance: none;
   appearance: none;
-  flex: 1;
+  width: 100%;
   min-width: 0;
   font-size: 15px;
   color: var(--color-base-content);
-  max-height: 135px;
-  padding: 9px 0;
+  /* 6 visible lines + vertical padding — the autoResize() JS reads this
+     computed value as its growth cap. */
+  max-height: calc(6 * 1.3em + 10px);
+  padding: 8px 8px 2px 0;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -1430,16 +1828,50 @@
   }
 }
 
-/* ── Input wrap ──────────────────────────────────────── */
-.input-wrap {
+/* ── Edit banner (editing a sent message) ────────────── */
+.editing-banner {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 46px;
-  background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
-  border: 1px solid var(--color-base-300);
+  padding: 6px 4px 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+.editing-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: auto;
+  border: 1px solid transparent;
   border-radius: var(--ui-radius-sm);
-  padding: 0 4px 0 16px;
+  background: transparent;
+  color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+  cursor: pointer;
+  transition:
+    color var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+    border-color var(--ui-dur-1, 150ms) var(--ui-ease, ease);
+}
+.editing-cancel:hover {
+  color: color-mix(in oklch, var(--color-base-content) 80%, transparent);
+  border-color: var(--ui-border-color, var(--color-base-300));
+}
+
+/* ── Input wrap ──────────────────────────────────────── */
+.input-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
+  border: 1px solid var(--btn-border-color, var(--color-base-300));
+  border-radius: var(--ui-radius-sm);
+  padding: 4px 6px 4px 14px;
   position: relative;
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
@@ -1449,15 +1881,38 @@
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 15%, transparent);
 }
 
-/* ── Input buttons (mode trigger + send) ────────────── */
-.input-buttons {
+/* ── Composer bottom row (tools left, send right) ───── */
+.composer-bottom {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 8px;
   flex-shrink: 0;
 }
-.input-buttons.pin-bottom {
-  align-self: flex-end;
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.composer-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+  transition: background 140ms, color 140ms;
+}
+.composer-icon-btn:hover {
+  background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+  color: var(--color-base-content);
 }
 
 /* ── Mode trigger (dropdown button) ─────────────────── */
@@ -1558,7 +2013,7 @@
   flex-shrink: 0;
   width: 36px;
   height: 36px;
-  margin: 5px;
+  margin: 2px 0;
   border-radius: var(--ui-radius-sm);
   border: none;
   display: flex;
@@ -1592,16 +2047,16 @@
     padding-bottom: calc(12px + 64px + env(safe-area-inset-bottom, 0px));
     transition: padding-bottom 320ms cubic-bezier(0.4, 0, 0.2, 1);
   }
-  /* Smart navbar hidden (Mota focus mode): the input reclaims the space.
-     Padding stays above the 48px reveal zone so it never blocks the meta row */
+  /* Smart navbar hidden (Mota focus mode): the input hugs the reveal
+     zone's lower edge (48px) so it reads as docked to the bottom. */
   .footer-inner.nav-free {
-    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
   }
   :global([data-nav-style="deck"]) .footer-inner {
     padding-bottom: calc(12px + var(--deck-height, 16vw) + 20px + env(safe-area-inset-bottom, 0px));
   }
   :global([data-nav-style="deck"]) .footer-inner.nav-free {
-    padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -1779,7 +2234,7 @@
    font-size: 13.5px;
    color: var(--color-base-content);
    background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
-   border: 1px solid var(--color-base-300);
+   border: 1px solid var(--btn-border-color, var(--color-base-300));
    border-radius: var(--ui-radius-sm);
    padding: 8px 12px;
    outline: none;
@@ -1836,7 +2291,7 @@
   bottom: 24px; right: 24px;
   z-index: 10;
   width: 36px; height: 36px; border-radius: 50%;
-  border: 1px solid color-mix(in oklch, var(--color-base-300) 80%, transparent);
+  border: 1px solid var(--btn-border-color, color-mix(in oklch, var(--color-base-300) 80%, transparent));
   background: var(--color-base-100);
   box-shadow: 0 2px 12px color-mix(in oklch, var(--color-base-content) 12%, transparent);
   display: flex; align-items: center; justify-content: center; cursor: pointer;

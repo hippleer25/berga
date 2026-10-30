@@ -11,6 +11,7 @@ import { onMount } from 'svelte';
    selectedPosts,
    pendingMotaPosts,
    activeTabIdx,
+   navVisible,
  } from '$lib/stores/swipe';
  import { subscriptionChanged } from '$lib/stores/subscription';
  import { onViewed, flushPending, destroyViewTracker } from '$lib/stores/viewTracker';
@@ -85,6 +86,8 @@ let tagBtnEl = $state<HTMLButtonElement | null>(null);
 // Bulk tag
 let bulkTagPickerOpen = $state<boolean>(false);
 let bulkTagLoading = $state<boolean>(false);
+let bulkDropStyle = $state<string>('');
+let bulkTagBtnEl = $state<HTMLButtonElement | null>(null);
 
 // Pull-to-refresh
 let pageRootEl: HTMLElement | null = $state(null);
@@ -94,11 +97,13 @@ let pullStartY = 0;
 let scrollContainer: HTMLElement | null = null;
 let ptrWheelAccum = 0;
 let ptrWheelTimer: ReturnType<typeof setTimeout> | null = null;
+let ptrWheelLastTs = 0;
 let ptrSource: 'touch' | 'wheel' | null = null;
-const PULL_THRESHOLD = 60;
-const PULL_RESISTANCE = 0.4;
+const PULL_THRESHOLD = 90;
+const PULL_RESISTANCE = 0.25;
+const PTR_WHEEL_RESISTANCE = 0.12;
 const MAX_EXCLUDE_IDS = 80;
-const PTR_WHEEL_IDLE_MS = 160;
+const PTR_WHEEL_IDLE_MS = 220;
 
     // Derived lists
     let folders = $derived.by(() => {
@@ -529,16 +534,24 @@ $effect(() => {
 		}
 	}
 
-	function getDropdownStyle(btnEl: HTMLButtonElement): string {
+	/** Anchor the popup below (or above) the trigger chip and clamp its
+	    height to the real viewport space so it is never cut off. The
+	    inline `max-height` returned here is the single source of truth
+	    for popup height at every breakpoint (CSS only widens on desktop). */
+	function getDropdownStyle(btnEl: HTMLButtonElement, tall = false): string {
         const r          = btnEl.getBoundingClientRect();
         const DROPDOWN_W = 196;
         const PADDING    = 8;
-        const top        = r.bottom + 6;
+        const GAP        = 6;
+        const desktop    = window.matchMedia('(min-width: 768px)').matches;
+        const target     = desktop ? (tall ? 520 : 420) : (tall ? 320 : 280);
+        const top        = r.bottom + GAP;
+        const maxH       = Math.max(Math.floor(Math.min(target, window.innerHeight - top - PADDING)), 160);
         if (r.right + PADDING > window.innerWidth) {
-            return `top:${top}px; right:${Math.max(window.innerWidth - r.right, PADDING)}px;`;
+            return `top:${top}px; max-height:${maxH}px; right:${Math.max(window.innerWidth - r.right, PADDING)}px;`;
         }
         const left = Math.max(Math.min(r.left, window.innerWidth - DROPDOWN_W - PADDING), PADDING);
-        return `top:${top}px; left:${left}px;`;
+        return `top:${top}px; max-height:${maxH}px; left:${left}px;`;
     }
 
 function toggleFolderPicker() {
@@ -554,7 +567,7 @@ function toggleFeedPicker() {
         showFolderPicker = false;
         showTagPicker = false;
         bulkTagPickerOpen = false;
-        if (showFeedPicker && feedBtnEl) feedDropStyle = getDropdownStyle(feedBtnEl);
+        if (showFeedPicker && feedBtnEl) feedDropStyle = getDropdownStyle(feedBtnEl, true);
 }
 
 function toggleTagPicker() {
@@ -585,11 +598,78 @@ function clearSelection() {
         bulkTagPickerOpen = false;
 }
 
-function toggleBulkTagPicker() {
+// ── Floating selection bar ↔ bottom nav (same contract as Mota input↔deck) ─
+// During selection the bottom nav hides; if the user actively summons it
+// (reveal zone / scroll-up), the bar lifts above the deck instead.
+const isMobileView = () => window.matchMedia('(max-width: 767.98px)').matches;
+let selectionHidNav = false;
+$effect(() => {
+    if (!isMobileView()) return;
+    if ($selectionMode && !selectionHidNav) {
+        selectionHidNav = true;
+        navVisible.set(false);
+    } else if (!$selectionMode && selectionHidNav) {
+        selectionHidNav = false;
+        navVisible.set(true);
+    }
+});
+
+	function toggleBulkTagPicker() {
         bulkTagPickerOpen = !bulkTagPickerOpen;
         showFolderPicker = false;
         showFeedPicker = false;
         showTagPicker = false;
+        if (bulkTagPickerOpen && bulkTagBtnEl) bulkDropStyle = getDropdownStyleUp(bulkTagBtnEl);
+}
+
+/** Floating selection bar sits at the screen's bottom edge — open its
+    dropdown upward so it never fights the viewport. */
+function getDropdownStyleUp(btnEl: HTMLButtonElement, tall = false): string {
+        const r          = btnEl.getBoundingClientRect();
+        const DROPDOWN_W = 196;
+        const PADDING    = 8;
+        const GAP        = 6;
+        const desktop    = window.matchMedia('(min-width: 768px)').matches;
+        const target     = desktop ? (tall ? 520 : 420) : (tall ? 320 : 280);
+        const bottom     = window.innerHeight - r.top + GAP;
+        const maxH       = Math.max(Math.floor(Math.min(target, r.top - GAP - PADDING)), 160);
+        if (r.right + PADDING > window.innerWidth) {
+            return `bottom:${bottom}px; max-height:${maxH}px; right:${Math.max(window.innerWidth - r.right, PADDING)}px;`;
+        }
+        const left = Math.max(Math.min(r.left, window.innerWidth - DROPDOWN_W - PADDING), PADDING);
+        return `bottom:${bottom}px; max-height:${maxH}px; left:${left}px;`;
+}
+
+/** Svelte action: keeps wheel/touch gestures inside the picker popups.
+    Pops are `overflow-y:auto` scroll containers, but once the list is at
+    its edge (or the popup has nothing to scroll) the browser chains the
+    gesture into the feed behind — this blocks that. Non-passive because
+    Svelte 5 marks wheel/touchmove handlers passive by default. */
+function containPickerScroll(node: HTMLElement): { destroy: () => void } {
+	const scrollable = () => node.scrollHeight > node.clientHeight + 1;
+	const atEdge = (dy: number) => {
+		if (!scrollable()) return true;
+		const max = node.scrollHeight - node.clientHeight;
+		return dy > 0 ? node.scrollTop >= max - 1 : node.scrollTop <= 1;
+	};
+	const onWheel = (e: WheelEvent) => { if (atEdge(e.deltaY)) e.preventDefault(); };
+	let touchY = 0;
+	const onTouchStart = (e: TouchEvent) => { touchY = e.touches[0].clientY; };
+	const onTouchMove = (e: TouchEvent) => {
+		if (e.touches.length !== 1) return;
+		if (atEdge(touchY - e.touches[0].clientY)) e.preventDefault();
+		touchY = e.touches[0].clientY;
+	};
+	node.addEventListener('wheel', onWheel, { passive: false });
+	node.addEventListener('touchstart', onTouchStart, { passive: true });
+	node.addEventListener('touchmove', onTouchMove, { passive: false });
+	return {
+		destroy() {
+			node.removeEventListener('wheel', onWheel);
+			node.removeEventListener('touchstart', onTouchStart);
+			node.removeEventListener('touchmove', onTouchMove);
+		},
+	};
 }
 
 async function bulkAssignTag(tagId: number) {
@@ -672,9 +752,21 @@ if (res.ok) {
     }
 
     // ── Pull-to-refresh ─────────────────────────────────────
+    function ptrTargetIsPicker(e: Event): boolean {
+        const t = e.target;
+        return t instanceof Element && !!t.closest('.picker-dropdown, .picker-backdrop');
+    }
+
+    function ptrAtTop(): boolean {
+        if (scrollContainer) return scrollContainer.scrollTop <= 4;
+        if (typeof window !== 'undefined') return window.scrollY <= 4;
+        return true;
+    }
+
     function onPullStart(e: TouchEvent) {
+        if (ptrTargetIsPicker(e)) return;
         if (loading || refreshing) return;
-        if (scrollContainer && scrollContainer.scrollTop > 4) return;
+        if (!ptrAtTop()) return;
         pullStartY = e.touches[0].clientY;
         pulling = false;
         ptrSource = 'touch';
@@ -682,8 +774,9 @@ if (res.ok) {
     }
 
     function onPullMove(e: TouchEvent) {
+        if (ptrTargetIsPicker(e)) return;
         if (loading || refreshing) return;
-        if (scrollContainer && scrollContainer.scrollTop > 4) return;
+        if (!ptrAtTop()) return;
         const dy = e.touches[0].clientY - pullStartY;
         if (dy > 0) {
             pulling = true;
@@ -701,7 +794,8 @@ if (res.ok) {
         }
     }
 
-    function onPullEnd(_e: TouchEvent) {
+    function onPullEnd(e: TouchEvent) {
+        if (ptrTargetIsPicker(e)) return;
         if (!pulling) return;
         pulling = false;
         ptrSource = null;
@@ -720,6 +814,7 @@ if (res.ok) {
     // Desktop / trackpad overscroll-at-top: accumulate upward wheel deltas
     // into a pull, then commit (reload) or snap back when the wheel goes idle.
     function onWheelPull(e: WheelEvent) {
+        if (ptrTargetIsPicker(e)) return;
         if (loading || refreshing) return;
         if (ptrSource === 'touch') return;
         const atTop = scrollContainer
@@ -736,7 +831,10 @@ if (res.ok) {
         }
         ptrSource = 'wheel';
         pulling = true;
-        ptrWheelAccum += -e.deltaY * PULL_RESISTANCE;
+        const now = e.timeStamp;
+        if (ptrWheelLastTs && now - ptrWheelLastTs > PTR_WHEEL_IDLE_MS) ptrWheelAccum = 0;
+        ptrWheelLastTs = now;
+        ptrWheelAccum += -e.deltaY * PTR_WHEEL_RESISTANCE;
         pullOffset = Math.min(ptrWheelAccum, 120);
         if (pageRootEl) {
             pageRootEl.style.transition = 'none';
@@ -755,6 +853,7 @@ if (res.ok) {
                 pullOffset = 55;
                 ptrSource = null;
                 ptrWheelAccum = 0;
+                ptrWheelLastTs = 0;
                 reloadFeed();
             } else {
                 ptrSource = null;
@@ -773,6 +872,7 @@ if (res.ok) {
     function snapPtrBack() {
         pullOffset = 0;
         ptrWheelAccum = 0;
+        ptrWheelLastTs = 0;
         if (pageRootEl) {
             pageRootEl.style.transition = 'transform 0.3s ease';
             pageRootEl.style.transform = 'translateY(0)';
@@ -836,10 +936,12 @@ if (res.ok) {
             <h1 class="welcome-title"><TypedTitle text={$t(`hometab.${greetingKey}`)} /></h1>
         </div>
 
-        <!-- Selection bar -->
+        <!-- Selection bar (portaled to body: inside the tab panel its `position: fixed`
+             resolves against the swipe panel + scroll container and it scrolls away) -->
         {#if $selectionMode}
+            <Portal>
             <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-            <div class="selection-bar" transition:slide={{ duration: 220 }} onclick={() => { if (bulkTagPickerOpen) bulkTagPickerOpen = false; }}>
+            <div class="selection-bar" class:lifted={$navVisible} transition:slide={{ duration: 220 }} onclick={() => { if (bulkTagPickerOpen) bulkTagPickerOpen = false; }}>
                 <button class="sel-cancel-btn" onclick={clearSelection} aria-label="{$t('hometab.cancelSelection')}">
                     <X size={17} />
                 </button>
@@ -871,53 +973,28 @@ if (res.ok) {
         <Share2 size={14} />
         {/if}
         </button>
-        <div class="picker-wrap picker-wrap--sel">
         <button
         class="sel-action-btn"
-        onclick={toggleBulkTagPicker}
+        bind:this={bulkTagBtnEl}
+        class:sel-active={bulkTagPickerOpen}
+        onclick={(e) => { e.stopPropagation(); toggleBulkTagPicker(); }}
+        aria-expanded={bulkTagPickerOpen}
+        aria-haspopup="listbox"
         disabled={$selectedPosts.length === 0}
         title={$t('hometab.tagSelected')}
         >
         <Tag size={14} />
         <span>{$t('hometab.tagSelected')}</span>
         </button>
-        {#if bulkTagPickerOpen}
-        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-        <div class="bulk-tag-dropdown" onclick={(e) => e.stopPropagation()}>
-        {#if tagList.length === 0}
-        <p class="picker-empty">{$t('hometab.noTagsYet')}</p>
-        <button class="picker-item picker-item--create" onclick={() => { bulkTagPickerOpen = false; goto('/settings/tags'); }}>
-        <Tag size={13} strokeWidth={2} />
-        <span class="picker-item-text">{$t('hometab.createTag')}</span>
-        </button>
-        {:else}
-        {#each tagList as tg (tg.id)}
-        <button
-        class="picker-item"
-        onclick={() => bulkAssignTag(tg.id)}
-        disabled={bulkTagLoading}
-        >
-        <span class="picker-tag-dot" style="background: {tg.color || '#3b82f6'}"></span>
-        <span class="picker-item-text">{tg.name}</span>
-        </button>
-        {/each}
-        <button class="picker-item picker-item--create" onclick={() => { bulkTagPickerOpen = false; goto('/settings/tags'); }}>
-        <Tag size={13} strokeWidth={2} />
-        <span class="picker-item-text">{$t('hometab.createTag')}</span>
-        </button>
-        {/if}
-		</div>
-		{/if}
 	</div>
-	</div>
-	</div>
+</div>
+            </Portal>
 {/if}
 
 <!-- Filter bar -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="filter-bar" ontouchstart={(e) => { filterBarAxis = null; filterBarStartX = e.touches[0].clientX; filterBarStartY = e.touches[0].clientY; }} ontouchmove={(e) => { if (filterBarAxis === 'v') return; const el = e.currentTarget as HTMLElement; const dx = e.touches[0].clientX - filterBarStartX; const dy = e.touches[0].clientY - filterBarStartY; if (!filterBarAxis) { if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; filterBarAxis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'; if (filterBarAxis === 'v') return; } const canScrollLeft = el.scrollLeft > 0; const canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1; const swipingRight = dx > 0; const swipingLeft = dx < 0; 		if ((swipingRight && canScrollLeft) || (swipingLeft && canScrollRight)) {
 				e.stopPropagation();
-				e.preventDefault();
 			} }} ontouchend={() => { filterBarAxis = null; }}>
     <div class="mode-pill" role="group" aria-label="{$t('hometab.filterMode')}">
       <button
@@ -1073,16 +1150,17 @@ if (res.ok) {
     </div> <!-- Fim do main-content -->
 
 <!-- Dropdowns e Backdrops (portaled to body to escape overflow:clip) -->
-{#if showFolderPicker || showFeedPicker || showTagPicker}
+{#if showFolderPicker || showFeedPicker || showTagPicker || bulkTagPickerOpen}
   <Portal>
 	<div
 		class="picker-backdrop"
+		use:containPickerScroll
 		onclick={() => { showFolderPicker = false; showFeedPicker = false; showTagPicker = false; bulkTagPickerOpen = false; }}
 		aria-hidden="true"
 	></div>
 
     {#if showFolderPicker}
-      <div class="picker-dropdown picker-portal" style={folderDropStyle} role="listbox" aria-label="{$t('hometab.folder')}">
+      <div class="picker-dropdown picker-portal" style={folderDropStyle} use:containPickerScroll role="listbox" aria-label="{$t('hometab.folder')}">
         {#if folders.length === 0}
           <p class="picker-empty">{$t('hometab.noFoldersYet')}</p>
         {:else}
@@ -1107,6 +1185,7 @@ if (res.ok) {
       <div
         class="picker-dropdown picker-dropdown--tall picker-portal"
         style={feedDropStyle}
+        use:containPickerScroll
         role="listbox"
         aria-label="{$t('hometab.feed')}"
       >
@@ -1143,12 +1222,13 @@ if (res.ok) {
         <div
         class="picker-dropdown picker-portal"
         style={tagDropStyle}
+        use:containPickerScroll
         role="listbox"
         aria-label="{$t('hometab.tag')}"
         >
         {#if tagList.length === 0}
         <p class="picker-empty">{$t('hometab.noTagsYet')}</p>
-        <button class="picker-item picker-item--create" onclick={() => { showTagPicker = false; goto('/settings/tags'); }}>
+        <button class="picker-item picker-item--create" onclick={() => { showTagPicker = false; goto('/settings/intelligence/tags'); }}>
         <Tag size={13} strokeWidth={2} />
         <span class="picker-item-text">{$t('hometab.createTag')}</span>
         </button>
@@ -1166,7 +1246,35 @@ if (res.ok) {
         {#if selectedTagId === tg.id}<Check size={12} class="picker-check" />{/if}
         </button>
         {/each}
-        <button class="picker-item picker-item--create" onclick={() => { showTagPicker = false; goto('/settings/tags'); }}>
+        <button class="picker-item picker-item--create" onclick={() => { showTagPicker = false; goto('/settings/intelligence/tags'); }}>
+        <Tag size={13} strokeWidth={2} />
+        <span class="picker-item-text">{$t('hometab.createTag')}</span>
+        </button>
+        {/if}
+        </div>
+        {/if}
+
+        {#if bulkTagPickerOpen}
+        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+        <div class="picker-dropdown picker-portal" style={bulkDropStyle} use:containPickerScroll role="listbox" aria-label="{$t('hometab.tagSelected')}">
+        {#if tagList.length === 0}
+        <p class="picker-empty">{$t('hometab.noTagsYet')}</p>
+        <button class="picker-item picker-item--create" onclick={() => { bulkTagPickerOpen = false; goto('/settings/intelligence/tags'); }}>
+        <Tag size={13} strokeWidth={2} />
+        <span class="picker-item-text">{$t('hometab.createTag')}</span>
+        </button>
+        {:else}
+        {#each tagList as tg (tg.id)}
+        <button
+        class="picker-item"
+        onclick={() => bulkAssignTag(tg.id)}
+        disabled={bulkTagLoading}
+        >
+        <span class="picker-tag-dot" style="background: {tg.color || '#3b82f6'}"></span>
+        <span class="picker-item-text">{tg.name}</span>
+        </button>
+        {/each}
+        <button class="picker-item picker-item--create" onclick={() => { bulkTagPickerOpen = false; goto('/settings/intelligence/tags'); }}>
         <Tag size={13} strokeWidth={2} />
         <span class="picker-item-text">{$t('hometab.createTag')}</span>
         </button>
@@ -1197,10 +1305,10 @@ if (res.ok) {
     .ptr-text {
         font-size: 13px;
         font-weight: 500;
-        color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
     }
     .ptr-indicator :global(.ptr-icon) {
-        color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+        color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
     }
     .ptr-indicator :global(.ptr-icon-active) {
         color: var(--color-accent);
@@ -1226,6 +1334,11 @@ if (res.ok) {
             margin-right: auto;
         }
         :global([data-settings-icon="navbar"]) .settings-btn { display: none; }
+        /* With the settings button gone the header collapses, dropping the
+           welcome title ~36px higher than Mota's — rebalance it to match. */
+        :global([data-settings-icon="navbar"]) .welcome-section {
+            margin-top: 36px;
+        }
     }
 
     /* ── Top Header ──────────────────────────────────────────── */
@@ -1245,7 +1358,7 @@ if (res.ok) {
         border-radius: var(--ui-radius-full);
         padding: 8px;
         cursor: pointer;
-        color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
         transition: all 0.2s ease;
     }
     .settings-btn:hover {
@@ -1256,34 +1369,55 @@ if (res.ok) {
 
     /* ── Welcome Section ─────────────────────────────────────── */
     .welcome-section {
-        padding-top: var(--welcome-space-top, 4px);
+        padding-top: var(--welcome-space-top, 0rem);
         padding-bottom: 16px;
     }
 .welcome-title {
 font-family: var(--font-page-title);
         font-size: 2.25rem;
-        font-weight: 400;
+        font-weight: 600;
         letter-spacing: -0.02em;
         color: var(--color-base-content);
         margin: 0;
         line-height: 1.1;
     }
-    :global([data-welcome-bold="on"]) .welcome-title {
+    :global([data-welcome-style="regular"]) .welcome-title {
+        font-weight: 400;
+    }
+    :global([data-welcome-style="bold"]) .welcome-title {
         font-weight: 800;
+    }
+    :global([data-welcome-style="italic"]) .welcome-title {
+        font-style: italic;
+        font-weight: 500;
     }
 
     /* ── Selection bar ───────────────────────────────────────── */
+    /* ── Selection bar: floats at the bottom edge, Mota-input style ── */
     .selection-bar {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 8px 14px;
+        width: min(560px, calc(100% - 24px));
+        padding: 10px 14px;
         background: var(--color-base-100);
-        border: 1px solid var(--color-accent);
+        border: var(--ui-border-width, 1px) solid var(--ui-border-color);
         border-radius: var(--ui-radius-sm);
-        box-shadow: 0 4px 12px color-mix(in oklch, black 10%, transparent);
-        margin-bottom: 12px;
+        box-shadow: var(--ui-shadow-2, 0 4px 12px color-mix(in oklch, black 10%, transparent));
         z-index: 60;
+        pointer-events: auto; /* Portal host is pointer-events:none */
+        transition: bottom 260ms var(--ui-ease, ease);
+    }
+    /* Bottom nav summoned → the bar climbs above the deck (same dance as
+       Mota's chat input). On desktop there's no bottom deck to dodge. */
+    @media (max-width: 767.98px) {
+        .selection-bar.lifted {
+            bottom: calc(env(safe-area-inset-bottom, 8px) + 14px + var(--deck-height, 16vw) + 12px);
+        }
     }
 
     .sel-cancel-btn {
@@ -1295,7 +1429,7 @@ font-family: var(--font-page-title);
         border-radius: 50%;
         border: none;
         background: transparent;
-        color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
         cursor: pointer;
         flex-shrink: 0;
         transition: background 140ms, color 140ms;
@@ -1354,6 +1488,10 @@ font-family: var(--font-page-title);
         background: color-mix(in oklch, var(--color-success) 15%, transparent);
         color: var(--color-success);
     }
+    .sel-action-btn.sel-active {
+        box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-accent) 60%, transparent);
+        color: var(--color-accent);
+    }
 
     /* ── Filter bar ──────────────────────────────────────────── */
 .filter-bar {
@@ -1371,32 +1509,39 @@ font-family: var(--font-page-title);
 
     .mode-pill {
         display: flex;
-        background: var(--color-base-200);
-        border-radius: calc(var(--ui-radius-sm) + 3px); /* follows the controls radius */
-        padding: 3px;
-        gap: 2px;
+        border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
+        border-radius: var(--ui-radius-sm);
+        padding: 0;
+        gap: 0;
         flex-shrink: 0;
+        background: var(--btn-fill, transparent);
+        overflow: hidden; /* clips hover/active fill to the pill's own curve */
     }
     .mode-btn {
         display: flex;
         align-items: center;
         gap: 5px;
-        padding: 6px 14px;
-        border-radius: var(--ui-radius-sm); /* Borda alterada */
+        padding: 7px 14px;
+        border-radius: 0;
         border: none;
         background: transparent;
         font-size: 13px;
         font-weight: 500;
-        color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
         cursor: pointer;
-        transition: background 150ms ease, color 150ms ease, font-weight 0ms;
+        transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
         white-space: nowrap;
     }
+    .mode-btn:hover {
+        color: var(--color-base-content);
+    }
     .mode-btn.active {
-        background: var(--color-base-100);
+        /* Fills its parcel of the big pill edge-to-edge: no gap ring */
+        background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
         color: var(--color-base-content);
         font-weight: 700;
-        box-shadow: 0 1px 3px color-mix(in oklch, black 10%, transparent);
+        /* Relief stays inside, since the outer shadow would be clipped */
+        box-shadow: inset 0 1px 0 color-mix(in oklch, white 22%, transparent);
     }
 
     .picker-wrap { position: relative; flex-shrink: 0; }
@@ -1405,12 +1550,12 @@ font-family: var(--font-page-title);
         align-items: center;
         gap: 5px;
         padding: 6px 12px;
-        border-radius: var(--ui-radius-sm); /* Borda alterada */
-        border: 1px solid var(--color-base-300);
-        background: transparent;
+        border-radius: var(--ui-radius-sm);
+        border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
+        background: var(--btn-fill, transparent);
         font-size: 13px;
         font-weight: 500;
-        color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
         cursor: pointer;
         transition: background 130ms, color 130ms, border-color 130ms;
         white-space: nowrap;
@@ -1419,9 +1564,10 @@ font-family: var(--font-page-title);
     .filter-chip:hover {
         background: var(--color-base-200);
         color: var(--color-base-content);
+        border-color: var(--btn-border-strong, var(--ui-border-strong));
     }
     .filter-chip.chip-active {
-        background: color-mix(in oklch, var(--color-accent) 12%, transparent);
+        background: transparent;
         border-color: color-mix(in oklch, var(--color-accent) 60%, transparent);
         color: var(--color-accent);
         font-weight: 600;
@@ -1443,6 +1589,8 @@ font-family: var(--font-page-title);
     .chevron-wrap.rotated { transform: rotate(180deg); }
 
     /* ── Pickers ─────────────────────────────────────────────── */
+    /* Height is clamped inline by getDropdownStyle()/getDropdownStyleUp()
+       (viewport-aware). CSS only keeps the guard + width. */
     .picker-dropdown {
         z-index: 9999;
         background: var(--color-base-100);
@@ -1455,11 +1603,14 @@ font-family: var(--font-page-title);
         max-height: 280px;
         overflow-x: hidden;
         overflow-y: auto;
+        overscroll-behavior: contain;
         scrollbar-width: thin;
         animation: picker-pop 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
+    @media (min-width: 768px) {
+        .picker-dropdown { min-width: 220px; max-width: 300px; }
+    }
   .picker-portal { position: fixed; z-index: 9999; pointer-events: auto; }
-    .picker-dropdown--tall { max-height: 320px; }
 
     @keyframes picker-pop {
         from { opacity: 0; transform: translateY(-6px) scale(0.97); }
@@ -1469,7 +1620,7 @@ font-family: var(--font-page-title);
     .picker-empty {
         padding: 12px;
         font-size: 12px;
-        color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+        color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
         text-align: center;
     }
     .picker-item {
@@ -1494,29 +1645,10 @@ font-family: var(--font-page-title);
 :global(.picker-icon-fallback) { color: var(--color-accent); opacity: 0.6; }
 .picker-backdrop { position: fixed; inset: 0; z-index: 9998; pointer-events: auto; }
 
-.picker-wrap--sel { position: relative; }
-.bulk-tag-dropdown {
-        position: absolute;
-        top: calc(100% + 6px);
-        right: 0;
-        z-index: 9999;
-        background: var(--color-base-100);
-        border: 1px solid var(--color-base-300);
-        border-radius: var(--ui-radius-sm);
-        box-shadow: 0 8px 24px color-mix(in oklch, black 20%, transparent);
-        padding: 4px;
-        min-width: 190px;
-        max-width: 260px;
-        max-height: 280px;
-        overflow-x: hidden;
-        overflow-y: auto;
-        scrollbar-width: thin;
-        animation: picker-pop 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
     /* ── Feed ────────────────────────────────────────────────── */
     .feed-wrap {
-        border-top: 1px solid var(--color-base-300);
+        border-top: var(--ui-border-width, 1px) solid var(--ui-border-color);
+        padding-top: 6px;
         display: flex;
         flex-direction: column;
         gap: var(--feed-density-gap, 0px);
@@ -1562,7 +1694,7 @@ font-family: var(--font-page-title);
     /* ── States ──────────────────────────────────────────────── */
     .state-empty {
         text-align: center; padding: 48px 16px;
-        color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+        color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
         font-size: 15px;
     }
     .state-error {
@@ -1581,7 +1713,7 @@ font-family: var(--font-page-title);
     .end-label {
         text-align: center; padding: 28px 16px 40px;
         font-size: 12px; font-weight: 500;
-        color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+        color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
         letter-spacing: 0.03em;
     }
 </style>

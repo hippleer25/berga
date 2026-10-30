@@ -6,7 +6,7 @@ import { t, locale } from 'svelte-i18n';
  import { get } from 'svelte/store';
  import { apiFetch } from '$lib/api';
 	import { clearFeedCache } from '$lib/stores/feedCache';
-	import { showCoverImages, coverImagePosition, postcardDescLines, showRecommendationScore } from '$lib/stores/preferences';
+	import { showCoverImages, coverImagePosition, embeddedCovers, embeddedCoverPosition, postcardDescLines, showRecommendationScore } from '$lib/stores/preferences';
 	import type { TagRef } from '$lib/utils/syncFeedTags';
 	import { sanitizeInlineHtml } from '$lib/utils/sanitize';
 
@@ -23,6 +23,7 @@ let {
     onTagClick,
     onTagChange,
     userTags = [] as UserTag[],
+    coverVariant = 'feed',
 } = $props<{
     item: {
         item_id: string;
@@ -59,6 +60,8 @@ let {
         tag?: TagEntry;
     }) => void;
     userTags?: UserTag[];
+    /** 'embedded' cards (inside an expanded event cluster) use their own cover knobs. */
+    coverVariant?: 'feed' | 'embedded';
 }>();
 
 // svelte-ignore state_referenced_locally
@@ -357,8 +360,15 @@ onMount(() => {
     }
 
 	// ── Cover image helpers ─────────────────────────────────────────────────
-	let showCover = $derived($showCoverImages && !!item.image_url);
-	let coverPos = $derived($coverImagePosition);
+	let showCover = $derived.by(() => {
+		if (!item.image_url) return false;
+		if (coverVariant === 'embedded') {
+			const mode = $embeddedCovers;
+			return mode === 'on' || (mode === 'auto' && $showCoverImages);
+		}
+		return $showCoverImages;
+	});
+	let coverPos = $derived(coverVariant === 'embedded' ? $embeddedCoverPosition : $coverImagePosition);
 
 	function onCoverError(event: Event) {
 		(event.currentTarget as HTMLElement).style.display = 'none';
@@ -383,27 +393,25 @@ onMount(() => {
     oncontextmenu={onContextMenu}
     onclick={handleCardClick}
 >
-    <!-- ── Seleção ────────────────────────────────────────────────────────── -->
-    <div class="sel-col" aria-hidden={!selectionMode}>
+    <!-- ── Seleção: círculo ABSOLUTO sobre o ícone do feed ─────────────── -->
+    <div class="post-content">
+
+    <!-- Publisher row -->
+    <header class="publisher-row">
+      {#if selectionMode}
         <button
             class="sel-circle"
             onclick={handleCheckboxClick}
             aria-label={selected ? $t('postcard.deselect') : $t('postcard.select')}
             aria-checked={selected}
             role="checkbox"
-            tabindex={selectionMode ? 0 : -1}
+            tabindex={0}
         >
             {#if selected}
                 <Check size={11} strokeWidth={3.5} />
             {/if}
         </button>
-    </div>
-
-    <!-- ── Conteúdo ───────────────────────────────────────────────────────── -->
-    <div class="post-content">
-
-    <!-- Publisher row -->
-    <header class="publisher-row">
+      {/if}
       <a
         href={item.feed_sha256 ? `/f/${item.feed_sha256}` : undefined}
         class="feed-link"
@@ -483,13 +491,6 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
           <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
         </button>
 
-        {#if $showRecommendationScore}
-          <span
-            class="score-pill score-pill-{(item.relevance_score ?? 0) >= 0.6 ? 'high' : (item.relevance_score ?? 0) >= 0.3 ? 'mid' : 'low'}"
-            title="Recommendation score"
-          >{fmtScore(item.relevance_score)}</span>
-        {/if}
-
 <button
     onclick={handleDislike}
     class="action-btn"
@@ -499,6 +500,13 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
     >
     <ThumbsDown size={15} fill={disliked ? 'currentColor' : 'none'} />
     </button>
+
+        {#if $showRecommendationScore}
+          <span
+            class="score-pill score-pill-{(item.relevance_score ?? 0) >= 0.6 ? 'high' : (item.relevance_score ?? 0) >= 0.3 ? 'mid' : 'low'}"
+            title="Recommendation score"
+          >{fmtScore(item.relevance_score)}</span>
+        {/if}
 
 	<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 	<div class="tag-assign-wrap" onclick={(e) => e.stopPropagation()}>
@@ -585,61 +593,55 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
         align-items: flex-start;
         padding: var(--postcard-padding, 12px 6px 4px);
         border-bottom: 1px solid var(--color-base-300); /* Cleaner than color-mix */
-        transition: background 120ms ease, padding 180ms ease;
+        transition: background 120ms ease, padding 180ms ease, border-radius 120ms ease;
         -webkit-tap-highlight-color: transparent;
         user-select: none;
         cursor: default;
     }
 .post-card:hover {
   background: var(--color-base-200);
+  border-radius: var(--ui-hover-radius, var(--ui-radius-lg));
 }
 .post-card:active:not(.sel-mode) {
   background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+  border-radius: var(--ui-hover-radius, var(--ui-radius-lg));
 }
     .post-card.is-selected {
         background: color-mix(in oklch, var(--color-accent) 8%, transparent);
-        border-left: 3px solid var(--color-accent); /* Yellow highlight border for selection */
-        padding-left: 17px; /* Compensates the 3px border to prevent layout shift */
+        outline: 2px solid var(--color-accent);
+        outline-offset: -2px; /* ring hugs the row from the inside */
+        border-radius: var(--ui-hover-radius, var(--ui-radius-lg));
     }
     .post-card.sel-mode {
         cursor: pointer;
     }
 
-    /* ── Selection column ──────────────────────────────────── */
-    .sel-col {
-        flex-shrink: 0;
-        width: 0;
-        overflow: hidden;
-        display: flex;
-        align-items: flex-start;
-        padding-top: 2px;
-        transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1),
-                    margin-right 220ms cubic-bezier(0.22, 1, 0.36, 1);
-    }
-    .sel-mode .sel-col {
-        width: 22px;
-        margin-right: 10px;
-    }
-
+    /* ── Selection overlay: circle sits on top of the feed icon ─── */
     .sel-circle {
+        position: absolute;
+        top: -4px;
+        left: -4px;
+        z-index: 5;
         flex-shrink: 0;
         width: 22px;
         height: 22px;
         border-radius: 50%;
-        border: 2px solid color-mix(in oklch, var(--color-base-content) 28%, transparent);
-        background: transparent;
+        border: 2px solid var(--ui-border-strong, color-mix(in oklch, var(--color-base-content) 38%, transparent));
+        background: var(--color-base-100);
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         color: transparent;
-        transition: background 150ms, border-color 150ms, color 150ms;
+        transition: background 150ms, border-color 150ms, color 150ms, box-shadow 150ms;
         padding: 0;
+        box-shadow: 0 1px 4px color-mix(in oklch, black 18%, transparent);
     }
     .is-selected .sel-circle {
         background: var(--color-accent);
         border-color: var(--color-accent);
         color: var(--color-base-100); /* Dark icon on yellow button */
+        box-shadow: 0 1px 6px color-mix(in oklch, var(--color-accent) 40%, transparent);
     }
 
     /* ── Body ────────────────────────────────────────────────── */
@@ -650,7 +652,8 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
 
 	/* ── Cover images ────────────────────────────────────────── */
 	.cover-image {
-		border-radius: var(--ui-radius-sm);
+		border-radius: var(--cover-image-radius, var(--ui-radius-sm));
+		object-position: var(--cover-image-align, center) center;
 		flex-shrink: 0;
 	}
 	:global([data-cover-fit='fill']) .cover-image {
@@ -670,9 +673,25 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
 		max-height: var(--cover-max-h, 160px);
 		margin-bottom: 8px;
 	}
+	/* Proportions mode: let the box hug the photo (instead of letterboxing
+	   inside the dedicated area) so the corner radius clips the photo itself. */
+	:global([data-cover-fit='proportions']) .cover-image--right {
+		width: auto;
+		height: auto;
+		max-width: min(var(--cover-max-w, 110px), 45vw);
+		max-height: var(--cover-max-h, 80px);
+	}
+	:global([data-cover-fit='proportions']) .cover-image--bottom {
+		width: auto;
+		height: auto;
+		max-width: 100%;
+		max-height: var(--cover-max-h, 160px);
+		margin-inline: var(--cover-image-align-margin, auto);
+	}
 
     /* ── Publisher row ───────────────────────────────────────── */
     .publisher-row {
+        position: relative;
         display: flex;
         align-items: center;
         gap: 5px;
@@ -711,13 +730,13 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
 
     .separator {
         font-size: 11px;
-        color: color-mix(in oklch, var(--color-base-content) 25%, transparent);
+        color: var(--ui-text-faint, color-mix(in oklch, var(--color-base-content) 48%, transparent));
         flex-shrink: 0;
     }
 
     .author {
         font-size: 11.5px;
-        color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+        color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -728,7 +747,7 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
     .pub-date {
         margin-left: auto;
         font-size: 11px;
-        color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+        color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
         white-space: nowrap;
         flex-shrink: 0;
         padding-left: 8px;
@@ -765,7 +784,7 @@ font-family: var(--font-post-title);
 		font-weight: 400; /* Regular weight is better for long body text */
 		line-height: 1.5;
 		letter-spacing: var(--article-letter-spacing, normal);
-		color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+		color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
 		margin-bottom: 8px;
 		display: -webkit-box;
 		-webkit-line-clamp: var(--desc-lines, 2);
@@ -823,7 +842,7 @@ font-family: var(--font-post-title);
         border-radius: var(--ui-radius-xs); /* Less rounded, more robust */
         border: none;
         background: transparent;
-        color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
         cursor: pointer;
         transition: background 120ms, color 120ms;
     }
@@ -848,7 +867,7 @@ font-family: var(--font-post-title);
         user-select: none;
         cursor: default;
         background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
-        color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+        color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
     }
     .score-pill-mid {
         color: var(--color-accent);
@@ -860,7 +879,7 @@ font-family: var(--font-post-title);
     }
     .score-pill-low { opacity: 0.7; }
 
-/* Like/Dislike colors aligned with DaisyUI without being too loud */
+/* Like/Dislike colors aligned with the theme without being too loud */
 .action-active {
 	color: var(--color-error) !important;
 	animation: vote-pop 200ms ease;

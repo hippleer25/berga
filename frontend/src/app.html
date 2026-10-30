@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#000000" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Berga" />
@@ -16,6 +17,25 @@
     <script>
       (function() {
         try {
+          // One-time migration: legacy px-based pref knobs → rem (universal units).
+          if (localStorage.getItem('ui-pref-units') !== 'rem') {
+            var PX_LEGACY_KEYS = [
+              'article-font-size', 'article-max-width', 'article-title-max-width',
+              'cover-image-max-w', 'cover-image-max-h',
+              'cover-image-radius', 'search-cover-image-radius',
+              'ui-welcome-space', 'ui-sidebar-margin', 'ui-sidebar-size'
+            ];
+            for (var i = 0; i < PX_LEGACY_KEYS.length; i++) {
+              var raw = localStorage.getItem(PX_LEGACY_KEYS[i]);
+              if (raw !== null && raw !== '' && isFinite(parseFloat(raw))) {
+                localStorage.setItem(PX_LEGACY_KEYS[i], String(Math.round((parseFloat(raw) / 16) * 10000) / 10000));
+              }
+            }
+            localStorage.setItem('ui-pref-units', 'rem');
+          }
+        } catch (e) {}
+
+        try {
           // Theme saved by user in settings
           const savedTheme = localStorage.getItem('preferred-theme');
 
@@ -24,11 +44,22 @@
           } else {
             // Fallback: detects system preference
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            document.documentElement.setAttribute('data-theme', prefersDark ? 'berga-black' : 'berga');
+            document.documentElement.setAttribute('data-theme', prefersDark ? 'berga' : 'berga-black');
           }
         } catch (e) {
           // On error (e.g.: localStorage blocked), uses default light theme
           document.documentElement.setAttribute('data-theme', 'berga');
+        }
+
+        try {
+          // Master design language: elegant (default) or modern
+          var designMode = localStorage.getItem('ui-design-mode');
+          document.documentElement.setAttribute(
+            'data-ui-mode',
+            designMode === 'modern' ? 'modern' : 'elegant'
+          );
+        } catch (e) {
+          document.documentElement.setAttribute('data-ui-mode', 'elegant');
         }
 
         try {
@@ -80,9 +111,86 @@
         }
 
         try {
+          // Desktop nav model: left sidebar (default) or floating dock
+          document.documentElement.setAttribute(
+            'data-desktop-nav',
+            localStorage.getItem('ui-desktop-nav') === 'dock' ? 'dock' : 'sidebar'
+          );
+        } catch (e) {
+          document.documentElement.setAttribute('data-desktop-nav', 'sidebar');
+        }
+
+        try {
+          // Typography roles — before first paint, mirrors applyFont() in
+          // appearance.ts. Only simple family names pass the sanitizer; the
+          // layout init re-validates them against FONT_LIST afterwards.
+          var FONT_ROLES = {
+            'font-page-title': '--font-page-title',
+            'font-post-title': '--font-post-title',
+            'font-article-body': '--font-article-body',
+            'font-ui': '--font-ui'
+          };
+          var FALLBACKS = {
+            '--font-page-title': 'serif',
+            '--font-post-title': 'serif',
+            '--font-article-body': 'serif',
+            '--font-ui': 'sans-serif'
+          };
+          for (var roleKey in FONT_ROLES) {
+            var fontName = localStorage.getItem(roleKey);
+            if (!fontName) continue;
+            if (!/^[A-Za-z0-9 _-]{1,40}$/.test(fontName)) continue;
+            var cssVar = FONT_ROLES[roleKey];
+            document.documentElement.style.setProperty(
+              cssVar,
+              "'" + fontName + "', " + (FALLBACKS[cssVar] || 'sans-serif')
+            );
+          }
+        } catch (e) {}
+
+        try {
+          // Dock sizing vars (relative units), before first paint
+          var dockW = parseFloat(localStorage.getItem('ui-dock-width-vmin'));
+          if (isFinite(dockW) && dockW >= 4 && dockW <= 18) {
+            document.documentElement.style.setProperty('--dock-w', 'clamp(40px, ' + dockW + 'vmin, 128px)');
+          }
+          var dockR = parseFloat(localStorage.getItem('ui-dock-radius-pct'));
+          if (isFinite(dockR) && dockR >= 0 && dockR <= 50) {
+            document.documentElement.style.setProperty('--dock-radius', 'calc(var(--dock-w) * ' + dockR + ' / 100)');
+          }
+          var dockPad = parseFloat(localStorage.getItem('ui-dock-pad-pct'));
+          if (isFinite(dockPad) && dockPad >= 2 && dockPad <= 25) {
+            document.documentElement.style.setProperty('--dock-pad-pct', dockPad);
+          }
+          var dockInset = parseFloat(localStorage.getItem('ui-dock-inset-vmin'));
+          if (isFinite(dockInset) && dockInset >= 0.5 && dockInset <= 20) {
+            document.documentElement.style.setProperty('--dock-inset', 'clamp(4px, ' + dockInset + 'vmin, 160px)');
+          }
+          var dockH = parseFloat(localStorage.getItem('ui-dock-height-pct'));
+          if (isFinite(dockH) && dockH > 0 && dockH <= 90) {
+            document.documentElement.style.setProperty('--dock-h', dockH + 'vh');
+          }
+          var dockSpace = parseFloat(localStorage.getItem('ui-dock-spacing-pct'));
+          if (isFinite(dockSpace) && dockSpace >= 0 && dockSpace <= 200) {
+            document.documentElement.style.setProperty('--dock-space', dockSpace / 100);
+          }
+          var dockShadow = parseFloat(localStorage.getItem('ui-dock-shadow'));
+          if (isFinite(dockShadow) && dockShadow >= 0 && dockShadow <= 100) {
+            document.documentElement.style.setProperty('--dock-shadow-strength', dockShadow / 100);
+          }
+        } catch (e) {}
+
+        try {
+          document.documentElement.setAttribute(
+            'data-btn-borders',
+            localStorage.getItem('ui-btn-borders') === 'false' ? 'off' : 'on'
+          );
+        } catch (e) {}
+
+        try {
           var sidebarMargin = parseFloat(localStorage.getItem('ui-sidebar-margin'));
-          if (isFinite(sidebarMargin) && sidebarMargin >= 0 && sidebarMargin <= 40) {
-            document.documentElement.style.setProperty('--sidebar-item-margin', sidebarMargin + 'px');
+          if (isFinite(sidebarMargin) && sidebarMargin >= 0 && sidebarMargin <= 2.5) {
+            document.documentElement.style.setProperty('--sidebar-item-margin', sidebarMargin + 'rem');
           }
         } catch (e) {
           document.documentElement.style.removeProperty('--sidebar-item-margin');
@@ -90,12 +198,65 @@
 
         try {
           var sidebarSize = parseFloat(localStorage.getItem('ui-sidebar-size'));
-          if (isFinite(sidebarSize) && sidebarSize >= 4 && sidebarSize <= 20) {
-            document.documentElement.style.setProperty('--sidebar-item-pad-y', sidebarSize + 'px');
+          if (isFinite(sidebarSize) && sidebarSize >= 0.25 && sidebarSize <= 1.25) {
+            document.documentElement.style.setProperty('--sidebar-item-pad-y', sidebarSize + 'rem');
           }
         } catch (e) {
           document.documentElement.style.removeProperty('--sidebar-item-pad-y');
         }
+
+        try {
+          var welcomeSpace = parseFloat(localStorage.getItem('ui-welcome-space'));
+          if (isFinite(welcomeSpace) && welcomeSpace >= 0 && welcomeSpace <= 4) {
+            document.documentElement.style.setProperty('--welcome-space-top', welcomeSpace + 'rem');
+          }
+        } catch (e) {}
+
+        try {
+          // Mobile bottom nav style: full bar (default) or floating deck
+          document.documentElement.setAttribute(
+            'data-nav-style',
+            localStorage.getItem('ui-nav-style') === 'deck' ? 'deck' : 'bar'
+          );
+        } catch (e) {
+          document.documentElement.setAttribute('data-nav-style', 'bar');
+        }
+
+        try {
+          // Mobile bottom navbar sizing knobs, before first paint
+          var mnavIcon = parseFloat(localStorage.getItem('ui-mnav-icon-size'));
+          if (isFinite(mnavIcon) && mnavIcon >= 16 && mnavIcon <= 28) {
+            document.documentElement.style.setProperty('--mnav-icon-size', mnavIcon + 'px');
+          }
+          var mnavBox = parseFloat(localStorage.getItem('ui-mnav-icon-box'));
+          if (isFinite(mnavBox) && mnavBox >= 22 && mnavBox <= 40) {
+            document.documentElement.style.setProperty('--mnav-iconbox-h', mnavBox + 'px');
+          }
+          var mnavLabel = parseFloat(localStorage.getItem('ui-mnav-label-size'));
+          if (isFinite(mnavLabel) && mnavLabel >= 9 && mnavLabel <= 14) {
+            document.documentElement.style.setProperty('--mnav-label-size', mnavLabel + 'px');
+          }
+          var mnavGap = parseFloat(localStorage.getItem('ui-mnav-label-gap'));
+          if (isFinite(mnavGap) && mnavGap >= 0 && mnavGap <= 8) {
+            document.documentElement.style.setProperty('--mnav-label-gap', mnavGap + 'px');
+          }
+          var mnavHeight = parseFloat(localStorage.getItem('ui-mnav-height'));
+          if (isFinite(mnavHeight) && mnavHeight >= 52 && mnavHeight <= 88) {
+            document.documentElement.style.setProperty('--mnav-height', mnavHeight + 'px');
+          }
+          document.documentElement.setAttribute(
+            'data-mnav-labels',
+            localStorage.getItem('ui-mnav-labels') === 'false' ? 'off' : 'on'
+          );
+          var mnavRadiusMode = localStorage.getItem('ui-mnav-radius');
+          if (mnavRadiusMode === 'round') {
+            document.documentElement.style.setProperty('--mnav-item-radius', 'calc(var(--mnav-iconbox-h, 28px) / 2)');
+          } else if (mnavRadiusMode === 'square') {
+            document.documentElement.style.setProperty('--mnav-item-radius', '0px');
+          } else {
+            document.documentElement.style.removeProperty('--mnav-item-radius');
+          }
+        } catch (e) {}
       })();
     </script>
 

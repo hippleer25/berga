@@ -162,7 +162,8 @@ def parse_and_save_feed(feed_url: str, raw_content: bytes | None = None, fetch_m
             link_feed = feed_info.get("link", feed_url)
             description_feed = feed_info.get("description", "")
             lang_feed = feed_info.get("language", "")
-            icon_feed = f"https://www.google.com/s2/favicons?domain={link_feed}&sz=128"
+            _hostname_feed = urlparse(link_feed or feed_url or "").netloc.replace("www.", "") or urlparse(feed_url).netloc.replace("www.", "")
+            icon_feed = f"https://icons.duckduckgo.com/ip3/{_hostname_feed}.ico" if _hostname_feed else ""
 
             entries_count = len(parsed.get("entries", []))
 

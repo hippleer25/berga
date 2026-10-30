@@ -61,7 +61,6 @@
 		}
 		if (gAxis !== 'h') return;
 
-		e.preventDefault();
 		const dt = e.timeStamp - gLastT;
 		if (dt > 0) {
 			gVel = gVel * 0.3 + ((touch.clientX - gLastX) / dt) * 0.7;
@@ -137,6 +136,8 @@
 	.screen-shell {
 		background: var(--color-base-100);
 		min-height: 100dvh;
+		/* Horizontal drag (swipe-to-close) is ours; vertical scroll stays native */
+		touch-action: pan-y;
 	}
 
 	@media (max-width: 767.98px) {

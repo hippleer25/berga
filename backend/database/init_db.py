@@ -9,6 +9,7 @@ import re
 import time
 import logging
 import threading
+from urllib.parse import urlparse
 
 import mysql.connector
 from mysql.connector import pooling, Error as MySQLError
@@ -228,6 +229,32 @@ def _migrate_feeds(cursor) -> None:
     _add_column_if_missing(cursor, "feeds", "last_success_at", "DATETIME DEFAULT NULL")
     _add_column_if_missing(cursor, "feeds", "last_http_status", "SMALLINT DEFAULT NULL")
     _add_column_if_missing(cursor, "feeds", "last_fetch_ms", "INT DEFAULT NULL")
+    _migrate_feeds_icons(cursor)
+
+
+def _migrate_feeds_icons(cursor) -> None:
+    """Google s2/favicons 404s for sites without a favicon; DDG always serves one."""
+    cursor.execute(
+        "SELECT feed_sha256, feed_link, feed_url FROM feeds "
+        "WHERE feed_icon LIKE '%%google.com/s2/favicons%%'"
+    )
+    rows = cursor.fetchall()
+    if not rows:
+        return
+    for feed_sha256, feed_link, feed_url in rows:
+        try:
+            host = ((
+                urlparse(feed_link or "").netloc
+                or urlparse(feed_url or "").netloc
+            ).replace("www.", ""))
+            icon = f"https://icons.duckduckgo.com/ip3/{host}.ico" if host else ""
+            cursor.execute(
+                "UPDATE feeds SET feed_icon = %s WHERE feed_sha256 = %s",
+                (icon, feed_sha256),
+            )
+        except Exception as exc:
+            logger.warning("feed icon migration failed for %s: %s", feed_sha256, exc)
+    logger.info("feeds: %d icon(s) migrated from google s2/favicons to DDG", len(rows))
 
 
 def _migrate_feed_stats(cursor) -> None:

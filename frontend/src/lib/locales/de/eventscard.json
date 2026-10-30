@@ -1,5 +1,8 @@
 {
-  "publications": "Veröffentlichungen",
+  "publications": "Beiträge",
   "sources": "Quellen",
-  "hoursAgo": "h her"
+  "hoursAgo": "h her",
+  "started": "seit",
+  "fitTooltip": "Wie stark dieses Thema zu deinem Leseprofil passt",
+  "moreArticles": "weitere Artikel zu diesem Thema"
 }

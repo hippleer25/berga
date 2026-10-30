@@ -770,7 +770,11 @@ def stream_llm_deltas(
                         if alt != ladder[ladder_idx]:
                             _on_protocol_success(_target_for(route, alt))
                         partial_answer += content
-                        finish_reason = None
+                        # Keep the truncation signal intact so auto-continue
+                        # can pick up where this one-shot answer was cut.
+                        response_fr = getattr(nresp.choices[0], "finish_reason", None)
+                        if response_fr:
+                            finish_reason = response_fr
                         yield ("answer", content)
                         break
                 except Exception as e2:
@@ -824,11 +828,13 @@ def stream_llm_response(
     max_tokens: int = 2048,
     temperature: float = 0.3,
     usage: LLMUsage = "chatbot",
+    auto_continue: int = 0,
     session_id: str | None = None,
 ) -> Generator[str, None, None]:
     """Legacy compatibility wrapper — plain answer text only."""
     for kind, text in stream_llm_deltas(
-        messages, model, max_tokens, temperature, usage, session_id=session_id
+        messages, model, max_tokens, temperature, usage,
+        auto_continue=auto_continue, session_id=session_id,
     ):
         if kind == "answer":
             yield text

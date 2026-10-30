@@ -438,7 +438,7 @@ style="padding-left: {28 + indent}px;"
                                                 aria-label="{$t('leftpanel.feedError')}: {feed.last_error}"
                                                 onclick={(e) => {
                                                     e.stopPropagation();
-                                                    goto('/settings/feeds-health?feed=' + feed.feed_sha256);
+                                                    goto('/settings/monitor?feed=' + feed.feed_sha256);
                                                 }}
                                             >
                                                 <AlertTriangle size={12} strokeWidth={2} />

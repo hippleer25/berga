@@ -2,7 +2,7 @@
     import { page } from '$app/stores';
     import { goto, beforeNavigate } from '$app/navigation';
     import { onMount } from 'svelte';
-    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Layers, Tag, X, Highlighter, Trash2, MessageSquare, AtSign, Bold, Italic, Heading, Link2, List, ListOrdered, Quote, Code } from '@lucide/svelte';
+    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Tag, X, Highlighter, Trash2, MessageSquare, AtSign, Bold, Italic, Heading, Link2, List, ListOrdered, Quote, Code } from '@lucide/svelte';
     import ArticleMention from '$lib/components/ArticleMention.svelte';
 
 import { t, locale } from 'svelte-i18n';
@@ -1308,7 +1308,6 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
                     {#if readerData.similar_articles && readerData.similar_articles.length > 0}
                         <section class="similar-section">
                             <div class="similar-header">
-                                <Layers size={18} />
                                 <h2 class="similar-title">{$t('article.findSimilars')}</h2>
                             </div>
                             <div class="similar-list">

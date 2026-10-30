@@ -19,7 +19,9 @@
   "thinkingTitle": "Gedanken",
   "thinkingRunning": "Denkt nach…",
   "searchedLabel": "Suche ausgeführt",
+  "streamInterrupted": "Stream unterbrochen — diese Antwort ist möglicherweise unvollständig. Stelle die Frage erneut oder formuliere sie um.",
   "searchedLabelPlural": "Suchen ausgeführt",
+  "streamInterrupted": "Stream unterbrochen — diese Antwort ist möglicherweise unvollständig. Stelle die Frage erneut oder formuliere sie um.",
   "feedPrompt": "Bitte lies und fasse die Artikel zusammen, die ich aus meinem Nachrichten-Feed ausgewählt habe.",
   "emptyResponse": "Es konnte keine Antwort generiert werden. Bitte versuche es erneut.",
   "connectionError": "Unbekannter Fehler bei der Kommunikation mit dem Server.",
@@ -39,5 +41,11 @@
   "confirmDelete": "Diesen Chat löschen?",
   "openSession": "Unterhaltung öffnen",
   "scrollToBottom": "Nach unten scrollen",
-  "send": "Senden (Enter)"
+  "send": "Senden (Enter)",
+  "msgCopy": "Nachricht kopieren",
+  "msgCopied": "Kopiert!",
+  "msgEdit": "Bearbeiten und erneut senden",
+  "msgRegenerate": "Antwort neu generieren",
+  "editing": "Nachricht wird bearbeitet",
+  "cancelEdit": "Bearbeitung abbrechen"
 }

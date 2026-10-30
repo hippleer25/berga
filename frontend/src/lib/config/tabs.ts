@@ -41,6 +41,9 @@ function loadOrder(): TabId[] {
 
 export const tabOrder: Writable<TabId[]> = writable(loadOrder());
 
+/** Currently displayed main tab — shared so tabs can react to being left. */
+export const activeTabId: Writable<TabId> = writable<TabId>('home');
+
 export const orderedTabs: Writable<TabDef[]> = writable(
 	loadOrder().map(id => TAB_DEFS[id])
 );

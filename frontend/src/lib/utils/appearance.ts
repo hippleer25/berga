@@ -49,7 +49,9 @@ const FONT_CATEGORIES: FontCategory[] = ['page-title', 'post-title', 'article-bo
 const FONT_DEFAULTS: Record<FontCategory, string> = {
 	'page-title': 'Newsreader',
 	'post-title': 'PT Serif',
-	'article-body': 'Inter',
+	/* Matches the elegant design-mode preset so a first visit without
+	   initDesignMode still renders the editorial look. */
+	'article-body': 'Source Serif 4',
 	'ui': 'Inter',
 };
 
@@ -67,21 +69,27 @@ function getFontDef(fontName: string) {
 	return entry ? entry.category : 'sans-serif';
 }
 
+/* A font-family that is not a shipped face resolves silently to the generic
+   fallback (sans-serif/serif) — the pickers would keep showing a name that
+   renders as nothing. Treat unknown stored names as corrupt state. */
+export function isKnownFont(fontName: string): boolean {
+	return FONT_LIST.some(f => f.name === fontName);
+}
+
 /* ── Typography (article body) ──────────────────────────────────────────── */
 
+/* All size knobs are stored in rem (universal — scales with the user's base
+   font) and applied to CSS vars as raw rem strings. Legacy px values are
+   migrated once by the pre-paint script in app.html. */
 export const ARTICLE_TYPOGRAPHY = {
-	fontSize: { key: 'article-font-size', min: 14, max: 26, step: 1, default: 18, unit: 'rem' },
+	fontSize: { key: 'article-font-size', min: 0.875, max: 1.625, step: 0.0625, default: 1.125, unit: 'rem' },
 	fontWeight: { key: 'article-font-weight', min: 300, max: 700, step: 100, default: 400 },
 	letterSpacing: { key: 'article-letter-spacing', min: -0.02, max: 0.1, step: 0.01, default: 0 },
 	lineHeight: { key: 'article-line-height', min: 1.3, max: 2.0, step: 0.05, default: 1.8 },
-	maxWidth: { key: 'article-max-width', min: 480, max: 1200, step: 20, default: 672, unit: 'px' },
-	titleMaxWidth: { key: 'article-title-max-width', min: 480, max: 1200, step: 20, default: 672, unit: 'px' },
+	maxWidth: { key: 'article-max-width', min: 30, max: 75, step: 0.25, default: 50, unit: 'rem' },
+	titleMaxWidth: { key: 'article-title-max-width', min: 30, max: 75, step: 0.25, default: 42, unit: 'rem' },
 	imageWidth: { key: 'article-image-width', min: 0, max: 100, step: 5, default: 100 },
 } as const;
-
-export function pxToRem(px: number): string {
-	return `${(px / 16).toFixed(4)}rem`;
-}
 
 /* Static-weight families only ship fixed faces (see @font-face in app.css).
    Requesting an intermediate weight (e.g. 600 on PT Sans, which has only
@@ -117,7 +125,7 @@ export function snapFontWeight(fontName: string, value: number): number {
 }
 
 export function applyFontSize(value: number, persist = false) {
-	document.documentElement.style.setProperty('--article-font-size', pxToRem(value));
+	document.documentElement.style.setProperty('--article-font-size', `${value}rem`);
 	if (persist) localStorage.setItem(ARTICLE_TYPOGRAPHY.fontSize.key, String(value));
 }
 
@@ -140,13 +148,13 @@ export function applyLineHeight(value: number, persist = false) {
 }
 
 export function applyArticleMaxWidth(value: number, persist = false) {
-	document.documentElement.style.setProperty('--article-max-width', `${value}px`);
-	document.documentElement.style.setProperty('--article-body-max-width', `${value}px`);
+	document.documentElement.style.setProperty('--article-max-width', `${value}rem`);
+	document.documentElement.style.setProperty('--article-body-max-width', `${value}rem`);
 	if (persist) localStorage.setItem(ARTICLE_TYPOGRAPHY.maxWidth.key, String(value));
 }
 
 export function applyArticleTitleMaxWidth(value: number, persist = false) {
-	document.documentElement.style.setProperty('--article-title-max-width', `${value}px`);
+	document.documentElement.style.setProperty('--article-title-max-width', `${value}rem`);
 	if (persist) localStorage.setItem(ARTICLE_TYPOGRAPHY.titleMaxWidth.key, String(value));
 }
 
@@ -161,12 +169,27 @@ export const POSTCARD_PREFS = {
 	descLines: { key: 'postcard-desc-lines', min: 0, max: 6, step: 1, default: 2 },
 	titleBold: { key: 'postcard-title-bold', default: false },
 	density: { key: 'feed-density', default: 'comfortable' as Density },
-	titleSize: { key: 'postcard-title-size', min: 80, max: 150, step: 5, default: 100 },
-	descSize: { key: 'postcard-desc-size', min: 80, max: 150, step: 5, default: 100 },
+	titleSize: { key: 'postcard-title-size', min: 80, max: 150, step: 5, default: 110 },
+	descSize: { key: 'postcard-desc-size', min: 80, max: 150, step: 5, default: 110 },
 	coverFit: { key: 'cover-image-fit', default: 'fill' as 'fill' | 'proportions' },
-	coverMaxW: { key: 'cover-image-max-w', min: 80, max: 400, step: 10, default: 160 },
-	coverMaxH: { key: 'cover-image-max-h', min: 60, max: 400, step: 10, default: 160 },
+	coverMaxW: { key: 'cover-image-max-w', min: 5, max: 25, step: 0.25, default: 5 },
+	coverMaxH: { key: 'cover-image-max-h', min: 4, max: 25, step: 0.25, default: 20.625 },
+	coverRadius: { key: 'cover-image-radius', min: 0, max: 2, step: 0.0625, default: 0.9375 },
+	searchCoverRadius: { key: 'search-cover-image-radius', min: 0, max: 2, step: 0.0625, default: 0.9375 },
+	coverAlign: { key: 'cover-image-align', default: 'center' as CoverAlign },
+	searchCoverAlign: { key: 'search-cover-image-align', default: 'center' as CoverAlign },
+	eventCoverPos: { key: 'event-cover-position', default: 'bottom' as EventCoverPos },
 } as const;
+
+export type CoverAlign = 'left' | 'center' | 'right';
+export type EventCoverPos = 'side' | 'top' | 'bottom';
+
+const COVER_ALIGN_VALUES: CoverAlign[] = ['left', 'center', 'right'];
+/* Margin shorthands aligning a shrunken cover box inside the card row. */
+const COVER_ALIGN_MARGINS: Record<Exclude<CoverAlign, 'center'>, string> = {
+	left: '0 auto',
+	right: 'auto 0',
+};
 
 export type Density = 'compact' | 'comfortable' | 'spacious';
 
@@ -242,14 +265,88 @@ export function applyCoverFit(value: 'fill' | 'proportions', persist = false) {
 
 export function applyCoverMaxWidth(value: number, persist = false) {
 	const v = Math.min(POSTCARD_PREFS.coverMaxW.max, Math.max(POSTCARD_PREFS.coverMaxW.min, value));
-	document.documentElement.style.setProperty('--cover-max-w', `${v}px`);
+	document.documentElement.style.setProperty('--cover-max-w', `${v}rem`);
 	if (persist) localStorage.setItem(POSTCARD_PREFS.coverMaxW.key, String(v));
 }
 
 export function applyCoverMaxHeight(value: number, persist = false) {
 	const v = Math.min(POSTCARD_PREFS.coverMaxH.max, Math.max(POSTCARD_PREFS.coverMaxH.min, value));
-	document.documentElement.style.setProperty('--cover-max-h', `${v}px`);
+	document.documentElement.style.setProperty('--cover-max-h', `${v}rem`);
 	if (persist) localStorage.setItem(POSTCARD_PREFS.coverMaxH.key, String(v));
+}
+
+/* 0 = Auto: drop the override so covers fall back to --ui-radius-sm.
+   Non-zero values are rem (universal units). */
+export function applyCoverRadius(value: number, persist = false) {
+	const v = Math.min(POSTCARD_PREFS.coverRadius.max, Math.max(POSTCARD_PREFS.coverRadius.min, value));
+	if (v <= 0) {
+		document.documentElement.style.removeProperty('--cover-image-radius');
+	} else {
+		document.documentElement.style.setProperty('--cover-image-radius', `${v}rem`);
+	}
+	if (persist) localStorage.setItem(POSTCARD_PREFS.coverRadius.key, String(v));
+}
+
+/* Independent knob for the search results page. 0 = Auto. */
+export function applySearchCoverRadius(value: number, persist = false) {
+	const v = Math.min(POSTCARD_PREFS.searchCoverRadius.max, Math.max(POSTCARD_PREFS.searchCoverRadius.min, value));
+	if (v <= 0) {
+		document.documentElement.style.removeProperty('--search-cover-image-radius');
+	} else {
+		document.documentElement.style.setProperty('--search-cover-image-radius', `${v}rem`);
+	}
+	if (persist) localStorage.setItem(POSTCARD_PREFS.searchCoverRadius.key, String(v));
+}
+
+/* Horizontal alignment of the photo inside its cover box. 'center' = Auto
+   (drops the override, matching the browser default). Sets both the
+   object-position string and the margin shorthand used when the box hugs
+   the photo in proportions mode. */
+function applyCoverAlignVars(base: string, value: CoverAlign) {
+	if (!value || value === 'center') {
+		document.documentElement.style.removeProperty(base);
+		document.documentElement.style.removeProperty(`${base}-margin`);
+	} else {
+		document.documentElement.style.setProperty(base, value);
+		document.documentElement.style.setProperty(`${base}-margin`, COVER_ALIGN_MARGINS[value]);
+	}
+}
+
+export function applyCoverAlign(value: CoverAlign, persist = false) {
+	applyCoverAlignVars('--cover-image-align', value);
+	if (persist) localStorage.setItem(POSTCARD_PREFS.coverAlign.key, value);
+}
+
+/* Independent knob for the search results page. */
+export function applySearchCoverAlign(value: CoverAlign, persist = false) {
+	applyCoverAlignVars('--search-cover-image-align', value);
+	if (persist) localStorage.setItem(POSTCARD_PREFS.searchCoverAlign.key, value);
+}
+
+export function getSavedCoverAlign(): CoverAlign {
+	if (typeof localStorage === 'undefined') return POSTCARD_PREFS.coverAlign.default;
+	const v = localStorage.getItem(POSTCARD_PREFS.coverAlign.key) as CoverAlign | null;
+	return v && COVER_ALIGN_VALUES.includes(v) ? v : POSTCARD_PREFS.coverAlign.default;
+}
+
+export function getSavedSearchCoverAlign(): CoverAlign {
+	if (typeof localStorage === 'undefined') return POSTCARD_PREFS.searchCoverAlign.default;
+	const v = localStorage.getItem(POSTCARD_PREFS.searchCoverAlign.key) as CoverAlign | null;
+	return v && COVER_ALIGN_VALUES.includes(v) ? v : POSTCARD_PREFS.searchCoverAlign.default;
+}
+
+/* Cluster cover placement on the event card: right thumbnail (default),
+   full-width banner above the text, or below it. */
+export function applyEventCoverPosition(value: EventCoverPos, persist = false) {
+	const v = value === 'top' || value === 'bottom' ? value : 'side';
+	document.documentElement.setAttribute('data-event-cover-pos', v);
+	if (persist) localStorage.setItem(POSTCARD_PREFS.eventCoverPos.key, v);
+}
+
+export function getSavedEventCoverPosition(): EventCoverPos {
+	if (typeof localStorage === 'undefined') return POSTCARD_PREFS.eventCoverPos.default;
+	const v = localStorage.getItem(POSTCARD_PREFS.eventCoverPos.key) as EventCoverPos | null;
+	return v === 'top' || v === 'bottom' || v === 'side' ? v : POSTCARD_PREFS.eventCoverPos.default;
 }
 
 export function getSavedCoverFit(): 'fill' | 'proportions' {
@@ -372,10 +469,18 @@ function numPref(key: string, def: number): number {
 }
 
 export function initAppearance() {
-	const savedTheme = localStorage.getItem('preferred-theme') || 'berga';
-	applyTheme(savedTheme);
+	const savedTheme = localStorage.getItem('preferred-theme');
+	if (savedTheme) applyTheme(savedTheme);
+
+	migrateOldFontPref();
 
 	for (const cat of FONT_CATEGORIES) {
+		const stored = localStorage.getItem(STORAGE_PREFIX + cat);
+		if (stored !== null && !isKnownFont(stored)) {
+			/* Corrupt/legacy entry — the family would only render as its generic
+			   fallback. Drop it so the role falls back to its real default. */
+			localStorage.removeItem(STORAGE_PREFIX + cat);
+		}
 		const saved = localStorage.getItem(STORAGE_PREFIX + cat) || FONT_DEFAULTS[cat];
 		applyFont(cat, saved);
 	}
@@ -397,6 +502,11 @@ export function initAppearance() {
 	applyCoverFit(getSavedCoverFit());
 	applyCoverMaxWidth(numPref(POSTCARD_PREFS.coverMaxW.key, POSTCARD_PREFS.coverMaxW.default));
 	applyCoverMaxHeight(numPref(POSTCARD_PREFS.coverMaxH.key, POSTCARD_PREFS.coverMaxH.default));
+	applyCoverRadius(numPref(POSTCARD_PREFS.coverRadius.key, POSTCARD_PREFS.coverRadius.default));
+	applySearchCoverRadius(numPref(POSTCARD_PREFS.searchCoverRadius.key, POSTCARD_PREFS.searchCoverRadius.default));
+	applyCoverAlign(getSavedCoverAlign());
+	applySearchCoverAlign(getSavedSearchCoverAlign());
+	applyEventCoverPosition(getSavedEventCoverPosition());
 
 	applyCustomCss();
 	syncThemeColor();

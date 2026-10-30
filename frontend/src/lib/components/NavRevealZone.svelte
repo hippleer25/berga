@@ -63,7 +63,6 @@
 			navDragging.set(true);
 		}
 		if (axis !== 'v') return;
-		e.preventDefault();
 		if (dy < -4) dragged = true;
 		const dt = e.timeStamp - lastT;
 		if (dt > 0) velY = velY * 0.3 + ((tch.clientY - lastY) / dt) * 0.7;

@@ -63,7 +63,7 @@ function createStringStore<T extends string>(key: string, def: T) {
 /* ── Cover images ───────────────────────────────────────────────────────── */
 function createCoverImagesStore() {
   const saved = browser ? localStorage.getItem('show-cover-images') : null;
-  const initial = saved === 'true';
+  const initial = saved !== 'false';
   const { subscribe, set } = writable<boolean>(initial);
 
   return {
@@ -88,7 +88,7 @@ export type CoverPosition = 'right' | 'bottom';
 
 function createCoverPositionStore() {
   const saved = browser ? (localStorage.getItem('cover-image-position') as CoverPosition | null) : null;
-  const initial: CoverPosition = saved === 'bottom' ? 'bottom' : 'right';
+  const initial: CoverPosition = saved === 'right' ? 'right' : 'bottom';
   const { subscribe, set } = writable<CoverPosition>(initial);
 
   return {
@@ -100,7 +100,7 @@ function createCoverPositionStore() {
       set(position);
     },
     getPosition: (): CoverPosition => {
-      let val: CoverPosition = 'right';
+      let val: CoverPosition = 'bottom';
       subscribe(v => val = v)();
       return val;
     },
@@ -112,8 +112,38 @@ export const coverImagePosition = createCoverPositionStore();
 export type CoverFitMode = 'fill' | 'proportions';
 
 export const coverImageFit = createStringStore<CoverFitMode>('cover-image-fit', 'fill');
-export const coverImageMaxWidth = createNumberStore('cover-image-max-w', 160);
-export const coverImageMaxHeight = createNumberStore('cover-image-max-h', 160);
+/* Cover box sizes in rem (universal units). */
+export const coverImageMaxWidth = createNumberStore('cover-image-max-w', 5);
+export const coverImageMaxHeight = createNumberStore('cover-image-max-h', 20.625);
+/* Corner radius of card cover images, rem. 0 = Auto (follows --ui-radius-sm). */
+export const coverImageRadius = createNumberStore('cover-image-radius', 0.9375);
+/* Independent radius for the search results page, rem. 0 = Auto. */
+export const searchCoverRadius = createNumberStore('search-cover-image-radius', 0.9375);
+
+export type CoverAlign = 'left' | 'center' | 'right';
+
+/* Horizontal alignment of the photo inside the cover box (object-position). */
+export const coverImageAlign = createStringStore<CoverAlign>('cover-image-align', 'center');
+/* Independent alignment for the search results page. */
+export const searchCoverAlign = createStringStore<CoverAlign>('search-cover-image-align', 'center');
+
+export type EventCoverPos = 'side' | 'top' | 'bottom';
+
+/* Where the cluster cover sits on the event card (bottom = banner below text). */
+export const eventCoverPosition = createStringStore<EventCoverPos>('event-cover-position', 'bottom');
+
+/* Cover visibility segmented per surface:
+   - the event cluster row itself (EventCard cover);
+   - the post cards embedded inside an expanded cluster ('auto' follows the
+     main show-cover-images toggle, preserving pre-segmentation behavior). */
+export const showEventCovers = createBooleanStore('show-event-covers', true);
+
+/* Cluster row layout: title above the metadata line (default) or below. */
+export const eventTitleBelow = createBooleanStore('event-title-below', false);
+
+export type TriState = 'auto' | 'on' | 'off';
+export const embeddedCovers = createStringStore<TriState>('embedded-covers', 'off');
+export const embeddedCoverPosition = createStringStore<CoverPosition>('embedded-cover-position', 'right');
 
 export type TextAlign = 'left' | 'justify' | 'center' | 'right';
 
@@ -141,15 +171,15 @@ function createTextAlignStore(key: string, defaultValue: TextAlign) {
 }
 
 export const titleTextAlign = createTextAlignStore('title-text-align', 'left');
-export const bodyTextAlign = createTextAlignStore('body-text-align', 'left');
+export const bodyTextAlign = createTextAlignStore('body-text-align', 'justify');
 
-/* ── Article typography ─────────────────────────────────────────────────── */
-export const articleFontSize = createNumberStore('article-font-size', 18);
+/* ── Article typography (sizes in rem — universal units) ────────────────── */
+export const articleFontSize = createNumberStore('article-font-size', 1.125);
 export const articleFontWeight = createNumberStore('article-font-weight', 400);
 export const articleLetterSpacing = createNumberStore('article-letter-spacing', 0);
 export const articleLineHeight = createNumberStore('article-line-height', 1.8);
-export const articleMaxWidth = createNumberStore('article-max-width', 672);
-export const articleTitleMaxWidth = createNumberStore('article-title-max-width', 672);
+export const articleMaxWidth = createNumberStore('article-max-width', 50);
+export const articleTitleMaxWidth = createNumberStore('article-title-max-width', 42);
 export const articleImageWidth = createNumberStore('article-image-width', 100);
 
 /* ── Post-card ──────────────────────────────────────────────────────────── */

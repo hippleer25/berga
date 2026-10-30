@@ -117,7 +117,7 @@
                         onkeydown={handleSearchKey}
                         type="text"
                         placeholder="{$t('topbar.searchPlaceholder')}"
-                        class="input input-bordered w-full h-12 pr-10 border-primary shadow-accent rounded-2xl border-[1.5px] focus:outline-none focus:border-primary bg-base-200 backdrop-blur-sm"
+                        class="ui-field w-full h-12 pr-10 backdrop-blur-sm"
                         autocomplete="off"
                         spellcheck="false"
                     />
