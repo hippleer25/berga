@@ -4,6 +4,10 @@
 - Berga is a FOSS project and should be able to run even inside local home servers.
 - The ideia is to build a very fast and sophisticated RSS reader powered with AI and algorithm, everything under the control of the user.
 
+## Language Policy
+
+- Instructions and conversation may arrive in Portuguese or any other language, but **all code, identifiers, comments, commit messages and UI copy must always be written in English.**
+
 ## Execution Policy
 
 - **NEVER run Node.js, Python, pip, npm, or any runtime/tool directly on the host machine.** All execution must happen inside Docker containers.
