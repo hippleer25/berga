@@ -8,6 +8,7 @@
   import {
     uiRadiusSurface,
     uiRadiusControl,
+    uiRadiusChip,
     uiHoverRadius,
     uiButtonBorders,
     uiBorderOn,
@@ -16,8 +17,10 @@
     uiSettingsIconPlacement,
     getSavedRadiusSurface,
     getSavedRadiusControl,
+    getSavedRadiusChip,
     hasSavedRadiusSurface,
     hasSavedRadiusControl,
+    hasSavedRadiusChip,
     getSavedHoverRadius,
     getSavedButtonBorders,
     getSavedBorderOn,
@@ -26,6 +29,7 @@
     getSavedSettingsIconPlacement,
     applyRadiusSurfaces,
     applyRadiusControls,
+    applyRadiusChips,
     applyHoverRadius,
     applyButtonBorders,
     applyBorder,
@@ -34,6 +38,9 @@
     RADIUS_SURFACE_MAX,
     RADIUS_CONTROL_MIN,
     RADIUS_CONTROL_MAX,
+    RADIUS_CHIP_MIN,
+    RADIUS_CHIP_MAX,
+    RADIUS_CHIP_DEFAULT,
     HOVER_RADIUS_MIN,
     HOVER_RADIUS_MAX,
     BORDER_WIDTH_MIN,
@@ -58,6 +65,9 @@
   let radiusControlVal = $state<number>(
     hasSavedRadiusControl() ? getSavedRadiusControl() : MODE_PRESETS[getSavedDesignMode()].radiusControl
   );
+  let radiusChipVal = $state<number>(
+    hasSavedRadiusChip() ? getSavedRadiusChip() : RADIUS_CHIP_DEFAULT
+  );
   let hoverRadiusVal = $state<number>(getSavedHoverRadius());
   let btnBorders = $state<boolean>(getSavedButtonBorders());
   let borderOn = $state<boolean>(getSavedBorderOn());
@@ -75,6 +85,11 @@
     radiusControlVal = v;
     applyRadiusControls(v, true);
     uiRadiusControl.set(v);
+  }
+  function setRadiusChip(v: number) {
+    radiusChipVal = v;
+    applyRadiusChips(v, true);
+    uiRadiusChip.set(v);
   }
   function setHoverRadius(v: number) {
     hoverRadiusVal = v;
@@ -145,6 +160,17 @@
         onInput={setRadiusControl}
         format={(v) => `${v}px`}
         hint={$t('settings.radiusHint')}
+      />
+
+      <SettingsSlider
+        label={$t('settings.radiusChips')}
+        value={radiusChipVal}
+        min={RADIUS_CHIP_MIN}
+        max={RADIUS_CHIP_MAX}
+        step={1}
+        onInput={setRadiusChip}
+        format={(v) => (v === 0 ? $t('settings.radiusAuto') : `${v}px`)}
+        hint={$t('settings.radiusChipsHint')}
       />
     </div>
   </div>

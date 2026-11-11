@@ -119,7 +119,7 @@
   "pageTitleFont": "Police des titres de page",
   "postTitleFont": "Police des titres de publication",
   "radiusControls": "Boutons et contrôles",
-  "radiusHint": "Grandes surfaces : cartes, modales et le dock flottant. Boutons et contrôles : boutons, champs et pastilles.",
+  "radiusHint": "Grandes surfaces : cartes, modales et le dock flottant. Boutons et contrôles : boutons et champs.",
   "radiusSurfaces": "Grandes surfaces",
   "hoverRadius": "Survol des lignes",
   "hoverRadiusHint": "Rayon des coins du voile au survol des publications et des clusters. 0 = Auto (suit les grandes surfaces).",
@@ -247,5 +247,7 @@
   "searchCoversGroup": "Couvertures de recherche",
   "otherShapesGroup": "Coins",
   "otherChromeGroup": "Chrome & bordures",
-  "preview": "Prévisualisation"
+  "preview": "Prévisualisation",
+  "radiusChips": "Chips et pastilles",
+  "radiusChipsHint": "Arrondi des chips : pastilles de filtre, étiquettes, chips de recherche et de sources. 0 = Auto (conserve la forme propre de chaque chip)."
 }

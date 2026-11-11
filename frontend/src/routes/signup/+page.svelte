@@ -93,7 +93,8 @@
       }
 
     } catch (err) {
-      message = get(t)('signup.errorSignup');
+      const detail = err instanceof Error ? err.message : String(err);
+      message = `${get(t)('signup.errorSignup')}${detail ? ` (${detail})` : ''}`;
     }
 
     loading = false;

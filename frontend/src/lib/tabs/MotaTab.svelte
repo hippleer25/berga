@@ -1574,7 +1574,7 @@
   align-items: center;
   max-width: 260px;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: var(--ui-radius-chip, 999px);
   background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
   border: 1px solid var(--btn-border-color, color-mix(in oklch, var(--color-base-300) 70%, transparent));
   font-size: 11.5px;
@@ -1706,7 +1706,7 @@
   align-items: flex-start;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: var(--ui-radius-sm);
+  border-radius: var(--ui-radius-chip, var(--ui-radius-sm));
   border: 1px solid var(--btn-border-color, color-mix(in oklch, var(--color-base-300) 70%, transparent));
   background: color-mix(in oklch, var(--color-base-200) 45%, transparent);
   text-decoration: none;

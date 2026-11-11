@@ -2,7 +2,7 @@ import { writable, type Writable, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import { syncThemeColor } from '$lib/utils/themeColor';
 
-/* ── Corner radius (granular: large surfaces + small controls) ──────────── */
+/* ── Corner radius (granular: large surfaces + small controls + chips) ──── */
 
 export const RADIUS_SURFACE_MIN = 0;
 export const RADIUS_SURFACE_MAX = 32;
@@ -13,6 +13,14 @@ export const RADIUS_CONTROL_MIN = 0;
 export const RADIUS_CONTROL_MAX = 20;
 export const RADIUS_CONTROL_DEFAULT = 5;
 const RADIUS_CONTROL_KEY = 'ui-radius-control';
+
+/** Chip radius: filter pills, tags, query/source chips. 0 = Auto — each chip
+    keeps its own design-language shape (tags fully round, filters follow the
+    control radius); any value above 0 unifies them all. */
+export const RADIUS_CHIP_MIN = 0;
+export const RADIUS_CHIP_MAX = 20;
+export const RADIUS_CHIP_DEFAULT = 0;
+const RADIUS_CHIP_KEY = 'ui-radius-chip';
 
 /** Legacy single-knob key — migrated to the two granular keys once. */
 const RADIUS_LEGACY_KEY = 'ui-radius';
@@ -56,6 +64,18 @@ export function applyRadiusControls(px: number, persist = false) {
 	if (persist) localStorage.setItem(RADIUS_CONTROL_KEY, String(c));
 }
 
+/** Chips & pills (filter pills, tags, query/source chips). 0 = Auto. */
+export function applyRadiusChips(px: number, persist = false) {
+	if (!browser) return;
+	const root = document.documentElement;
+	if (px <= 0) {
+		root.style.removeProperty('--ui-radius-chip');
+	} else {
+		root.style.setProperty('--ui-radius-chip', `${clamp(px, RADIUS_CHIP_MIN, RADIUS_CHIP_MAX)}px`);
+	}
+	if (persist) localStorage.setItem(RADIUS_CHIP_KEY, String(clamp(px, RADIUS_CHIP_MIN, RADIUS_CHIP_MAX)));
+}
+
 function readRadius(key: string, min: number, max: number, def: number): number {
 	if (!browser) return def;
 	const raw = localStorage.getItem(key);
@@ -72,6 +92,10 @@ export function getSavedRadiusControl(): number {
 	return readRadius(RADIUS_CONTROL_KEY, RADIUS_CONTROL_MIN, RADIUS_CONTROL_MAX, RADIUS_CONTROL_DEFAULT);
 }
 
+export function getSavedRadiusChip(): number {
+	return readRadius(RADIUS_CHIP_KEY, RADIUS_CHIP_MIN, RADIUS_CHIP_MAX, RADIUS_CHIP_DEFAULT);
+}
+
 /** Whether the user explicitly chose a surface radius (vs. the mode preset). */
 export function hasSavedRadiusSurface(): boolean {
 	return browser && localStorage.getItem(RADIUS_SURFACE_KEY) !== null;
@@ -80,6 +104,11 @@ export function hasSavedRadiusSurface(): boolean {
 /** Whether the user explicitly chose a control radius (vs. the mode preset). */
 export function hasSavedRadiusControl(): boolean {
 	return browser && localStorage.getItem(RADIUS_CONTROL_KEY) !== null;
+}
+
+/** Whether the user explicitly chose a chip radius (vs. the Auto default). */
+export function hasSavedRadiusChip(): boolean {
+	return browser && localStorage.getItem(RADIUS_CHIP_KEY) !== null;
 }
 
 /** One-time migration from the legacy single ui-radius knob. */
@@ -100,6 +129,7 @@ function migrateLegacyRadius() {
 
 export const uiRadiusSurface: Writable<number> = writable(getSavedRadiusSurface());
 export const uiRadiusControl: Writable<number> = writable(getSavedRadiusControl());
+export const uiRadiusChip: Writable<number> = writable(getSavedRadiusChip());
 
 /* ── Row highlight radius (hover / active / selected backgrounds) ─────────
    The tint that lights up post rows and event clusters on hover. 0 = Auto:
@@ -916,6 +946,7 @@ export function initUiPrefs() {
 	migrateLegacyRadius();
 	applyRadiusSurfaces(getSavedRadiusSurface());
 	applyRadiusControls(getSavedRadiusControl());
+	applyRadiusChips(getSavedRadiusChip());
 	applyHoverRadius(getSavedHoverRadius());
 	applyNavStyle(getSavedNavStyle());
 	applyDesktopNav(getSavedDesktopNav());
@@ -959,6 +990,9 @@ export function resetUiPrefs() {
 	uiRadiusControl.set(RADIUS_CONTROL_DEFAULT);
 	applyRadiusControls(RADIUS_CONTROL_DEFAULT);
 	localStorage.removeItem(RADIUS_CONTROL_KEY);
+	uiRadiusChip.set(RADIUS_CHIP_DEFAULT);
+	applyRadiusChips(RADIUS_CHIP_DEFAULT);
+	localStorage.removeItem(RADIUS_CHIP_KEY);
 	uiHoverRadius.set(HOVER_RADIUS_DEFAULT);
 	applyHoverRadius(HOVER_RADIUS_DEFAULT);
 	localStorage.removeItem(HOVER_RADIUS_KEY);

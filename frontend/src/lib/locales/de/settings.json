@@ -119,7 +119,7 @@
   "pageTitleFont": "Schriftart für Seitentitel",
   "postTitleFont": "Schriftart für Beitragstitel",
   "radiusControls": "Schaltflächen & Steuerelemente",
-  "radiusHint": "Große Flächen: Karten, Modale und das schwebende Dock. Schaltflächen & Steuerelemente: Buttons, Eingaben und Chips.",
+  "radiusHint": "Große Flächen: Karten, Modale und das schwebende Dock. Schaltflächen & Steuerelemente: Buttons und Eingaben.",
   "radiusSurfaces": "Große Flächen",
   "hoverRadius": "Zeilen-Hover",
   "hoverRadiusHint": "Eckenradius des Schattierens beim Hover über Beiträgen und Clustern. 0 = Auto (folgt großen Flächen).",
@@ -247,5 +247,7 @@
   "searchCoversGroup": "Such-Cover",
   "otherShapesGroup": "Formen",
   "otherChromeGroup": "Rahmen & Kanten",
-  "preview": "Vorschau"
+  "preview": "Vorschau",
+  "radiusChips": "Chips & Pills",
+  "radiusChipsHint": "Eckrundung der Chips: Filter-Pills, Tags, Such- und Quellen-Chips. 0 = Auto (behält die eigene Form jedes Chips)."
 }

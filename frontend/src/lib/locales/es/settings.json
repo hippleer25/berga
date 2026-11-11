@@ -119,7 +119,7 @@
   "pageTitleFont": "Fuente del título de página",
   "postTitleFont": "Fuente del título del post",
   "radiusControls": "Botones y controles",
-  "radiusHint": "Superficies grandes: tarjetas, modales y el dock flotante. Botones y controles: botones, campos y chips.",
+  "radiusHint": "Superficies grandes: tarjetas, modales y el dock flotante. Botones y controles: botones y campos.",
   "radiusSurfaces": "Superficies grandes",
   "hoverRadius": "Hover de las filas",
   "hoverRadiusHint": "Radio de las esquinas del sombreado al pasar el cursor sobre posts y clusters. 0 = Auto (sigue superficies grandes).",
@@ -247,5 +247,7 @@
   "searchCoversGroup": "Portadas de búsqueda",
   "otherShapesGroup": "Esquinas",
   "otherChromeGroup": "Chrome y bordes",
-  "preview": "Vista previa"
+  "preview": "Vista previa",
+  "radiusChips": "Chips y píldoras",
+  "radiusChipsHint": "Redondeo de los chips: píldoras de filtro, etiquetas, chips de búsqueda y de fuentes. 0 = Automático (mantiene la forma propia de cada chip)."
 }

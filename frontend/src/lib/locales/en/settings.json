@@ -119,7 +119,7 @@
   "pageTitleFont": "Page title font",
   "postTitleFont": "Post title font",
   "radiusControls": "Buttons & controls",
-  "radiusHint": "Large surfaces: cards, modals and the floating dock. Buttons & controls: buttons, inputs and chips.",
+  "radiusHint": "Large surfaces: cards, modals and the floating dock. Buttons & controls: buttons and inputs.",
   "radiusSurfaces": "Large surfaces",
   "hoverRadius": "Row hover",
   "hoverRadiusHint": "Corner radius of the hover shading on posts and event clusters. 0 = Auto (follows large surfaces).",
@@ -247,5 +247,7 @@
   "searchCoversGroup": "Search covers",
   "otherShapesGroup": "Corners",
   "otherChromeGroup": "Chrome & borders",
-  "preview": "Preview"
+  "preview": "Preview",
+  "radiusChips": "Chips & pills",
+  "radiusChipsHint": "Corner radius of chips: filter pills, tags, query and source chips. 0 = Auto (keeps each chip's own shape)."
 }

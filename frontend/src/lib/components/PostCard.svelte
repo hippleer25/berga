@@ -805,7 +805,7 @@ font-family: var(--font-post-title);
 	font-weight: 600;
 	letter-spacing: 0.02em;
 	padding: 2px 7px;
-	border-radius: var(--ui-radius-full);
+	border-radius: var(--ui-radius-chip, var(--ui-radius-full));
 	border: none;
 	background: color-mix(in oklch, var(--chip-color) 14%, transparent);
 	color: var(--chip-color);

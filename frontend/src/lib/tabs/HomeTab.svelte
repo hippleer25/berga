@@ -1510,7 +1510,7 @@ font-family: var(--font-page-title);
     .mode-pill {
         display: flex;
         border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
-        border-radius: var(--ui-radius-sm);
+        border-radius: var(--ui-radius-chip, var(--ui-radius-sm));
         padding: 0;
         gap: 0;
         flex-shrink: 0;
@@ -1550,7 +1550,7 @@ font-family: var(--font-page-title);
         align-items: center;
         gap: 5px;
         padding: 6px 12px;
-        border-radius: var(--ui-radius-sm);
+        border-radius: var(--ui-radius-chip, var(--ui-radius-sm));
         border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
         background: var(--btn-fill, transparent);
         font-size: 13px;

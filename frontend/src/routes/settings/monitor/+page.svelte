@@ -891,7 +891,7 @@
 	.summary-chip {
 		display: inline-flex; align-items: center; gap: 7px;
 		font-size: 12px; font-weight: 600; color: var(--color-base-content);
-		padding: 6px 12px; border-radius: var(--ui-radius-full);
+		padding: 6px 12px; border-radius: var(--ui-radius-chip, var(--ui-radius-full));
 		background: color-mix(in oklch, var(--color-base-content) 5%, transparent);
 		border: 1px solid var(--color-base-300);
 	}
@@ -916,7 +916,7 @@
 	.feed-title { font-size: 13px; font-weight: 600; color: var(--color-base-content); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.status-chip {
 		font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-		padding: 2px 7px; border-radius: var(--ui-radius-full); flex-shrink: 0;
+		padding: 2px 7px; border-radius: var(--ui-radius-chip, var(--ui-radius-full)); flex-shrink: 0;
 	}
 	.status-chip.failing { background: color-mix(in oklch, var(--color-warning) 15%, transparent); color: var(--color-warning); }
 	.status-chip.dead { background: color-mix(in oklch, var(--color-error) 15%, transparent); color: var(--color-error); }
@@ -929,7 +929,7 @@
 	.problem-error.muted { color: color-mix(in oklch, var(--color-base-content) 55%, transparent); }
 	.problem-meta { display: flex; gap: 6px; flex-wrap: wrap; }
 	.meta-chip {
-		font-size: 10px; padding: 3px 8px; border-radius: var(--ui-radius-full);
+		font-size: 10px; padding: 3px 8px; border-radius: var(--ui-radius-chip, var(--ui-radius-full));
 		background: color-mix(in oklch, var(--color-base-content) 7%, transparent);
 		color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
 	}
@@ -1105,14 +1105,14 @@
 	.candidate-desc { font-size: 11px; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 	.candidate-badge {
 		font-size: 10px; font-weight: 600;
-		padding: 1px 7px; border-radius: var(--ui-radius-full);
+		padding: 1px 7px; border-radius: var(--ui-radius-chip, var(--ui-radius-full));
 		background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
 		color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
 	}
 	.candidate-last { font-size: 11px; font-style: italic; color: color-mix(in oklch, var(--color-base-content) 40%, transparent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.candidate-tag {
 		font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-		padding: 1px 6px; border-radius: var(--ui-radius-full);
+		padding: 1px 6px; border-radius: var(--ui-radius-chip, var(--ui-radius-full));
 	}
 	.candidate-tag.best { background: color-mix(in oklch, var(--color-accent) 15%, transparent); color: var(--color-accent); }
 	.candidate-tag.current { background: color-mix(in oklch, var(--color-base-content) 10%, transparent); color: color-mix(in oklch, var(--color-base-content) 55%, transparent); }

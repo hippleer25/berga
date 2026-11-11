@@ -119,7 +119,7 @@
   "pageTitleFont": "Fonte do título da página",
   "postTitleFont": "Fonte do título do post",
   "radiusControls": "Botões e controles",
-  "radiusHint": "Superfícies grandes: cards, modais e o dock flutuante. Botões e controles: botões, inputs e chips.",
+  "radiusHint": "Superfícies grandes: cards, modais e o dock flutuante. Botões e controles: botões e inputs.",
   "radiusSurfaces": "Superfícies grandes",
   "hoverRadius": "Hover das linhas",
   "hoverRadiusHint": "Arredondamento do sombreado ao passar o mouse sobre posts e clusters. 0 = Automático (segue superfícies grandes).",
@@ -247,5 +247,7 @@
   "searchCoversGroup": "Capas da busca",
   "otherShapesGroup": "Cantos",
   "otherChromeGroup": "Chrome e bordas",
-  "preview": "Pré-visualização"
+  "preview": "Pré-visualização",
+  "radiusChips": "Chips e pílulas",
+  "radiusChipsHint": "Arredondamento dos chips: pílulas de filtro, tags, chips de busca e de fontes. 0 = Automático (mantém a forma própria de cada chip)."
 }

@@ -85,7 +85,7 @@
 		gap: 6px;
 		overflow: hidden;
 	}
-	.mode-pill { display: inline-flex; border: var(--ui-border-width, 1px) solid var(--ui-border-color); border-radius: var(--ui-radius-sm); overflow: hidden; }
+	.mode-pill { display: inline-flex; border: var(--ui-border-width, 1px) solid var(--ui-border-color); border-radius: var(--ui-radius-chip, var(--ui-radius-sm)); overflow: hidden; }
 	.mode-btn {
 		display: inline-flex; align-items: center; gap: 5px;
 		padding: 6px 10px; border: none; background: transparent;
@@ -100,7 +100,7 @@
 		display: inline-flex; align-items: center; gap: 5px;
 		padding: 6px 10px;
 		border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
-		border-radius: var(--ui-radius-sm);
+		border-radius: var(--ui-radius-chip, var(--ui-radius-sm));
 		background: var(--btn-fill, transparent);
 		font-size: 12px; font-weight: 600; font-family: inherit;
 		color: color-mix(in oklch, var(--color-base-content) 70%, transparent);

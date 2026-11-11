@@ -1596,7 +1596,7 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 	font-size: 11px;
 	font-weight: 600;
 	padding: 3px 8px;
-	border-radius: var(--ui-radius-full);
+	border-radius: var(--ui-radius-chip, var(--ui-radius-full));
 	background: color-mix(in oklch, var(--chip-color) 14%, transparent);
 	color: var(--chip-color);
 	white-space: nowrap;

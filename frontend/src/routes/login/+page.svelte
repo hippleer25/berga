@@ -87,7 +87,8 @@ import { onMount } from 'svelte';
       }
 
     } catch (err) {
-      message = get(t)('signin.connectionError');
+      const detail = err instanceof Error ? err.message : String(err);
+      message = `${get(t)('signin.connectionError')}${detail ? ` (${detail})` : ''}`;
     }
 
     loading = false;
