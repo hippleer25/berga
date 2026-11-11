@@ -974,14 +974,16 @@ async function loadSubscriptions(quiet = false) {
   border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
   border-radius: var(--ui-radius-sm);
   padding: 0 16px;
-  height: 48px;
+  height: 46px;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  transition: border-color 180ms ease;
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
     .search-wrap:focus-within {
+        background: var(--color-base-100);
         border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 15%, transparent);
     }
 
 .search-input {
@@ -990,7 +992,7 @@ async function loadSubscriptions(quiet = false) {
   background: transparent;
   border: none;
   outline: none;
-  font-size: 15px;
+  font-size: 14px;
   color: var(--color-base-content);
   line-height: 1;
   caret-color: var(--color-accent);
@@ -1016,12 +1018,8 @@ async function loadSubscriptions(quiet = false) {
 
     :global(.search-icon) {
         flex-shrink: 0;
-        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
-        transition: color 180ms ease;
-    }
-
-    .search-wrap:focus-within :global(.search-icon) {
         color: var(--color-accent);
+        transition: color 180ms ease;
     }
 
     .search-clear {

@@ -21,9 +21,19 @@ let openCount = 0;
  */
 let stackBaseLen: number | null = null;
 
-/** Called by the root layout after navigating to a non-stacked route. */
+/**
+ * Called by the root layout after navigating to a non-stacked route (tab or
+ * auth). Authoritative reconciliation: no shell can be alive on those routes,
+ * so the module state is fully reset and the store is forced closed. This
+ * self-heals any race that leaves `stackedScreenOpen` stuck true after the
+ * shell is gone (which would keep the tab layer at pointer-events: none).
+ */
 export function resetScreenStack(): void {
 	stackBaseLen = null;
+	openCount = 0;
+	activeShell = null;
+	closing = false;
+	stackedScreenOpen.set(false);
 }
 
 export function isScreenClosing(): boolean {

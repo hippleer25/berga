@@ -1,8 +1,11 @@
 /**
- * Keeps the Android system bars (status/navigation) in sync with the selected
- * background. Chrome re-themes them live from `<meta name="theme-color">` in
- * standalone (installed PWA / WebAPK) mode — no reinstall required.
+ * Keeps the system bars in sync with the selected background. Chrome re-themes
+ * them live from `<meta name="theme-color">` in standalone (installed PWA /
+ * WebAPK) mode; the Android app paints the native bar area via ThemeBars
+ * (see nativeBars.ts).
  */
+
+import { applyNativeBars } from './nativeBars';
 
 const PAGE_BG_OVERRIDES: Record<string, string> = {
 	white: '#ffffff',
@@ -43,4 +46,5 @@ export function syncThemeColor() {
 	const meta = document.querySelector('meta[name="theme-color"]');
 	const color = getThemeColor();
 	if (meta) (meta as HTMLMetaElement).content = color;
+	applyNativeBars(color);
 }

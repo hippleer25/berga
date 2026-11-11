@@ -23,6 +23,11 @@
 	let gLastT = 0;
 	let gVel = 0;
 	let suppressClick = false;
+	// Timer ids so pending callbacks can be cancelled on destroy — an orphaned
+	// snap-back timer would re-set `stackedScreenOpen` after the shell is gone,
+	// freezing the tab layer (pointer-events: none) with no recovery.
+	let snapBackTimer: ReturnType<typeof setTimeout> | null = null;
+	let suppressClickTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const isDesktop = () => window.matchMedia('(min-width: 768px)').matches;
 
@@ -81,7 +86,8 @@
 		gAxis = null;
 
 		suppressClick = true;
-		setTimeout(() => (suppressClick = false), 350);
+		if (suppressClickTimer) clearTimeout(suppressClickTimer);
+		suppressClickTimer = setTimeout(() => (suppressClick = false), 350);
 
 		const w = window.innerWidth;
 		const dx = gLastX - gStartX;
@@ -92,7 +98,8 @@
 		} else {
 			shellEl.style.transition = 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1)';
 			shellEl.style.transform = 'translate3d(0, 0, 0)';
-			setTimeout(() => {
+			if (snapBackTimer) clearTimeout(snapBackTimer);
+			snapBackTimer = setTimeout(() => {
 				if (!isScreenClosing()) stackedScreenOpen.set(true);
 			}, 250);
 		}
@@ -114,6 +121,8 @@
 		window.addEventListener('keydown', onKeydown);
 		return () => {
 			window.removeEventListener('keydown', onKeydown);
+			if (snapBackTimer) clearTimeout(snapBackTimer);
+			if (suppressClickTimer) clearTimeout(suppressClickTimer);
 			shellClosed();
 		};
 	});

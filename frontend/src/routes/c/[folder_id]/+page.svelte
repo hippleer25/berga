@@ -767,8 +767,8 @@ touch-action: pan-y;
 
     .mode-btn.active {
         /* Fills its parcel of the big pill edge-to-edge: no gap ring */
-        background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
-        color: var(--color-base-content);
+        background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+        color: var(--color-accent);
         font-weight: 700;
         /* Relief stays inside, since the outer shadow would be clipped */
         box-shadow: inset 0 1px 0 color-mix(in oklch, white 22%, transparent);

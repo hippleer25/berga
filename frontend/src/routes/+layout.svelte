@@ -3,7 +3,6 @@
 	import { page } from '$app/stores';
 	import { afterNavigate } from '$app/navigation';
 	import { Capacitor } from '@capacitor/core';
-	import { StatusBar, Style } from '@capacitor/status-bar';
 	import { SplashScreen } from '@capacitor/splash-screen';
 	import { registerSW } from 'virtual:pwa-register';
 	import { t } from 'svelte-i18n';
@@ -58,10 +57,6 @@
 	});
 
 	onMount(async () => {
-		if (Capacitor.isNativePlatform()) {
-			await StatusBar.setBackgroundColor({ color: '#000000' });
-			await StatusBar.setStyle({ style: Style.Light });
-		}
 		initAppearance();
 		initUiPrefs();
 		initDesignMode();

@@ -26,6 +26,12 @@
 
 	onMount(() => {
 		appearedAt = Date.now();
+		// The zone is conditionally mounted (`{#if !$stackedScreenOpen}`) and can
+		// be destroyed mid-gesture; without this the drag state sticks.
+		return () => {
+			navDragging.set(false);
+			navDragOffset.set(0);
+		};
 	});
 
 	function travel() {

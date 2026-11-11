@@ -355,7 +355,7 @@ const res = await apiFetch(
         flex: 1;
         min-width: 0;
         background: transparent; border: none; outline: none;
-        font-size: 15px; color: var(--color-base-content); line-height: 1;
+        font-size: 14px; color: var(--color-base-content); line-height: 1;
         -webkit-appearance: none; appearance: none;
     }
     .search-input::placeholder { color: color-mix(in oklch, var(--color-base-content) 35%, transparent); }
@@ -368,10 +368,9 @@ const res = await apiFetch(
 
     .search-wrap :global(.search-icon) {
         flex-shrink: 0;
-        color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+        color: var(--color-accent);
         transition: color 180ms ease;
     }
-    .search-wrap:focus-within :global(.search-icon) { color: var(--color-accent); }
 
     /* ── Tab bar (Pill Style) ──────────────────────────────── */
 .tab-bar {
@@ -413,8 +412,8 @@ const res = await apiFetch(
     }
     .mode-btn.active {
         /* Fills its parcel of the big pill edge-to-edge: no gap ring */
-        background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
-        color: var(--color-base-content);
+        background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+        color: var(--color-accent);
         font-weight: 700;
         /* Relief stays inside, since the outer shadow would be clipped */
         box-shadow: inset 0 1px 0 color-mix(in oklch, white 22%, transparent);
