@@ -41,12 +41,16 @@ import { onMount } from 'svelte';
     }
   });
 
-	let instanceTimer: ReturnType<typeof setTimeout> | null = null;
+	/* Debounced instance sync. instanceUrl MUST be read synchronously in the
+	   effect body or Svelte 5 never tracks it (reads inside the setTimeout
+	   callback are untracked — the effect then runs once on mount and typing
+	   never reaches the store, pinning the app to the default instance). */
 	$effect(() => {
-		if (instanceTimer) clearTimeout(instanceTimer);
-		instanceTimer = setTimeout(() => {
-			instance.setInstance(instanceUrl);
+		const url = instanceUrl;
+		const timer = setTimeout(() => {
+			instance.setInstance(url);
 		}, 500);
+		return () => clearTimeout(timer);
 	});
 
   function errorMessage(data: any): string {
@@ -56,6 +60,54 @@ import { onMount } from 'svelte';
       case 'server_error':        return get(t)('signin.serverError');
       default:                    return get(t)('signin.invalidCredentials');
     }
+  }
+
+  /* Connection failure forensics. Splits the failure space:
+     - `net` probe (gstatic, no-cors): does the WebView reach ANY https host?
+     - `probe` (instance root, no-cors): does it reach THIS host?
+     - `native` (CapacitorHttp): does the native stack reach the instance?
+       net fails + native ok → the WebView network is broken, not the device's.
+     - `sw`: active service workers (they intercept every fetch from the page).
+     - `wv`: Chromium version of the device WebView. */
+  async function diagnose(): Promise<string> {
+    const parts: string[] = [];
+    parts.push(`origin=${window.location.origin}`);
+    parts.push(`online=${navigator.onLine ? 'yes' : 'no'}`);
+    try {
+      const regs = (await navigator.serviceWorker?.getRegistrations?.()) ?? [];
+      parts.push(`sw=${regs.length}`);
+    } catch { parts.push('sw=?'); }
+    try {
+      const t0 = Date.now();
+      const r = await fetch('https://www.gstatic.com/generate_204', { mode: 'no-cors' });
+      parts.push(`net=${r.type} ${Date.now() - t0}ms`);
+    } catch (e) {
+      parts.push(`net-throw=${e instanceof Error ? e.message : String(e)}`);
+    }
+    try {
+      const inst = get(instance);
+      if (inst) {
+        const t0 = Date.now();
+        const r = await fetch(`https://${inst}/`, { mode: 'no-cors' });
+        parts.push(`probe=${r.type} ${Date.now() - t0}ms`);
+      } else {
+        parts.push('probe=skip');
+      }
+    } catch (e) {
+      parts.push(`probe-throw=${e instanceof Error ? e.message : String(e)}`);
+    }
+    if ((window as any).Capacitor?.isNativePlatform?.()) {
+      try {
+        const { CapacitorHttp } = await import('@capacitor/core');
+        const t0 = Date.now();
+        const r = await CapacitorHttp.get({ url: `https://${get(instance)}/` });
+        parts.push(`native=${r.status} ${Date.now() - t0}ms`);
+      } catch (e) {
+        parts.push(`native-throw=${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    parts.push(`wv=${/Chrome\/(\d+)/.exec(navigator.userAgent)?.[1] ?? '?'}`);
+    return parts.join(' ');
   }
 
   async function login() {
@@ -88,7 +140,9 @@ import { onMount } from 'svelte';
 
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      message = `${get(t)('signin.connectionError')}${detail ? ` (${detail})` : ''}`;
+      let diag = '';
+      try { diag = await diagnose(); } catch { /* diagnostics are best-effort */ }
+      message = `${get(t)('signin.connectionError')} (${detail}${diag ? ` | ${diag}` : ''})`;
     }
 
     loading = false;

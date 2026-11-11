@@ -39,12 +39,14 @@
     }
   });
 
-	let instanceTimer: ReturnType<typeof setTimeout> | null = null;
+	/* Debounced instance sync — instanceUrl must be read synchronously in the
+	   effect body or Svelte 5 never tracks it (see login page). */
 	$effect(() => {
-		if (instanceTimer) clearTimeout(instanceTimer);
-		instanceTimer = setTimeout(() => {
-			instance.setInstance(instanceUrl);
+		const url = instanceUrl;
+		const timer = setTimeout(() => {
+			instance.setInstance(url);
 		}, 500);
+		return () => clearTimeout(timer);
 	});
 
   function focusNext(nextRef: HTMLInputElement | undefined) {
