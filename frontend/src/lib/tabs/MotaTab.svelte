@@ -2044,7 +2044,7 @@
 
 @media (max-width: 767px) {
   .footer-inner {
-    padding-bottom: calc(12px + 64px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
     transition: padding-bottom 320ms cubic-bezier(0.4, 0, 0.2, 1);
   }
   /* Smart navbar hidden (Mota focus mode): the input hugs the reveal
