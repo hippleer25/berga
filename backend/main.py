@@ -31,7 +31,13 @@ from intelligence.saved import get_saved
 from intelligence.similar import get_similar_articles
 from intelligence.cluster import get_cached_events, compute_weekly_events, set_cached_events, CLUSTER_LIMIT, load_events_from_db
 from intelligence.cluster_store import build_reverse_index, set_cluster_index
-from intelligence.affinity import analyze_affinity, boost_affinity, remove_affinity_boost, attach_cluster_affinity
+from intelligence.affinity import (
+    analyze_affinity,
+    boost_affinity,
+    remove_affinity_boost,
+    rank_user_terms,
+    attach_cluster_affinity,
+)
 from search.item.search_item import search_articles_by_text
 from search.feed.search_feed_urls import feeds
 from search.feed import search_feed_online
@@ -178,7 +184,8 @@ class FeedFixApply(BaseModel):
 class BoostRequest(BaseModel):
     term: str
     direction: Literal["positive", "negative"]
-    strength: float = 0.25
+    # Signed click delta on the term's relative weight (e.g. +0.10 / −0.10).
+    strength: float = 0.10
 
 
 class RemoveBoostRequest(BaseModel):
@@ -1017,6 +1024,11 @@ def api_boost(body: BoostRequest, user: dict = Depends(get_current_user)):
 @app.delete('/api/affinity/boost')
 def api_remove_boost(body: RemoveBoostRequest, user: dict = Depends(get_current_user)):
     return remove_affinity_boost(user["id"], body.term, body.direction)
+
+
+@app.get("/api/affinity/terms")
+def api_rank_affinity_terms(limit: int = 15, user: dict = Depends(get_current_user)):
+    return rank_user_terms(user["id"], limit)
 
 
 # ── Smart Tags ────────────────────────────────────────────────────────────────

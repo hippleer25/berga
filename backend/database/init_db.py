@@ -222,6 +222,142 @@ def _migrate_smart_tags(cursor) -> None:
     _add_column_if_missing(cursor, "smart_tags", "ai_reinforcement_enabled", "TINYINT(1) DEFAULT 1")
 
 
+def _migrate_affinity_boosts(conn, cursor) -> None:
+    """
+    Idempotent migration to the relative-weight boost model.
+
+    Old model: one row per click, ``strength`` being an EMA step. New model:
+    one row per (user, term, direction) whose ``strength`` is a relative
+    weight in [0, 1]. Consolidation maps an old click chain to the pull it
+    actually produced on the EMA vector:  weight = 1 − Π(1 − sᵢ)  (a single
+    old row maps to itself, so re-running is a no-op). Affinity vectors are
+    then recomputed as normalised weighted means for users whose history
+    was consolidated, or whose stored vector is missing while boosts exist
+    (e.g. after a re-embed reset).
+    """
+    cur = conn.cursor(dictionary=True)
+    try:
+        _migrate_affinity_boosts_data(cur)
+    finally:
+        cur.close()
+
+
+def _migrate_affinity_boosts_data(cur) -> None:
+    cur.execute(
+        "SELECT id, user_id, term, direction, strength FROM affinity_boosts "
+        "ORDER BY user_id, term, direction, created_at, id"
+    )
+    rows = cur.fetchall()
+
+    groups: dict[tuple, list] = {}
+    for r in rows:
+        key = (r["user_id"], r["term"], r["direction"])
+        groups.setdefault(key, []).append(r)
+
+    changed_users: set[int] = set()
+    for (uid, term, direction), group in groups.items():
+        if len(group) == 1:
+            continue
+        pull = 1.0
+        for g in group:
+            pull *= 1.0 - min(1.0, max(0.0, float(g["strength"])))
+        weight = max(0.05, min(1.0, 1.0 - pull))
+        cur.execute(
+            "DELETE FROM affinity_boosts WHERE user_id = %s AND term = %s AND direction = %s",
+            (uid, term, direction),
+        )
+        cur.execute(
+            "INSERT INTO affinity_boosts (user_id, term, direction, strength) "
+            "VALUES (%s, %s, %s, %s)",
+            (uid, term, direction, weight),
+        )
+        changed_users.add(uid)
+
+    # ── Vector recomputation for changed / inconsistent users ────────────
+    try:
+        import numpy as np
+
+        from intelligence.affinity import _embed_term, _safe_vector_for_json
+    except Exception as e:
+        logger.warning("Affinity boost migration: skipping vector recompute (%s)", e)
+        return
+    cur.execute("SELECT user_id, direction, term, strength FROM affinity_boosts")
+    boosts = cur.fetchall()
+    by_user_dir: dict[tuple, list] = {}
+    for b in boosts:
+        by_user_dir.setdefault((b["user_id"], b["direction"]), []).append(b)
+
+    for (uid, direction), blist in by_user_dir.items():
+        column = "affinity_pos_vector" if direction == "positive" else "affinity_neg_vector"
+        cur.execute(
+            f"SELECT {column} AS vec FROM user_vectors WHERE user_id = %s",
+            (uid,),
+        )
+        row = cur.fetchone()
+        if uid not in changed_users and row and row.get("vec"):
+            continue
+
+        result = None
+        for b in blist:
+            v = float(b["strength"]) * _embed_term(b["term"])
+            result = v if result is None else result + v
+        if result is None:
+            continue
+        norm = np.linalg.norm(result)
+        vec = result / norm if norm > 0 else None
+        if vec is None:
+            continue
+
+        if not row:
+            cur.execute(
+                "INSERT INTO user_vectors (user_id, pos_vector, neg_vector, "
+                f"{column}, publisher_likes, publisher_dislikes, publisher_freq) "
+                "VALUES (%s, '[]', NULL, %s, '{}', '{}', '{}')",
+                (uid, _safe_vector_for_json(vec)),
+            )
+        else:
+            cur.execute(
+                f"UPDATE user_vectors SET {column} = %s WHERE user_id = %s",
+                (_safe_vector_for_json(vec), uid),
+            )
+        logger.info(
+            "Affinity migration: recomputed %s for user=%s (%d terms)",
+            column, uid, len(blist),
+        )
+
+    # ── Orphan-vector cleanup ────────────────────────────────────────────
+    # Under the new model a direction vector exists if and only if that
+    # direction still has boost rows. A non-NULL vector without rows is a
+    # leftover from the old EMA model (or from boosted-then-removed terms):
+    # NULL it so the learned profile alone drives that direction again.
+    cur.execute(
+        "SELECT v.user_id, "
+        "v.affinity_pos_vector IS NOT NULL AS has_pos, "
+        "v.affinity_neg_vector IS NOT NULL AS has_neg "
+        "FROM user_vectors v "
+        "WHERE v.affinity_pos_vector IS NOT NULL OR v.affinity_neg_vector IS NOT NULL"
+    )
+    for r in cur.fetchall():
+        uid = r["user_id"]
+        cur.execute(
+            "SELECT direction, COUNT(*) AS n FROM affinity_boosts "
+            "WHERE user_id = %s GROUP BY direction",
+            (uid,),
+        )
+        counts = {row["direction"]: row["n"] for row in cur.fetchall()}
+        clear: list[str] = []
+        if r["has_pos"] and not counts.get("positive"):
+            clear.append("affinity_pos_vector = NULL")
+        if r["has_neg"] and not counts.get("negative"):
+            clear.append("affinity_neg_vector = NULL")
+        if clear:
+            cur.execute(
+                f"UPDATE user_vectors SET {', '.join(clear)} WHERE user_id = %s",
+                (uid,),
+            )
+            logger.info("Affinity migration: cleared orphan vectors for user=%s", uid)
+
+
 def _migrate_feeds(cursor) -> None:
     _add_column_if_missing(cursor, "feeds", "last_error", "TEXT DEFAULT NULL")
     _add_column_if_missing(cursor, "feeds", "last_error_at", "DATETIME DEFAULT NULL")
@@ -479,6 +615,7 @@ def init_db():
             """)
             _migrate_feed_stats(cursor)
             _migrate_smart_tags(cursor)
+            _migrate_affinity_boosts(conn, cursor)
             cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS article_cache (
                 item_id VARCHAR(64) PRIMARY KEY,

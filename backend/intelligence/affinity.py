@@ -6,23 +6,32 @@ affinity_neg_vector) so manual boosts NEVER corrupt the interaction-
 learned pos_vector / neg_vector.  The recommendation engine blends
 both at query time via AFFINITY_WEIGHT.
 
-Boost history is tracked in the affinity_boosts table for reversibility.
+Boost model: each term+direction carries a RELATIVE weight in [0, 1]
+(one row per term in affinity_boosts). Each UI click adds/removes
+AFFINITY_CLICK_STEP; the direction vector is the normalised weighted
+mean of the boosted term vectors.
+
+Displayed affinity scores are a calibrated logistic remap of the raw
+contrast (see calibrated_affinity) so typical interests don't all read
+"very low"; ranking always uses the raw, unbounded contrast.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
+import os
 
 import numpy as np
 
 from database.init_db import get_db
 from intelligence.embeddings import get_embedding_model
 from intelligence.scoring_util import (
+    calibrated_affinity,
     cosine_similarity,
     contrast_score,
-    ema_blend_and_normalise,
     blend_vectors,
 )
 from intelligence.recommendations import invalidate_cache
@@ -30,9 +39,18 @@ from intelligence.recommendations import invalidate_cache
 logger = logging.getLogger(__name__)
 
 _EPS = 1e-6
-_DEFAULT_STRENGTH = 0.25
-_MIN_STRENGTH = 0.05
-_MAX_STRENGTH = 0.90
+
+# ── Calibration of the displayed affinity score ───────────────────────────────
+# The displayed affinity is a logistic remap of the raw contrast score:
+#     display = σ((contrast − mu) / tau)
+# The raw contrast (unbounded) stays the ranking / engine signal; only the
+# presentation is calibrated so typical interests don't all read "very low".
+AFFINITY_CAL_MU = float(os.getenv("AFFINITY_CAL_MU", "0.15"))
+AFFINITY_CAL_TAU = float(os.getenv("AFFINITY_CAL_TAU", "0.12"))
+
+# Manual boosts: relative per-term weight in [0, 1]. Each UI click adds or
+# removes AFFINITY_CLICK_STEP of weight for that term+direction.
+AFFINITY_CLICK_STEP = 0.10
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -52,18 +70,17 @@ def _get_user_rows(user_id: int) -> dict | None:
             cursor.close()
 
 
-def _embed_term(term: str) -> np.ndarray:
+def _embed_term(term: str | list[str]) -> np.ndarray | np.ndarray:
     """
-    Encode a single term into a 1-D float32 vector.
-    .ravel() guarantees shape (dim,) even when the model
-    returns (1, dim) for a single string.
+    Encode one term (→ shape (dim,)) or a list of terms (→ (n, dim)) into
+    float32 vector(s).
     """
     vec = get_embedding_model().encode(
         term,
         normalize_embeddings=True,
         convert_to_numpy=True,
     )
-    return np.asarray(vec, dtype=np.float32).ravel()
+    return np.asarray(vec, dtype=np.float32)
 
 
 def _ensure_user_vector_row(user_id: int, cursor) -> None:
@@ -130,25 +147,83 @@ def _safe_vector_for_json(vec: np.ndarray) -> str:
     return json.dumps(cleaned.tolist())
 
 
-def _recompute_affinity_vector(user_id: int, direction: str) -> np.ndarray | None:
+def _effective_profile_vectors(row: dict) -> tuple[np.ndarray | None, np.ndarray | None]:
     """
-    Recompute an affinity vector from scratch using the boost history.
-    This allows accurate removal of individual boosts.
+    Build the effective (eff_pos, eff_neg) profile pair for a user_vectors
+    row, blending interaction-learned vectors with manual affinity vectors
+    via AFFINITY_WEIGHT. Either side may be None. Mirrors what the
+    recommendation engine queries with, so all analyses agree with it.
     """
-    with get_db() as conn:
-        cursor = conn.cursor(dictionary=True)
-        try:
-            cursor.execute(
-                """
-                SELECT term, strength FROM affinity_boosts
-                WHERE user_id = %s AND direction = %s
-                ORDER BY created_at ASC
-                """,
-                (user_id, direction),
-            )
-            boosts = cursor.fetchall()
-        finally:
-            cursor.close()
+    from intelligence.recommendations import AFFINITY_WEIGHT
+
+    pos_vec = _safe_json_loads_vector(row.get("pos_vector"))
+    aff_pos = _safe_json_loads_vector(row.get("affinity_pos_vector"))
+    neg_vec = _safe_json_loads_vector(row.get("neg_vector"))
+    aff_neg = _safe_json_loads_vector(row.get("affinity_neg_vector"))
+
+    if pos_vec is not None and aff_pos is not None:
+        eff_pos = np.array(
+            blend_vectors(pos_vec.tolist(), aff_pos.tolist(), AFFINITY_WEIGHT),
+            dtype=np.float32,
+        )
+    else:
+        eff_pos = pos_vec if pos_vec is not None else aff_pos
+
+    if neg_vec is not None and aff_neg is not None:
+        eff_neg = np.array(
+            blend_vectors(neg_vec.tolist(), aff_neg.tolist(), AFFINITY_WEIGHT),
+            dtype=np.float32,
+        )
+    else:
+        eff_neg = neg_vec if neg_vec is not None else aff_neg
+
+    return eff_pos, eff_neg
+
+
+def _sanitise_similarity(value: float) -> float:
+    """Clamp a cosine similarity to [0, 1], mapping NaN/Inf to 0."""
+    if math.isnan(value) or math.isinf(value):
+        return 0.0
+    return max(0.0, min(1.0, value))
+
+
+def _recompute_affinity_vector(
+    user_id: int,
+    direction: str,
+    cursor=None,
+) -> np.ndarray | None:
+    """
+    Recompute an affinity vector from the boost history.
+
+    Model: a weighted mean of the boosted term vectors, normalised —
+        vec = Σ wᵢ · term_vecᵢ / ‖Σ wᵢ · term_vecᵢ‖
+    where wᵢ ∈ [0, 1] is each term's relative weight (one row per
+    term+direction, maintained by the ±step upsert in boost_affinity()).
+
+    When ``cursor`` is given, the boost rows are read through the caller's
+    open transaction so uncommitted deletes/updates are visible; a stale
+    read from a second connection would resurrect just-removed boosts.
+    Returns None when there are no boosts left.
+    """
+    if cursor is not None:
+        cursor.execute(
+            "SELECT term, strength FROM affinity_boosts "
+            "WHERE user_id = %s AND direction = %s",
+            (user_id, direction),
+        )
+        boosts = cursor.fetchall()
+    else:
+        with get_db() as conn:
+            db_cursor = conn.cursor(dictionary=True)
+            try:
+                db_cursor.execute(
+                    "SELECT term, strength FROM affinity_boosts "
+                    "WHERE user_id = %s AND direction = %s",
+                    (user_id, direction),
+                )
+                boosts = db_cursor.fetchall()
+            finally:
+                db_cursor.close()
 
     if not boosts:
         return None
@@ -156,10 +231,16 @@ def _recompute_affinity_vector(user_id: int, direction: str) -> np.ndarray | Non
     result: np.ndarray | None = None
     for boost in boosts:
         term_vec = _embed_term(boost["term"])
-        strength = float(boost["strength"])
-        result = ema_blend_and_normalise(result, term_vec, strength)
+        weight = float(boost["strength"])
+        contribution = weight * term_vec
+        result = contribution if result is None else result + contribution
 
-    return result
+    if result is None:
+        return None
+    norm = np.linalg.norm(result)
+    if norm <= 0:
+        return None
+    return (result / norm).astype(np.float32)
 
 
 # ── Public service functions ───────────────────────────────────────────────────
@@ -169,73 +250,54 @@ def analyze_affinity(user_id: int, term: str) -> dict:
     Return the affinity score for a term against the user's COMBINED profile
     (learned interactions + manual affinity boosts), mirroring what the
     recommendation engine sees.
+
+    The displayed ``affinity`` is the calibrated (logistic) remap of the raw
+    contrast score, so a typical interest reads mid-range even for users
+    with thin profiles. ``sim_pos`` / ``sim_neg`` stay raw for transparency.
+    The current manual boost weight per direction is included so the UI can
+    render ± steppers.
     """
     row = _get_user_rows(user_id)
     if not row:
-        return {"affinity": 0.5, "sim_pos": 0.0, "sim_neg": 0.0, "term": term}
+        return {
+            "affinity": 0.5,
+            "sim_pos": 0.0,
+            "sim_neg": 0.0,
+            "boost_pos": 0.0,
+            "boost_neg": 0.0,
+            "term": term,
+        }
 
     try:
-        from intelligence.recommendations import AFFINITY_WEIGHT
-
         term_vec = _embed_term(term)
 
-        # ── Decode all four vectors (any may be None) ────────────────────
-        pos_vec = _safe_json_loads_vector(row.get("pos_vector"))
-        aff_pos = _safe_json_loads_vector(row.get("affinity_pos_vector"))
-        neg_vec = _safe_json_loads_vector(row.get("neg_vector"))
-        aff_neg = _safe_json_loads_vector(row.get("affinity_neg_vector"))
+        eff_pos, eff_neg = _effective_profile_vectors(row)
+        if eff_pos is None:
+            return {
+                "affinity": 0.5,
+                "sim_pos": 0.0,
+                "sim_neg": 0.0,
+                "boost_pos": 0.0,
+                "boost_neg": 0.0,
+                "term": term,
+            }
 
-        # ── Effective positive vector ────────────────────────────────────
-        if pos_vec is not None and aff_pos is not None:
-            effective_pos = np.array(
-                blend_vectors(pos_vec.tolist(), aff_pos.tolist(), AFFINITY_WEIGHT),
-                dtype=np.float32,
-            )
-        elif pos_vec is not None:
-            effective_pos = pos_vec
-        elif aff_pos is not None:
-            effective_pos = aff_pos
-        else:
-            return {"affinity": 0.5, "sim_pos": 0.0, "sim_neg": 0.0, "term": term}
+        sim_pos = float(cosine_similarity(term_vec, eff_pos))
 
-        sim_pos = float(cosine_similarity(term_vec, effective_pos))
-
-        # An explicit affinity boost should always be visible in the
-        # analysis.  If the pure affinity vector produces a higher similarity
-        # than the blended one, use that.
-        if aff_pos is not None:
-            sim_pos = max(sim_pos, float(cosine_similarity(term_vec, aff_pos)))
-
-        # ── Effective negative vector ────────────────────────────────────
-        if neg_vec is not None and aff_neg is not None:
-            effective_neg = np.array(
-                blend_vectors(neg_vec.tolist(), aff_neg.tolist(), AFFINITY_WEIGHT),
-                dtype=np.float32,
-            )
-            sim_neg = float(cosine_similarity(term_vec, effective_neg))
-        elif neg_vec is not None:
-            sim_neg = float(cosine_similarity(term_vec, neg_vec))
-        elif aff_neg is not None:
-            sim_neg = float(cosine_similarity(term_vec, aff_neg))
+        if eff_neg is not None:
+            sim_neg = float(cosine_similarity(term_vec, eff_neg))
         else:
             sim_neg = 0.0
 
-        if aff_neg is not None:
-            sim_neg = max(sim_neg, float(cosine_similarity(term_vec, aff_neg)))
+        sim_pos = _sanitise_similarity(sim_pos)
+        sim_neg = _sanitise_similarity(sim_neg)
 
-        # ── Clamp similarity values to a sane range ──────────────────────
-        # Blended / un-normalised vectors can produce values slightly
-        # outside [-1, 1] or even NaN.  Clamp so contrast_score stays in
-        # [0, 1] and the JSON response is always valid.
-        sim_pos = 0.0 if (math.isnan(sim_pos) or math.isinf(sim_pos)) else max(0.0, min(1.0, sim_pos))
-        sim_neg = 0.0 if (math.isnan(sim_neg) or math.isinf(sim_neg)) else max(0.0, min(1.0, sim_neg))
+        raw_contrast = contrast_score(sim_pos, sim_neg)
+        if math.isnan(raw_contrast) or math.isinf(raw_contrast):
+            raw_contrast = 0.0
+        affinity = calibrated_affinity(raw_contrast, AFFINITY_CAL_MU, AFFINITY_CAL_TAU)
 
-        affinity = contrast_score(sim_pos, sim_neg)
-
-        # Final safety clamp
-        if math.isnan(affinity) or math.isinf(affinity):
-            affinity = 0.5
-        affinity = max(0.0, min(1.0, affinity))
+        boost_pos, boost_neg = _get_boost_weights(user_id, term)
 
     except Exception:
         logger.exception("Error computing affinity term=%r user=%s", term, user_id)
@@ -245,60 +307,90 @@ def analyze_affinity(user_id: int, term: str) -> dict:
         "affinity": round(float(affinity), 4),
         "sim_pos": round(float(sim_pos), 4),
         "sim_neg": round(float(sim_neg), 4),
+        "boost_pos": round(float(boost_pos), 4),
+        "boost_neg": round(float(boost_neg), 4),
         "term": term,
     }
 
 
+def _get_boost_weights(user_id: int, term: str) -> tuple[float, float]:
+    """Current manual boost weight for a term, per direction."""
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT direction, strength FROM affinity_boosts "
+                "WHERE user_id = %s AND term = %s",
+                (user_id, term),
+            )
+            rows = cursor.fetchall()
+        finally:
+            cursor.close()
+
+    weights = {r["direction"]: float(r["strength"]) for r in rows}
+    return weights.get("positive", 0.0), weights.get("negative", 0.0)
+
+
 def boost_affinity(user_id: int, term: str, direction: str, strength: float) -> dict:
-    """Nudge affinity_pos_vector or affinity_neg_vector. Records in boost history."""
-    strength = max(_MIN_STRENGTH, min(strength, _MAX_STRENGTH))
+    """
+    Adjust the relative boost weight of a term by a signed delta.
+
+    ``strength`` is the click delta (e.g. +0.10 / −0.10). The per-term
+    relative weight lives in [0, 1]; a single row per (user, term,
+    direction) is kept up to date. Dropping to 0 removes the boost
+    entirely and recomputes the direction vector (possibly back to None).
+    """
+    delta = max(-1.0, min(1.0, float(strength)))
+    if delta == 0.0:
+        return {"success": False, "message": "Empty adjustment"}
 
     try:
-        term_vec = _embed_term(term)
-
         with get_db() as conn:
             cursor = conn.cursor(dictionary=True)
             try:
                 # Ensure the row exists before reading / writing.
                 _ensure_user_vector_row(user_id, cursor)
 
-                # Read the current vectors on the SAME connection so we
-                # always see the latest data.
+                # Current weight for this term+direction (0 when absent).
                 cursor.execute(
-                    """SELECT affinity_pos_vector, affinity_neg_vector
-                       FROM user_vectors WHERE user_id = %s""",
-                    (user_id,),
+                    "SELECT strength FROM affinity_boosts "
+                    "WHERE user_id = %s AND term = %s AND direction = %s "
+                    "LIMIT 1",
+                    (user_id, term, direction),
                 )
-                row = cursor.fetchone()
+                existing_row = cursor.fetchone()
+                current = float(existing_row["strength"]) if existing_row else 0.0
 
-                # Record the boost in history
-                cursor.execute(
-                    """
-                    INSERT INTO affinity_boosts (user_id, term, direction, strength)
-                    VALUES (%s, %s, %s, %s)
-                    """,
-                    (user_id, term, direction, strength),
-                )
+                new_weight = max(0.0, min(1.0, current + delta))
 
-                # Apply the EMA blend
-                if direction == "positive":
-                    existing = _safe_json_loads_vector(
-                        row["affinity_pos_vector"] if row else None
-                    )
-                    new_vec = ema_blend_and_normalise(existing, term_vec, strength)
+                if new_weight <= 0.0:
                     cursor.execute(
-                        "UPDATE user_vectors SET affinity_pos_vector = %s WHERE user_id = %s",
-                        (_safe_vector_for_json(new_vec), user_id),
+                        "DELETE FROM affinity_boosts "
+                        "WHERE user_id = %s AND term = %s AND direction = %s",
+                        (user_id, term, direction),
+                    )
+                elif existing_row:
+                    cursor.execute(
+                        "UPDATE affinity_boosts SET strength = %s "
+                        "WHERE user_id = %s AND term = %s AND direction = %s",
+                        (new_weight, user_id, term, direction),
                     )
                 else:
-                    existing = _safe_json_loads_vector(
-                        row["affinity_neg_vector"] if row else None
-                    )
-                    new_vec = ema_blend_and_normalise(existing, term_vec, strength)
                     cursor.execute(
-                        "UPDATE user_vectors SET affinity_neg_vector = %s WHERE user_id = %s",
-                        (_safe_vector_for_json(new_vec), user_id),
+                        "INSERT INTO affinity_boosts (user_id, term, direction, strength) "
+                        "VALUES (%s, %s, %s, %s)",
+                        (user_id, term, direction, new_weight),
                     )
+
+                new_vec = _recompute_affinity_vector(user_id, direction, cursor=cursor)
+
+                column = (
+                    "affinity_pos_vector" if direction == "positive" else "affinity_neg_vector"
+                )
+                cursor.execute(
+                    f"UPDATE user_vectors SET {column} = %s WHERE user_id = %s",
+                    (_safe_vector_for_json(new_vec) if new_vec is not None else None, user_id),
+                )
 
                 conn.commit()
             finally:
@@ -313,16 +405,21 @@ def boost_affinity(user_id: int, term: str, direction: str, strength: float) -> 
 
     invalidate_cache(user_id)
     logger.info(
-        "Affinity boost: user=%s term=%r direction=%s strength=%.2f",
-        user_id, term, direction, strength,
+        "Affinity boost: user=%s term=%r direction=%s delta=%+.2f weight=%.2f",
+        user_id, term, direction, delta, new_weight,
     )
-    return {"success": True, "direction": direction, "term": term, "strength": strength}
+    return {
+        "success": True,
+        "direction": direction,
+        "term": term,
+        "weight": round(new_weight, 4),
+    }
 
 
 def remove_affinity_boost(user_id: int, term: str, direction: str) -> dict:
     """Remove a specific boost and recompute the affinity vector from remaining history."""
     with get_db() as conn:
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
         try:
             cursor.execute(
                 """
@@ -339,7 +436,7 @@ def remove_affinity_boost(user_id: int, term: str, direction: str) -> dict:
 
             _ensure_user_vector_row(user_id, cursor)
 
-            new_vec = _recompute_affinity_vector(user_id, direction)
+            new_vec = _recompute_affinity_vector(user_id, direction, cursor=cursor)
 
             column = "affinity_pos_vector" if direction == "positive" else "affinity_neg_vector"
             cursor.execute(
@@ -384,37 +481,14 @@ def attach_cluster_affinity(user_id: int, events: list[dict]) -> list[dict]:
         if not row:
             return events
 
-        from intelligence.recommendations import AFFINITY_WEIGHT
         from intelligence.embeddings import get_qdrant_client, COLLECTION_NAME
 
-        pos_vec = _safe_json_loads_vector(row.get("pos_vector"))
-        aff_pos = _safe_json_loads_vector(row.get("affinity_pos_vector"))
-        neg_vec = _safe_json_loads_vector(row.get("neg_vector"))
-        aff_neg = _safe_json_loads_vector(row.get("affinity_neg_vector"))
+        eff_pos, eff_neg = _effective_profile_vectors(row)
+        eff_pos = eff_pos.astype(np.float64) if eff_pos is not None else None
+        eff_neg = eff_neg.astype(np.float64) if eff_neg is not None else None
 
-        if pos_vec is not None and aff_pos is not None:
-            eff_pos = np.array(
-                blend_vectors(pos_vec.tolist(), aff_pos.tolist(), AFFINITY_WEIGHT),
-                dtype=np.float64,
-            )
-        elif pos_vec is not None:
-            eff_pos = pos_vec
-        elif aff_pos is not None:
-            eff_pos = aff_pos
-        else:
+        if eff_pos is None:
             return events
-
-        if neg_vec is not None and aff_neg is not None:
-            eff_neg = np.array(
-                blend_vectors(neg_vec.tolist(), aff_neg.tolist(), AFFINITY_WEIGHT),
-                dtype=np.float64,
-            )
-        elif neg_vec is not None:
-            eff_neg = neg_vec
-        elif aff_neg is not None:
-            eff_neg = aff_neg
-        else:
-            eff_neg = None
 
         # Collect unique article ids across all events — one Qdrant call.
         ids: list[str] = []
@@ -479,3 +553,170 @@ def attach_cluster_affinity(user_id: int, events: list[dict]) -> list[dict]:
         logger.warning("[AFFINITY] Cluster affinity attach failed user=%s: %s", user_id, e)
 
     return events
+
+
+# ── Ranked interest terms (top affinities for the user) ───────────────────────
+
+# Term-vector cache in Redis (term embeddings are immutable inputs — the only
+# thing that can change them is the embedding model itself, which is part of
+# the cache key).
+_TERMVEC_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
+
+_redis_client = None
+
+
+def _get_termvec_redis():
+    """Lazy sync Redis singleton for the term-vector cache (None if down)."""
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        import redis as _redis_mod
+
+        client = _redis_mod.Redis(
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            db=0,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
+        client.ping()
+        _redis_client = client
+    except Exception as e:
+        logger.debug("[AFFINITY] Term-vector Redis unavailable: %s", e)
+        return None
+    return _redis_client
+
+
+def _termvec_cache_key(term: str) -> str:
+    from intelligence.embeddings import MODEL_NAME
+
+    digest = hashlib.sha256(f"{MODEL_NAME}|{term}".encode("utf-8")).hexdigest()[:24]
+    return f"affinity:termvec:{digest}"
+
+
+def _collect_candidate_terms(user_id: int) -> list[str]:
+    """Interest vocabulary: the user's smart tags + manually boosted terms."""
+    terms: list[str] = []
+    seen: set[str] = set()
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT name FROM smart_tags WHERE user_id = %s", (user_id,)
+            )
+            for r in cursor.fetchall():
+                name = (r.get("name") or "").strip()
+                if name and name.lower() not in seen:
+                    seen.add(name.lower())
+                    terms.append(name)
+
+            cursor.execute(
+                "SELECT DISTINCT term FROM affinity_boosts WHERE user_id = %s",
+                (user_id,),
+            )
+            for r in cursor.fetchall():
+                t = (r.get("term") or "").strip()
+                if t and t.lower() not in seen:
+                    seen.add(t.lower())
+                    terms.append(t)
+        finally:
+            cursor.close()
+    return terms[:200]
+
+
+def rank_user_terms(user_id: int, limit: int = 15) -> dict:
+    """
+    Rank interest terms (smart tags + boosted terms) by how well they match
+    the user's profile. Ordering uses the RAW contrast score (unbounded, so
+    the ranking keeps discriminating even when display scores cluster near
+    100); the displayed affinity is the calibrated logistic remap.
+    """
+    limit = max(1, min(int(limit), 50))
+
+    row = _get_user_rows(user_id)
+    if not row:
+        return {"terms": [], "has_profile": False}
+
+    eff_pos, eff_neg = _effective_profile_vectors(row)
+    if eff_pos is None:
+        return {"terms": [], "has_profile": False}
+
+    candidates = _collect_candidate_terms(user_id)
+    if not candidates:
+        return {"terms": [], "has_profile": True}
+
+    # ── Term vectors: Redis cache with batch-encode fallback ─────────────
+    redis = _get_termvec_redis()
+    vec_by_term: dict[str, np.ndarray] = {}
+    missing: list[str] = []
+
+    if redis is not None:
+        try:
+            pipe = redis.pipeline(transaction=False)
+            for t in candidates:
+                pipe.get(_termvec_cache_key(t))
+            cached = pipe.execute()
+            for t, raw in zip(candidates, cached):
+                if raw:
+                    arr = np.array(json.loads(raw), dtype=np.float32)
+                    if arr.ndim == 1 and arr.size > 0:
+                        vec_by_term[t] = arr
+                        continue
+                    missing.append(t)
+            missing = [t for t in candidates if t not in vec_by_term]
+        except Exception as e:
+            logger.debug("[AFFINITY] Term-vector cache read failed: %s", e)
+            missing = list(candidates)
+    else:
+        missing = list(candidates)
+
+    if missing:
+        try:
+            encoded = _embed_term(missing)
+        except Exception as e:
+            logger.warning("[AFFINITY] Term batch encode failed user=%s: %s", user_id, e)
+            encoded = None
+
+        if encoded is not None:
+            for t, vec in zip(missing, encoded):
+                vec_by_term[t] = np.asarray(vec, dtype=np.float32)
+            if redis is not None:
+                try:
+                    pipe = redis.pipeline(transaction=False)
+                    for t, vec in zip(missing, encoded):
+                        pipe.set(
+                            _termvec_cache_key(t),
+                            json.dumps(np.asarray(vec, dtype=np.float32).tolist()),
+                            ex=_TERMVEC_TTL_SECONDS,
+                        )
+                    pipe.execute()
+                except Exception as e:
+                    logger.debug("[AFFINITY] Term-vector cache write failed: %s", e)
+
+    # ── Score + rank by raw contrast ─────────────────────────────────────
+    scored: list[dict] = []
+    for term, term_vec in vec_by_term.items():
+        sim_pos = _sanitise_similarity(float(cosine_similarity(term_vec, eff_pos)))
+        sim_neg = (
+            _sanitise_similarity(float(cosine_similarity(term_vec, eff_neg)))
+            if eff_neg is not None
+            else 0.0
+        )
+        raw = contrast_score(sim_pos, sim_neg)
+        if math.isnan(raw) or math.isinf(raw):
+            raw = 0.0
+        scored.append(
+            {
+                "term": term,
+                "affinity": round(calibrated_affinity(raw, AFFINITY_CAL_MU, AFFINITY_CAL_TAU), 4),
+                "sim_pos": round(sim_pos, 4),
+                "sim_neg": round(sim_neg, 4),
+                "_raw": raw,
+            }
+        )
+
+    scored.sort(key=lambda x: x["_raw"], reverse=True)
+    for entry in scored:
+        entry.pop("_raw")
+    return {"terms": scored[:limit], "has_profile": True}

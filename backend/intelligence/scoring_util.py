@@ -32,6 +32,38 @@ def contrast_score(sim_pos: float, sim_neg: float) -> float:
     return max(0.0, sim_pos - 0.5 * sim_neg)
 
 
+# ── Calibrated affinity display score ────────────────────────────────────────
+
+def calibrated_affinity(
+    contrast: float,
+    mu: float = 0.15,
+    tau: float = 0.12,
+) -> float:
+    """
+    Map a raw contrast score (unbounded cosine band) onto a [0, 1]
+    display scale with a logistic curve.
+
+        display = σ((contrast − mu) / tau)
+
+    Cosine similarities in embedding space live in a narrow band
+    (typically 0.05–0.45); showing the raw value makes every term read
+    as "very low" for new users.  The logistic re-anchors the band so a
+    typical interest reads mid-range and only near-perfect matches
+    approach 1.0.
+
+    The display score saturates by design — the raw contrast keeps
+    growing without a ceiling, and is what ranking / ordering uses.
+    """
+    if tau <= 0.0:
+        tau = 0.12
+    z = (contrast - mu) / tau
+    # Numerically stable logistic: exp(-|z|) never overflows.
+    if z >= 0.0:
+        return 1.0 / (1.0 + math.exp(-z))
+    ez = math.exp(z)
+    return ez / (1.0 + ez)
+
+
 # ── Cosine similarity ─────────────────────────────────────────────────────────
 
 def cosine_similarity(vec_a, vec_b) -> float:
@@ -162,38 +194,6 @@ def time_decay_multiplier(
     age_minutes = age_seconds / 60.0
 
     return 1.0 / (age_minutes + time_const) ** gravity
-
-
-# ── EMA blend and normalise ───────────────────────────────────────────────────
-
-def ema_blend_and_normalise(
-    existing_vec: Optional[np.ndarray],
-    new_vec: np.ndarray,
-    strength: float,
-) -> np.ndarray:
-    """
-    Exponential moving average blend followed by L2 normalisation.
-
-        result = (1 − strength) × existing + strength × new
-        result = result / ‖result‖
-
-    If *existing_vec* is None, *new_vec* is simply normalised and returned.
-    Used by the affinity engine to incrementally blend preference vectors
-    while keeping them on the unit hypersphere.
-    """
-    new = np.asarray(new_vec, dtype=np.float32)
-
-    if existing_vec is None:
-        blended = new
-    else:
-        existing = np.asarray(existing_vec, dtype=np.float32)
-        blended = (1.0 - strength) * existing + strength * new
-
-    norm = np.linalg.norm(blended)
-    if norm > 0:
-        blended = blended / norm
-
-    return blended
 
 
 # ── Vector blending ───────────────────────────────────────────────────────────

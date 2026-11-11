@@ -4,14 +4,16 @@
 	import Search from '@lucide/svelte/icons/search';
 	import ThumbsUp from '@lucide/svelte/icons/thumbs-up';
 	import ThumbsDown from '@lucide/svelte/icons/thumbs-down';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Minus from '@lucide/svelte/icons/minus';
+	import ListOrdered from '@lucide/svelte/icons/list-ordered';
 	import X from '@lucide/svelte/icons/x';
 	import { t } from 'svelte-i18n';
 	import { get } from 'svelte/store';
- import { ripple } from '$lib/actions/ripple';
- import { apiFetch } from '$lib/api';
+  import { ripple } from '$lib/actions/ripple';
+  import { apiFetch } from '$lib/api';
 
 	let term = $state('');
-	let strength = $state(0.25);
 
 	type AnalyzeStatus = 'idle' | 'loading' | 'done' | 'error';
 	type BoostStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -19,7 +21,6 @@
 	let analyzeStatus = $state<AnalyzeStatus>('idle');
 	let analyzeError = $state('');
 	let boostStatus = $state<BoostStatus>('idle');
-	let boostDirection = $state<'positive' | 'negative' | null>(null);
 	let boostError = $state('');
 
 	interface AffinityResult {
@@ -27,6 +28,8 @@
 		affinity: number;
 		sim_pos: number;
 		sim_neg: number;
+		boost_pos: number;
+		boost_neg: number;
 	}
 	let result = $state<AffinityResult | null>(null);
 
@@ -36,11 +39,21 @@
 	}
 	let history = $state<HistoryEntry[]>([]);
 
+	interface RankedTerm {
+		term: string;
+		affinity: number;
+		sim_pos: number;
+		sim_neg: number;
+	}
+	let ranked = $state<RankedTerm[]>([]);
+	let rankedStatus = $state<'idle' | 'loading' | 'done'>('idle');
+
 	onMount(() => {
 		const stored = localStorage.getItem('affinity-history');
 		if (stored) {
 			try { history = JSON.parse(stored); } catch { history = []; }
 		}
+		loadRanking();
 	});
 
 	function persistHistory() {
@@ -50,20 +63,14 @@
 	}
 
 	function affinityLabel(score: number): { text: string; color: string } {
-		if (score >= 0.80) return { text: get(t)('affinity.veryHigh'), color: 'var(--color-success)' };
-		if (score >= 0.62) return { text: get(t)('affinity.high'), color: 'var(--color-success)' };
-		if (score >= 0.52) return { text: get(t)('affinity.moderate'), color: 'var(--color-warning)' };
-		if (score >= 0.42) return { text: get(t)('affinity.low'), color: 'var(--color-error)' };
+		if (score >= 0.82) return { text: get(t)('affinity.veryHigh'), color: 'var(--color-success)' };
+		if (score >= 0.65) return { text: get(t)('affinity.high'), color: 'var(--color-success)' };
+		if (score >= 0.50) return { text: get(t)('affinity.moderate'), color: 'var(--color-warning)' };
+		if (score >= 0.35) return { text: get(t)('affinity.low'), color: 'var(--color-error)' };
 		return { text: get(t)('affinity.veryLow'), color: 'var(--color-error)' };
 	}
 
 	function pct(score: number) { return Math.round(score * 100); }
-
-	function gaugeColor(score: number): string {
-		if (score >= 0.62) return 'var(--color-success)';
-		if (score >= 0.45) return 'var(--color-warning)';
-		return 'var(--color-error)';
-	}
 
 	async function analyze() {
 		const query = term.trim();
@@ -78,40 +85,49 @@
 			if (!res.ok) throw new Error(data.error || `${get(t)('affinity.errorStatus')} ${res.status}`);
 			result = data as AffinityResult;
 			analyzeStatus = 'done';
+			syncHistory(result);
 		} catch (err: any) {
 			analyzeError = err.message;
 			analyzeStatus = 'error';
 		}
 	}
 
-	async function boost(direction: 'positive' | 'negative') {
+	function syncHistory(entry: AffinityResult) {
+		const existing = history.findIndex(h => h.term === entry.term);
+		if (existing >= 0) {
+			history[existing] = {
+				...history[existing],
+				...entry,
+				boostedPositive: history[existing].boostedPositive || entry.boost_pos > 0,
+				boostedNegative: history[existing].boostedNegative || entry.boost_neg > 0,
+			};
+			history = [...history];
+		} else {
+			history = [{ ...entry, boostedPositive: entry.boost_pos > 0, boostedNegative: entry.boost_neg > 0 }, ...history];
+		}
+		persistHistory();
+	}
+
+	async function adjustBoost(direction: 'positive' | 'negative', delta: number) {
 		if (!result) return;
 		boostStatus = 'loading';
-		boostDirection = direction;
 		boostError = '';
 		try {
-const res = await apiFetch('/api/affinity/boost', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ term: result.term, direction, strength }),
-  });
+			const res = await apiFetch('/api/affinity/boost', {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ term: result.term, direction, strength: delta }),
+			});
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error || `${get(t)('affinity.errorStatus')} ${res.status}`);
-			boostStatus = 'success';
-			const existing = history.findIndex(h => h.term === result!.term);
-			if (existing >= 0) {
-				history[existing] = {
-					...history[existing],
-					boostedPositive: history[existing].boostedPositive || direction === 'positive',
-					boostedNegative: history[existing].boostedNegative || direction === 'negative',
-				};
-			} else {
-				history = [{ ...result, boostedPositive: direction === 'positive', boostedNegative: direction === 'negative' }, ...history];
-			}
-			persistHistory();
-			await analyze();
+			const weight = data.weight ?? 0;
+			result = direction === 'positive'
+				? { ...result, boost_pos: weight }
+				: { ...result, boost_neg: weight };
+			syncHistory(result);
 			boostStatus = 'idle';
+			loadRanking();
 		} catch (err: any) {
 			boostError = err.message;
 			boostStatus = 'error';
@@ -119,26 +135,41 @@ const res = await apiFetch('/api/affinity/boost', {
 		}
 	}
 
-  async function removeFromHistory(termKey: string) {
-    const entry = history.find(h => h.term === termKey);
-    if (entry) {
-      const directions: Array<'positive' | 'negative'> = [];
-      if (entry.boostedPositive) directions.push('positive');
-      if (entry.boostedNegative) directions.push('negative');
-      for (const dir of directions) {
-        try {
-await apiFetch('/api/affinity/boost', {
-      method: 'DELETE',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ term: termKey, direction: dir }),
-    });
-        } catch { /* best-effort */ }
-      }
-    }
-    history = history.filter(h => h.term !== termKey);
-    persistHistory();
-  }
+	async function removeFromHistory(termKey: string) {
+		const entry = history.find(h => h.term === termKey);
+		if (entry) {
+			const directions: Array<'positive' | 'negative'> = [];
+			if (entry.boostedPositive) directions.push('positive');
+			if (entry.boostedNegative) directions.push('negative');
+			for (const dir of directions) {
+				try {
+					await apiFetch('/api/affinity/boost', {
+						method: 'DELETE',
+						credentials: 'include',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ term: termKey, direction: dir }),
+					});
+				} catch { /* best-effort */ }
+			}
+		}
+		history = history.filter(h => h.term !== termKey);
+		persistHistory();
+		loadRanking();
+	}
+
+	async function loadRanking() {
+		rankedStatus = 'loading';
+		try {
+			const res = await apiFetch('/api/affinity/terms?limit=10', { credentials: 'include' });
+			if (!res.ok) throw new Error();
+			const data = await res.json();
+			ranked = (data.terms ?? []) as RankedTerm[];
+			rankedStatus = 'done';
+		} catch {
+			ranked = [];
+			rankedStatus = 'done';
+		}
+	}
 
 	function handleKey(e: KeyboardEvent) {
 		if (e.key === 'Enter') analyze();
@@ -190,7 +221,7 @@ await apiFetch('/api/affinity/boost', {
 
 			<div class="gauge-wrap">
 				<div class="gauge-track">
-					<div class="gauge-fill" class:fill-high={result.affinity >= 0.62} class:fill-moderate={result.affinity >= 0.45 && result.affinity < 0.62} class:fill-low={result.affinity < 0.45} style="width: {pct(result.affinity)}%"></div>
+					<div class="gauge-fill" class:fill-high={result.affinity >= 0.65} class:fill-moderate={result.affinity >= 0.50 && result.affinity < 0.65} class:fill-low={result.affinity < 0.50} style="width: {pct(result.affinity)}%"></div>
 				</div>
 				<div class="gauge-labels">
 					<span>{$t('affinity.gaugeNone')}</span>
@@ -213,32 +244,85 @@ await apiFetch('/api/affinity/boost', {
 			<div class="section-divider"></div>
 			<p class="divider-label">{$t('affinity.adjustProfile')}</p>
 
-			<div class="slider-wrap">
-				<div class="slider-header">
-					<span class="slider-label">{$t('affinity.strengthLabel')}</span>
-					<span class="slider-val">{Math.round(strength * 100)}%</span>
+			<div class="boost-row positive">
+				<div class="boost-info">
+					<span class="boost-label"><ThumbsUp size={13} /> {$t('affinity.moreInterest')}</span>
+					<span class="boost-weight">{pct(result.boost_pos)}%</span>
 				</div>
-				<input type="range" min="0.05" max="0.90" step="0.05" bind:value={strength} class="affinity-slider" />
-				<div class="gauge-labels tight">
-					<span>{$t('affinity.strengthSubtle')}</span>
-					<span>{$t('affinity.strengthStrong')}</span>
+				<div class="boost-actions">
+					<button
+						class="step-btn"
+						onclick={() => adjustBoost('positive', -0.10)}
+						aria-label="{$t('affinity.decreaseWeight')}"
+						disabled={boostStatus === 'loading'}
+					><Minus size={13} /></button>
+					<button
+						class="step-btn accent"
+						onclick={() => adjustBoost('positive', 0.10)}
+						aria-label="{$t('affinity.increaseWeight')}"
+						disabled={boostStatus === 'loading'}
+					><Plus size={13} /></button>
 				</div>
 			</div>
 
-			<div class="btn-group spaced">
-				<button class="action-btn success full-width" use:ripple onclick={() => boost('positive')} disabled={boostStatus === 'loading'}>
-					{#if boostStatus === 'loading' && boostDirection === 'positive'}<span class="spinner"></span>
-					{:else}<ThumbsUp size={15} />{/if}
-					<span>{$t('affinity.moreInterest')}</span>
-				</button>
-				<button class="action-btn danger full-width" use:ripple onclick={() => boost('negative')} disabled={boostStatus === 'loading'}>
-					{#if boostStatus === 'loading' && boostDirection === 'negative'}<span class="spinner"></span>
-					{:else}<ThumbsDown size={15} />{/if}
-					<span>{$t('affinity.lessInterest')}</span>
-				</button>
+			<div class="boost-row negative">
+				<div class="boost-info">
+					<span class="boost-label"><ThumbsDown size={13} /> {$t('affinity.lessInterest')}</span>
+					<span class="boost-weight">{pct(result.boost_neg)}%</span>
+				</div>
+				<div class="boost-actions">
+					<button
+						class="step-btn"
+						onclick={() => adjustBoost('negative', -0.10)}
+						aria-label="{$t('affinity.decreaseWeight')}"
+						disabled={boostStatus === 'loading'}
+					><Minus size={13} /></button>
+					<button
+						class="step-btn danger"
+						onclick={() => adjustBoost('negative', 0.10)}
+						aria-label="{$t('affinity.increaseWeight')}"
+						disabled={boostStatus === 'loading'}
+					><Plus size={13} /></button>
+				</div>
 			</div>
 			{#if boostStatus === 'error'}<p class="error-text">{boostError}</p>{/if}
 		</div>
+	{/if}
+
+	{#if rankedStatus === 'done' && ranked.length > 0}
+		<div class="ranking-section">
+			<div class="ranking-header">
+				<ListOrdered size={15} class="ranking-icon" />
+				<p class="history-title">{$t('affinity.rankingTitle')}</p>
+			</div>
+			<div class="history-list">
+				{#each ranked as entry, i (entry.term)}
+					{@const lbl = affinityLabel(entry.affinity)}
+					<div class="history-item">
+						<div class="history-left">
+							<span class="ranking-pos">{i + 1}</span>
+							<button class="history-term" onclick={() => { term = entry.term; analyze(); }}>
+								{entry.term}
+							</button>
+						</div>
+						<div class="history-right">
+							<div class="ranking-gauge">
+								<div
+									class="ranking-gauge-fill"
+									class:fill-high={entry.affinity >= 0.65}
+									class:fill-moderate={entry.affinity >= 0.50 && entry.affinity < 0.65}
+									class:fill-low={entry.affinity < 0.50}
+									style="width: {pct(entry.affinity)}%"
+								></div>
+							</div>
+							<span class="history-score affinity-{lbl.text.toLowerCase().replace(' ', '-')}">{pct(entry.affinity)}%</span>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{:else if rankedStatus === 'done' && ranked.length === 0}
+		<p class="ranking-empty">{$t('affinity.rankingEmpty')}</p>
 	{/if}
 
 	{#if history.length > 0}
@@ -354,16 +438,72 @@ font-family: var(--font-post-title);
 
 	.divider-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; color: color-mix(in oklch, var(--color-base-content) 30%, transparent); margin: 0; }
 
-	.slider-wrap { display: flex; flex-direction: column; gap: 6px; }
-	.slider-header { display: flex; justify-content: space-between; align-items: center; }
-	.slider-label { font-size: 12px; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); }
-	.slider-val { font-size: 12px; font-family: monospace; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); }
-	.affinity-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--color-base-300); border-radius: var(--ui-radius-full); outline: none; cursor: pointer; }
-	.affinity-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--color-accent); cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
-	.affinity-slider::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--color-accent); cursor: pointer; border: none; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+	.boost-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 10px 12px;
+		border: 1px solid var(--color-base-300);
+		border-radius: var(--ui-radius-sm);
+		background: color-mix(in oklch, var(--color-base-100) 80%, transparent);
+	}
+	.boost-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
+	.boost-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--color-base-content); }
+	.boost-row.positive .boost-label { color: var(--color-success); }
+	.boost-row.negative .boost-label { color: var(--color-error); }
+	.boost-weight { font-size: 12px; font-family: monospace; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); }
+	.boost-actions { display: flex; gap: 6px; flex-shrink: 0; }
+	.step-btn {
+		display: inline-flex; align-items: center; justify-content: center;
+		width: 30px; height: 30px;
+		border: 1px solid var(--ui-border-color, var(--color-base-300));
+		border-radius: var(--ui-radius-sm);
+		background: transparent;
+		color: var(--color-base-content);
+		cursor: pointer;
+		transition: all var(--ui-dur-1, 130ms) var(--ui-ease, ease);
+	}
+	.step-btn:hover { background: var(--color-base-200); border-color: var(--color-base-content); }
+	.step-btn:active { transform: scale(0.93); }
+	.step-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+	.step-btn.accent { color: var(--color-success); }
+	.step-btn.accent:hover { background: color-mix(in oklch, var(--color-success) 10%, transparent); border-color: var(--color-success); }
+	.step-btn.danger { color: var(--color-error); }
+	.step-btn.danger:hover { background: color-mix(in oklch, var(--color-error) 10%, transparent); border-color: var(--color-error); }
 
-	.btn-group { display: flex; gap: 8px; }
-	.btn-group.spaced { margin-top: 12px; }
+	.ranking-section { margin-top: 8px; }
+	.ranking-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+	.ranking-icon { color: var(--color-accent); flex-shrink: 0; }
+	.ranking-header .history-title { margin: 0; }
+	.ranking-pos {
+		font-size: 10px;
+		font-weight: 700;
+		font-family: monospace;
+		color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+		width: 18px;
+		text-align: right;
+		flex-shrink: 0;
+	}
+	.ranking-gauge {
+		width: 64px;
+		height: 5px;
+		background: var(--color-base-300);
+		border-radius: var(--ui-radius-full);
+		overflow: hidden;
+	}
+	.ranking-gauge-fill { height: 100%; border-radius: var(--ui-radius-full); transition: width 0.4s ease, background 0.3s ease; }
+	.ranking-gauge-fill.fill-high { background: var(--color-success); }
+	.ranking-gauge-fill.fill-moderate { background: var(--color-warning); }
+	.ranking-gauge-fill.fill-low { background: var(--color-error); }
+	.ranking-empty {
+		font-size: 12px;
+		text-align: center;
+		color: color-mix(in oklch, var(--color-base-content) 45%, transparent);
+		padding: 16px 0 4px;
+		margin: 0;
+	}
+
 	.action-btn {
 		display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 		padding: 10px 16px; border-radius: var(--ui-radius-sm); border: 1px solid var(--color-base-300);
@@ -373,13 +513,8 @@ font-family: var(--font-post-title);
 	}
 	.action-btn:hover { background: var(--color-base-200); }
 	.action-btn:active { transform: scale(0.97); }
-	.action-btn.full-width { width: 100%; }
 	.action-btn.accent { border-color: var(--color-accent); color: var(--color-accent); }
 	.action-btn.accent:hover { background: color-mix(in oklch, var(--color-accent) 10%, transparent); }
-	.action-btn.success { border-color: color-mix(in oklch, var(--color-success) 50%, transparent); color: var(--color-success); }
-	.action-btn.success:hover { background: color-mix(in oklch, var(--color-success) 10%, transparent); }
-	.action-btn.danger { border-color: color-mix(in oklch, var(--color-error) 50%, transparent); color: var(--color-error); }
-	.action-btn.danger:hover { background: color-mix(in oklch, var(--color-error) 10%, transparent); }
 	.action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 	.spinner {
