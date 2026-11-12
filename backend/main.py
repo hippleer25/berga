@@ -35,6 +35,7 @@ from intelligence.affinity import (
     analyze_affinity,
     boost_affinity,
     remove_affinity_boost,
+    reset_user_affinity,
     rank_user_terms,
     attach_cluster_affinity,
 )
@@ -74,6 +75,12 @@ def db_verification():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_verification()
+
+    # Cross-process cache invalidation subscriber (daemon thread; no-op if
+    # Redis is down or DISABLE_CACHE_BUS=1).
+    from intelligence.cache_bus import start_cache_bus
+
+    start_cache_bus()
 
     for attempt in range(5):
         try:
@@ -1024,6 +1031,12 @@ def api_boost(body: BoostRequest, user: dict = Depends(get_current_user)):
 @app.delete('/api/affinity/boost')
 def api_remove_boost(body: RemoveBoostRequest, user: dict = Depends(get_current_user)):
     return remove_affinity_boost(user["id"], body.term, body.direction)
+
+
+@app.post("/api/affinity/reset")
+def api_reset_affinity(user: dict = Depends(get_current_user)):
+    """Revert every manual boost for the user and re-NULL the affinity vectors."""
+    return reset_user_affinity(user["id"])
 
 
 @app.get("/api/affinity/terms")

@@ -170,15 +170,30 @@ def _lru_put(cache: OrderedDict, key, data, max_size: int) -> None:
 
 # ── Public cache invalidation ──────────────────────────────────────────────────
 
-def invalidate_cache(user_id: int | None = None) -> None:
-    """Drop the processed list cache for one user, or for everyone."""
+def invalidate_cache(user_id: int | None = None, broadcast: bool = True) -> None:
+    """
+    Drop the processed list cache for one user, or for everyone.
+
+    ``broadcast=True`` (default) also publishes the invalidation on the
+    Redis cache bus so other processes (worker, extra API replicas) drop
+    their in-RAM copies too instead of waiting out the TTL. The pub/sub
+    listener re-enters with ``broadcast=False`` — no echo loops.
+    """
     with _cache_lock:
         if user_id is None:
             _processed_list_cache.clear()
-            return
-        stale = [k for k in _processed_list_cache if k[0] == user_id]
-        for k in stale:
-            _processed_list_cache.pop(k, None)
+        else:
+            stale = [k for k in _processed_list_cache if k[0] == user_id]
+            for k in stale:
+                _processed_list_cache.pop(k, None)
+
+    if broadcast:
+        try:
+            from intelligence.cache_bus import publish_cache_invalidation
+
+            publish_cache_invalidation(user_id)
+        except Exception as e:  # bus is best-effort; local drop already done
+            logger.debug("Cache-bus publish failed: %s", e)
 
 
 def invalidate_interaction_cache(user_id: int | None = None) -> None:

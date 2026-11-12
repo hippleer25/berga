@@ -25,5 +25,9 @@
   "back": "Volver",
   "historyTitle": "Historial de la sesión",
   "removeHistoryAria": "Eliminar del historial",
+  "resetAll": "Restablecer todas las afinidades",
+  "resetConfirm": "Esto elimina todos los refuerzos manuales (positivos y negativos) y restaura tu perfil aprendido. No se puede deshacer.",
+  "resetCancel": "Cancelar",
+  "resetConfirmBtn": "Restablecer",
   "errorStatus": "Error"
 }

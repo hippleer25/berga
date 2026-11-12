@@ -240,6 +240,32 @@ def _migrate_affinity_boosts(conn, cursor) -> None:
         _migrate_affinity_boosts_data(cur)
     finally:
         cur.close()
+    # Uniqueness is enforced AFTER consolidation so legacy duplicate rows
+    # cannot block index creation (the DDL also commits the consolidation).
+    _ensure_unique_boost_key(cursor)
+
+
+def _ensure_unique_boost_key(cursor) -> None:
+    """
+    UNIQUE (user_id, term, direction) on affinity_boosts: exactly one row
+    per term+direction, so the atomic upsert in boost_affinity() merges
+    concurrent clicks instead of racing SELECT-then-INSERT duplicates.
+    """
+    if _index_exists(cursor, "affinity_boosts", "uq_boost_user_term_dir"):
+        return
+    try:
+        cursor.execute(
+            "CREATE UNIQUE INDEX uq_boost_user_term_dir "
+            "ON affinity_boosts (user_id, term, direction)"
+        )
+        logger.info("Unique index added: affinity_boosts(user_id, term, direction)")
+    except MySQLError as exc:
+        logger.warning(
+            "Could not create UNIQUE index uq_boost_user_term_dir: %s. "
+            "Duplicate boost rows block it — they will be consolidated "
+            "on the next boot and the index created then.",
+            exc,
+        )
 
 
 def _migrate_affinity_boosts_data(cur) -> None:
@@ -277,7 +303,10 @@ def _migrate_affinity_boosts_data(cur) -> None:
     try:
         import numpy as np
 
-        from intelligence.affinity import _embed_term, _safe_vector_for_json
+        from intelligence.affinity import (
+            _get_term_vectors,
+            _safe_vector_for_json,
+        )
     except Exception as e:
         logger.warning("Affinity boost migration: skipping vector recompute (%s)", e)
         return
@@ -286,6 +315,14 @@ def _migrate_affinity_boosts_data(cur) -> None:
     by_user_dir: dict[tuple, list] = {}
     for b in boosts:
         by_user_dir.setdefault((b["user_id"], b["direction"]), []).append(b)
+
+    # One batched embedding lookup for ALL boost terms (Redis-cached),
+    # instead of one encode per row.
+    try:
+        term_vecs = _get_term_vectors([b["term"] for b in boosts])
+    except Exception as e:
+        logger.warning("Affinity boost migration: term encode failed (%s)", e)
+        return
 
     for (uid, direction), blist in by_user_dir.items():
         column = "affinity_pos_vector" if direction == "positive" else "affinity_neg_vector"
@@ -297,9 +334,19 @@ def _migrate_affinity_boosts_data(cur) -> None:
         if uid not in changed_users and row and row.get("vec"):
             continue
 
+        usable = [b for b in blist if b["term"] in term_vecs]
+        if len(usable) < len(blist):
+            logger.warning(
+                "Affinity migration: %d/%d terms unembeddable for user=%s "
+                "(vector may be incomplete until next recompute)",
+                len(blist) - len(usable), len(blist), uid,
+            )
+        if not usable:
+            continue
+
         result = None
-        for b in blist:
-            v = float(b["strength"]) * _embed_term(b["term"])
+        for b in usable:
+            v = float(b["strength"]) * term_vecs[b["term"]]
             result = v if result is None else result + v
         if result is None:
             continue
@@ -539,7 +586,8 @@ def init_db():
                 strength FLOAT NOT NULL DEFAULT 0.25,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                INDEX idx_boost_user_term (user_id, term(100))
+                INDEX idx_boost_user_term (user_id, term(100)),
+                UNIQUE KEY uq_boost_user_term_dir (user_id, term, direction)
             ) {_TABLE_OPTIONS}
         """)
             cursor.execute(f"""

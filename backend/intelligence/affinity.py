@@ -228,11 +228,18 @@ def _recompute_affinity_vector(
     if not boosts:
         return None
 
+    # Term vectors come from the shared batched cache helper — a click must
+    # never pay one embedding encode per boost row.
+    term_vecs = _get_term_vectors([b["term"] for b in boosts])
+    missing = [b["term"] for b in boosts if b["term"] not in term_vecs]
+    if missing:
+        # Fail loud (parity with the previous per-term encode): a partial
+        # recomputation would silently drift the user's profile.
+        raise RuntimeError(f"Could not embed boost terms: {missing!r}")
+
     result: np.ndarray | None = None
     for boost in boosts:
-        term_vec = _embed_term(boost["term"])
-        weight = float(boost["strength"])
-        contribution = weight * term_vec
+        contribution = float(boost["strength"]) * term_vecs[boost["term"]]
         result = contribution if result is None else result + contribution
 
     if result is None:
@@ -351,35 +358,38 @@ def boost_affinity(user_id: int, term: str, direction: str, strength: float) -> 
                 # Ensure the row exists before reading / writing.
                 _ensure_user_vector_row(user_id, cursor)
 
-                # Current weight for this term+direction (0 when absent).
+                # Atomic relative-weight step. The UNIQUE key (user_id, term,
+                # direction) makes concurrent clicks merge into a single row
+                # inside the DB instead of racing SELECT-then-INSERT duplicates.
+                # A fresh insert of a negative delta lands at strength 0 and is
+                # cleaned up right after (weight 0 ⇒ boost deleted).
+                insert_value = max(0.0, min(1.0, delta))
+                cursor.execute(
+                    """
+                    INSERT INTO affinity_boosts (user_id, term, direction, strength)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        strength = LEAST(1.0, GREATEST(0.0, strength + %s))
+                    """,
+                    (user_id, term, direction, insert_value, delta),
+                )
+
+                # Read the final weight through this same transaction so the
+                # row lock taken by the upsert is still held (no race window).
                 cursor.execute(
                     "SELECT strength FROM affinity_boosts "
                     "WHERE user_id = %s AND term = %s AND direction = %s "
                     "LIMIT 1",
                     (user_id, term, direction),
                 )
-                existing_row = cursor.fetchone()
-                current = float(existing_row["strength"]) if existing_row else 0.0
-
-                new_weight = max(0.0, min(1.0, current + delta))
+                final_row = cursor.fetchone()
+                new_weight = float(final_row["strength"]) if final_row else 0.0
 
                 if new_weight <= 0.0:
                     cursor.execute(
                         "DELETE FROM affinity_boosts "
                         "WHERE user_id = %s AND term = %s AND direction = %s",
                         (user_id, term, direction),
-                    )
-                elif existing_row:
-                    cursor.execute(
-                        "UPDATE affinity_boosts SET strength = %s "
-                        "WHERE user_id = %s AND term = %s AND direction = %s",
-                        (new_weight, user_id, term, direction),
-                    )
-                else:
-                    cursor.execute(
-                        "INSERT INTO affinity_boosts (user_id, term, direction, strength) "
-                        "VALUES (%s, %s, %s, %s)",
-                        (user_id, term, direction, new_weight),
                     )
 
                 new_vec = _recompute_affinity_vector(user_id, direction, cursor=cursor)
@@ -425,7 +435,6 @@ def remove_affinity_boost(user_id: int, term: str, direction: str) -> dict:
                 """
                 DELETE FROM affinity_boosts
                 WHERE user_id = %s AND term = %s AND direction = %s
-                LIMIT 1
                 """,
                 (user_id, term, direction),
             )
@@ -454,6 +463,43 @@ def remove_affinity_boost(user_id: int, term: str, direction: str) -> dict:
         user_id, term, direction,
     )
     return {"success": True, "direction": direction, "term": term}
+
+
+def reset_user_affinity(user_id: int) -> dict:
+    """
+    Revert every manual boost for a user in one shot: all affinity_boosts
+    rows are deleted and both affinity direction vectors are re-NULLed, so
+    the interaction-learned profile alone drives recommendations again.
+    The learned profile itself is untouched. Returns the number of boosts
+    removed (0 is a valid result — a clean no-op reset).
+    """
+    removed = 0
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute(
+                    "DELETE FROM affinity_boosts WHERE user_id = %s",
+                    (user_id,),
+                )
+                removed = cursor.rowcount
+
+                cursor.execute(
+                    "UPDATE user_vectors SET "
+                    "affinity_pos_vector = NULL, affinity_neg_vector = NULL "
+                    "WHERE user_id = %s",
+                    (user_id,),
+                )
+                conn.commit()
+            finally:
+                cursor.close()
+    except Exception:
+        logger.exception("Error resetting affinity boosts user=%s", user_id)
+        raise
+
+    invalidate_cache(user_id)
+    logger.info("Affinity reset: user=%s removed=%s", user_id, removed)
+    return {"success": True, "removed_boosts": removed}
 
 # ── Cluster affinity attachment (weekly events enrichment) ────────────────────
 
@@ -595,24 +641,94 @@ def _termvec_cache_key(term: str) -> str:
     return f"affinity:termvec:{digest}"
 
 
+def _get_term_vectors(terms: list[str]) -> dict[str, np.ndarray]:
+    """
+    Batched term-embedding lookup shared by every affinity code path that
+    needs vectors for several terms (recompute, ranking, migration):
+    Redis pipeline read → single batch encode for the misses → Redis
+    pipeline write-back. Replaces the old one-encode-per-term loops.
+
+    On a total encode failure the returned dict simply lacks those terms;
+    callers decide whether that is fatal (vector recompute) or skippable
+    (ranking).
+    """
+    unique: dict[str, None] = {}  # ordered de-dup (dict keeps insertion order)
+    for t in terms:
+        t = (t or "").strip()
+        if t:
+            unique.setdefault(t, None)
+    ordered = list(unique)
+    if not ordered:
+        return {}
+
+    redis = _get_termvec_redis()
+    vec_by_term: dict[str, np.ndarray] = {}
+    missing: list[str] = []
+
+    if redis is not None:
+        try:
+            pipe = redis.pipeline(transaction=False)
+            for t in ordered:
+                pipe.get(_termvec_cache_key(t))
+            for t, raw in zip(ordered, pipe.execute()):
+                if raw:
+                    try:
+                        arr = np.array(json.loads(raw), dtype=np.float32)
+                        if arr.ndim == 1 and arr.size > 0:
+                            vec_by_term[t] = arr
+                            continue
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                missing.append(t)
+        except Exception as e:
+            logger.debug("[AFFINITY] Term-vector cache read failed: %s", e)
+            missing = list(ordered)
+    else:
+        missing = list(ordered)
+
+    if missing:
+        try:
+            encoded = _embed_term(missing)
+        except Exception as e:
+            logger.warning("[AFFINITY] Term batch encode failed: %s", e)
+            encoded = None
+
+        if encoded is not None:
+            for t, vec in zip(missing, encoded):
+                vec_by_term[t] = np.asarray(vec, dtype=np.float32)
+            if redis is not None:
+                try:
+                    pipe = redis.pipeline(transaction=False)
+                    for t, vec in zip(missing, encoded):
+                        pipe.set(
+                            _termvec_cache_key(t),
+                            json.dumps(np.asarray(vec, dtype=np.float32).tolist()),
+                            ex=_TERMVEC_TTL_SECONDS,
+                        )
+                    pipe.execute()
+                except Exception as e:
+                    logger.debug("[AFFINITY] Term-vector cache write failed: %s", e)
+
+    return vec_by_term
+
+
 def _collect_candidate_terms(user_id: int) -> list[str]:
-    """Interest vocabulary: the user's smart tags + manually boosted terms."""
+    """
+    Interest vocabulary: the user's manually boosted terms + smart tags.
+
+    Boosted terms come first (explicit user intent — they must never be
+    truncated away), then smart tags; both in deterministic alphabetical
+    order so the 200-candidate cap is stable across runs instead of
+    depending on DB result order.
+    """
     terms: list[str] = []
     seen: set[str] = set()
     with get_db() as conn:
         cursor = conn.cursor(dictionary=True)
         try:
             cursor.execute(
-                "SELECT name FROM smart_tags WHERE user_id = %s", (user_id,)
-            )
-            for r in cursor.fetchall():
-                name = (r.get("name") or "").strip()
-                if name and name.lower() not in seen:
-                    seen.add(name.lower())
-                    terms.append(name)
-
-            cursor.execute(
-                "SELECT DISTINCT term FROM affinity_boosts WHERE user_id = %s",
+                "SELECT DISTINCT term FROM affinity_boosts "
+                "WHERE user_id = %s ORDER BY term",
                 (user_id,),
             )
             for r in cursor.fetchall():
@@ -620,6 +736,16 @@ def _collect_candidate_terms(user_id: int) -> list[str]:
                 if t and t.lower() not in seen:
                     seen.add(t.lower())
                     terms.append(t)
+
+            cursor.execute(
+                "SELECT name FROM smart_tags WHERE user_id = %s ORDER BY name",
+                (user_id,),
+            )
+            for r in cursor.fetchall():
+                name = (r.get("name") or "").strip()
+                if name and name.lower() not in seen:
+                    seen.add(name.lower())
+                    terms.append(name)
         finally:
             cursor.close()
     return terms[:200]
@@ -646,53 +772,8 @@ def rank_user_terms(user_id: int, limit: int = 15) -> dict:
     if not candidates:
         return {"terms": [], "has_profile": True}
 
-    # ── Term vectors: Redis cache with batch-encode fallback ─────────────
-    redis = _get_termvec_redis()
-    vec_by_term: dict[str, np.ndarray] = {}
-    missing: list[str] = []
-
-    if redis is not None:
-        try:
-            pipe = redis.pipeline(transaction=False)
-            for t in candidates:
-                pipe.get(_termvec_cache_key(t))
-            cached = pipe.execute()
-            for t, raw in zip(candidates, cached):
-                if raw:
-                    arr = np.array(json.loads(raw), dtype=np.float32)
-                    if arr.ndim == 1 and arr.size > 0:
-                        vec_by_term[t] = arr
-                        continue
-                    missing.append(t)
-            missing = [t for t in candidates if t not in vec_by_term]
-        except Exception as e:
-            logger.debug("[AFFINITY] Term-vector cache read failed: %s", e)
-            missing = list(candidates)
-    else:
-        missing = list(candidates)
-
-    if missing:
-        try:
-            encoded = _embed_term(missing)
-        except Exception as e:
-            logger.warning("[AFFINITY] Term batch encode failed user=%s: %s", user_id, e)
-            encoded = None
-
-        if encoded is not None:
-            for t, vec in zip(missing, encoded):
-                vec_by_term[t] = np.asarray(vec, dtype=np.float32)
-            if redis is not None:
-                try:
-                    pipe = redis.pipeline(transaction=False)
-                    for t, vec in zip(missing, encoded):
-                        pipe.set(
-                            _termvec_cache_key(t),
-                            json.dumps(np.asarray(vec, dtype=np.float32).tolist()),
-                            ex=_TERMVEC_TTL_SECONDS,
-                        )
-                    pipe.execute()
-                except Exception as e:
-                    logger.debug("[AFFINITY] Term-vector cache write failed: %s", e)
+    # ── Term vectors: shared Redis-cached batched lookup ─────────────────
+    vec_by_term = _get_term_vectors(candidates)
 
     # ── Score + rank by raw contrast ─────────────────────────────────────
     scored: list[dict] = []

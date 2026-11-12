@@ -25,5 +25,9 @@
   "back": "Back",
   "historyTitle": "Session history",
   "removeHistoryAria": "Remove from history",
+  "resetAll": "Reset all affinities",
+  "resetConfirm": "This removes every manual boost (positive and negative) and restores your learned profile. This cannot be undone.",
+  "resetCancel": "Cancel",
+  "resetConfirmBtn": "Reset",
   "errorStatus": "Error"
 }

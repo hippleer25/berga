@@ -25,5 +25,9 @@
   "back": "Voltar",
   "historyTitle": "Histórico desta sessão",
   "removeHistoryAria": "Remover do histórico",
+  "resetAll": "Redefinir todas as afinidades",
+  "resetConfirm": "Isso remove todos os boosts manuais (positivos e negativos) e restaura o seu perfil aprendido. Não pode ser desfeito.",
+  "resetCancel": "Cancelar",
+  "resetConfirmBtn": "Redefinir",
   "errorStatus": "Erro"
 }

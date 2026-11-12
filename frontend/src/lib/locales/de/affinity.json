@@ -25,5 +25,9 @@
   "back": "Zurück",
   "historyTitle": "Sitzungsverlauf",
   "removeHistoryAria": "Aus dem Verlauf entfernen",
+  "resetAll": "Alle Affinitäten zurücksetzen",
+  "resetConfirm": "Dies entfernt alle manuellen Boosts (positiv und negativ) und stellt Ihr gelerntes Profil wieder her. Dies kann nicht rückgängig gemacht werden.",
+  "resetCancel": "Abbrechen",
+  "resetConfirmBtn": "Zurücksetzen",
   "errorStatus": "Fehler"
 }

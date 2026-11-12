@@ -8,6 +8,7 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import ListOrdered from '@lucide/svelte/icons/list-ordered';
 	import X from '@lucide/svelte/icons/x';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import { t } from 'svelte-i18n';
 	import { get } from 'svelte/store';
   import { ripple } from '$lib/actions/ripple';
@@ -168,6 +169,35 @@
 		} catch {
 			ranked = [];
 			rankedStatus = 'done';
+		}
+	}
+
+	let resetConfirm = $state(false);
+	let resetStatus = $state<'idle' | 'busy' | 'error'>('idle');
+	let resetError = $state('');
+
+	async function resetAllAffinity() {
+		resetStatus = 'busy';
+		resetError = '';
+		try {
+			const res = await apiFetch('/api/affinity/reset', {
+				method: 'POST',
+				credentials: 'include',
+			});
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.error || `${get(t)('affinity.errorStatus')} ${res.status}`);
+			resetConfirm = false;
+			history = [];
+			localStorage.removeItem('affinity-history');
+			if (result) {
+				result = { ...result, boost_pos: 0, boost_neg: 0 };
+			}
+			await loadRanking();
+			resetStatus = 'idle';
+		} catch (err: any) {
+			resetError = err.message;
+			resetStatus = 'error';
+			setTimeout(() => (resetStatus = 'idle'), 4000);
 		}
 	}
 
@@ -352,6 +382,30 @@
 					</div>
 				{/each}
 			</div>
+		</div>
+	{/if}
+
+	{#if history.length > 0 || ranked.length > 0}
+		<div class="reset-section">
+			<button class="action-btn danger" use:ripple onclick={() => (resetConfirm = true)} disabled={resetStatus === 'busy'}>
+				<RotateCcw size={14} />
+				<span>{$t('affinity.resetAll')}</span>
+			</button>
+			{#if resetStatus === 'error'}<p class="error-text">{resetError}</p>{/if}
+			{#if resetConfirm}
+				<div class="confirm-card">
+					<p class="confirm-text">{$t('affinity.resetConfirm')}</p>
+					<div class="confirm-actions">
+						<button class="action-btn" use:ripple onclick={() => (resetConfirm = false)} disabled={resetStatus === 'busy'}>
+							{$t('affinity.resetCancel')}
+						</button>
+						<button class="action-btn danger" use:ripple onclick={resetAllAffinity} disabled={resetStatus === 'busy'}>
+							{#if resetStatus === 'busy'}<span class="spinner"></span>{:else}<RotateCcw size={13} />{/if}
+							<span>{$t('affinity.resetConfirmBtn')}</span>
+						</button>
+					</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -561,4 +615,18 @@ font-family: var(--font-post-title);
 	.history-remove { background: transparent; border: none; cursor: pointer; color: color-mix(in oklch, var(--color-base-content) 30%, transparent); transition: color 150ms; padding: 2px; }
 	.history-remove:hover { color: var(--color-error); }
 	.history-remove:active { transform: scale(0.9); }
+
+	.reset-section { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; align-items: flex-start; }
+	.action-btn.danger { border-color: var(--color-error); color: var(--color-error); }
+	.action-btn.danger:hover { background: color-mix(in oklch, var(--color-error) 10%, transparent); }
+	.confirm-card {
+		width: 100%;
+		background: var(--color-base-100);
+		border: 1px solid var(--color-base-300);
+		border-radius: var(--ui-radius-lg);
+		padding: 16px;
+		box-shadow: var(--ui-shadow-2, 0 4px 12px rgb(0 0 0 / 0.08));
+	}
+	.confirm-text { font-size: 13px; color: var(--color-base-content); margin: 0 0 12px; line-height: 1.5; }
+	.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 </style>

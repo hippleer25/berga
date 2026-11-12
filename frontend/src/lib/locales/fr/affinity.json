@@ -25,5 +25,9 @@
   "back": "Retour",
   "historyTitle": "Historique de la session",
   "removeHistoryAria": "Supprimer de l'historique",
+  "resetAll": "Réinitialiser toutes les affinités",
+  "resetConfirm": "Ceci supprime tous les renforcements manuels (positifs et négatifs) et restaure votre profil appris. Action irréversible.",
+  "resetCancel": "Annuler",
+  "resetConfirmBtn": "Réinitialiser",
   "errorStatus": "Erreur"
 }
