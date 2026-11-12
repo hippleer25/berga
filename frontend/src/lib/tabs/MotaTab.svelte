@@ -790,7 +790,9 @@
     html = html.replace(/((?:^\|.+\|(?:\n|$))+)/gm, (block) => {
       const rows = block.trim().split('\n').map(l => l.trim()).filter(Boolean);
       if (rows.length < 2) return block;
-      if (!/^\|[\s\-:]+\|?$/.test(rows[1])) return block;
+      // Separator row: only |, -, :, whitespace between the outer pipes, with
+      // at least one - or : — accepts multi-column |---|---| (GFM).
+      if (!/^\|[\s\-:|]*[-:][\s\-:|]*\|$/.test(rows[1])) return block;
 
       const parseCells = (line: string) => {
         const cells = line.split('|').map(c => c.trim());
@@ -799,15 +801,30 @@
         return cells;
       };
 
+      // GFM column alignment from :--- / :---: / ---:
+      const alignOf = (cell: string): string | undefined => {
+        const c = cell.trim();
+        if (!/^:?-+:?$/.test(c)) return undefined;
+        if (c.startsWith(':') && c.endsWith(':')) return 'center';
+        if (c.endsWith(':')) return 'right';
+        if (c.startsWith(':')) return 'left';
+        return undefined;
+      };
+      const aligns = parseCells(rows[1]).map(alignOf);
+
       const headers = parseCells(rows[0]);
       const bodyRows = rows.slice(2);
 
       let t = '<div class="md-table-wrap"><table><thead><tr>';
-      t += headers.map(h => `<th>${h}</th>`).join('');
+      t += headers.map((h, i) => aligns[i]
+        ? `<th style="text-align:${aligns[i]}">${h}</th>`
+        : `<th>${h}</th>`).join('');
       t += '</tr></thead><tbody>';
       for (const row of bodyRows) {
         const cells = parseCells(row);
-        t += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+        t += '<tr>' + cells.map((c, i) => aligns[i]
+          ? `<td style="text-align:${aligns[i]}">${c}</td>`
+          : `<td>${c}</td>`).join('') + '</tr>';
       }
       t += '</tbody></table></div>';
       return t;
@@ -859,6 +876,14 @@
     const tail = line.slice(lead.length).match(FADE_SYNTAX_TAIL)?.[0] ?? '';
     const body = line.slice(lead.length, line.length - tail.length);
     if (!body.trim()) return line;
+    // Table rows: wrap each pipe-separated part separately so a fade region
+    // never crosses a <td> boundary, where the browser would truncate it.
+    if (body.includes('|')) {
+      return lead + body
+        .split('|')
+        .map(p => (p ? FADE_OPEN + p + FADE_CLOSE : p))
+        .join('|') + tail;
+    }
     return lead + FADE_OPEN + body + FADE_CLOSE + tail;
   }
 
