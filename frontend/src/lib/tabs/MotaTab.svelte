@@ -83,6 +83,12 @@
   let chatAbort: AbortController | null = null;
   let activeAssistantId: number | null = null;
 
+  // Char index where the current streaming delta began. Only that newest chunk
+  // gets wrapped in a fade span at render time, so the innerHTML rebuild that
+  // happens on every delta never re-animates already-visible text.
+  let fadeStarts = new Map<number, number>();
+  let thinkingStarts = new Map<number, number>();
+
   // ── Message actions (copy / edit / regenerate) ──────────────────────────
   let copiedId = $state<number | null>(null);
   let copiedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -688,10 +694,14 @@
             waitingPhase = parsed.status;
           } else if (parsed.thinking) {
             const msg = messages.find((m: Message) => m.id === assistantId);
-            if (msg) msg.thinking = (msg.thinking || '') + parsed.thinking;
+            if (msg) {
+              thinkingStarts.set(assistantId, (msg.thinking || '').length);
+              msg.thinking = (msg.thinking || '') + parsed.thinking;
+            }
           } else if (parsed.content) {
             const msg = messages.find((m: Message) => m.id === assistantId);
             if (msg) {
+              fadeStarts.set(assistantId, msg.content.length);
               msg.content += parsed.content;
               // Auto-collapse the thinking panel once the answer starts
               if (msg.thinking && !msg.thinkingCollapsed && msg.content.trim()) {
@@ -724,6 +734,8 @@
       }
     } finally {
       stopStallWatchdog();
+      fadeStarts.delete(assistantId);
+      thinkingStarts.delete(assistantId);
       loading = false;
       streaming = false;
       waitingPhase = null;
@@ -831,8 +843,44 @@
     return '<p>' + html + '</p>';
   }
 
-  function renderMarkdownWithCursor(content: string): string {
-    return renderMarkdown(content) + '<span class="stream-cursor"></span>';
+  // Private-use markers wrap only the newest delta; they survive every regex
+  // in renderMarkdown (HTML escape strips only & < >) and are converted to a
+  // fading span after rendering, so the per-delta innerHTML rebuild never
+  // replays the animation on older text.
+  const FADE_OPEN = '\uE000';
+  const FADE_CLOSE = '\uE001';
+  // Markdown line syntax stays outside the fade span so anchored patterns
+  // (^- list, ^# heading, ^> quote, ^1. ol, |...| table rows) still match.
+  const FADE_SYNTAX_LEAD = /^(?:[\s>*#\-|]+|\d{1,3}[.)]\s*)+/;
+  const FADE_SYNTAX_TAIL = /[\s|:*\-]+$/;
+
+  function wrapFadeLine(line: string): string {
+    const lead = line.match(FADE_SYNTAX_LEAD)?.[0] ?? '';
+    const tail = line.slice(lead.length).match(FADE_SYNTAX_TAIL)?.[0] ?? '';
+    const body = line.slice(lead.length, line.length - tail.length);
+    if (!body.trim()) return line;
+    return lead + FADE_OPEN + body + FADE_CLOSE + tail;
+  }
+
+  function renderMarkdownWithCursor(msg: Message): string {
+    const from = Math.min(fadeStarts.get(msg.id) ?? msg.content.length, msg.content.length);
+    if (from >= msg.content.length) {
+      return renderMarkdown(msg.content) + '<span class="stream-cursor"></span>';
+    }
+    // Wrap each tail line separately: a fade region must never cross a block
+    // boundary (\n\n → </p><p>), where the browser would truncate the span
+    // and the post-break text would pop in un-animated.
+    const marked = msg.content
+      .slice(from)
+      .split('\n')
+      .map(l => (l ? wrapFadeLine(l) : l))
+      .join('\n');
+    let html = renderMarkdown(msg.content.slice(0, from) + marked);
+    html = html
+      .replaceAll(FADE_OPEN, '<span class="stream-fade">')
+      .replaceAll(FADE_CLOSE, '</span>')
+      .replace(/<span class="stream-fade"><\/span>/g, '');
+    return html + '<span class="stream-cursor"></span>';
   }
 </script>
 
@@ -1032,7 +1080,9 @@
                 <ChevronDown size={13} class="thinking-chevron {msg.thinkingCollapsed ? 'rot' : ''}" />
               </button>
               {#if !msg.thinkingCollapsed}
-                <div class="thinking-body">{msg.thinking}</div>
+                <div class="thinking-body">
+                  <span>{msg.thinking.slice(0, thinkingStarts.get(msg.id) ?? msg.thinking.length)}</span><span class="stream-fade">{msg.thinking.slice(thinkingStarts.get(msg.id) ?? msg.thinking.length)}</span>
+                </div>
               {/if}
             </div>
           {/if}
@@ -1045,7 +1095,7 @@
             </div>
           {/if}
           {#if msg.content || !isLast}
-            <div class="ai-prose">{@html isStreaming ? renderMarkdownWithCursor(msg.content) : renderMarkdown(msg.content)}</div>
+            <div class="ai-prose">{@html isStreaming ? renderMarkdownWithCursor(msg) : renderMarkdown(msg.content)}</div>
             {#if msg.interrupted}
               <p class="stream-interrupted">{$t('motatab.streamInterrupted')}</p>
             {/if}
@@ -1757,6 +1807,15 @@
   animation: cursorBlink 0.9s step-end infinite;
  }
  @keyframes cursorBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+ /* ── Streaming text fade-in (newest delta only) ─────── */
+ :global(.stream-fade) {
+  animation: streamFadeIn var(--ui-dur-3, 280ms) var(--ui-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+ }
+ @keyframes streamFadeIn { from { opacity: 0; filter: blur(4px); } to { opacity: 1; filter: blur(0); } }
+ @media (prefers-reduced-motion: reduce) {
+  :global(.stream-fade) { animation: none; }
+ }
 
  /* ── Waiting ─────────────────────────────────────────── */
  .getting-data {
