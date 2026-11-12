@@ -8,6 +8,3 @@ ACTION_WEIGHTS = {
     "read": 0.33,
     "dislike": 1.0,
 }
-
-PUBLISHER_BOOST_FACTOR = 0.2  # β for publisher affinity (used in recommendations)
-NEGATIVE_PENALTY_FACTOR = 0.3 # α for negative vector penalty
