@@ -181,6 +181,14 @@
         } catch (e) {}
 
         try {
+          // Event cluster title scale (percent), before first paint
+          var eventTitleSize = parseFloat(localStorage.getItem('event-title-size'));
+          if (isFinite(eventTitleSize) && eventTitleSize >= 80 && eventTitleSize <= 150 && eventTitleSize !== 100) {
+            document.documentElement.style.setProperty('--event-title-scale', String(eventTitleSize / 100));
+          }
+        } catch (e) {}
+
+        try {
           document.documentElement.setAttribute(
             'data-btn-borders',
             localStorage.getItem('ui-btn-borders') === 'false' ? 'off' : 'on'

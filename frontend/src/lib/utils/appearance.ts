@@ -179,6 +179,7 @@ export const POSTCARD_PREFS = {
 	coverAlign: { key: 'cover-image-align', default: 'center' as CoverAlign },
 	searchCoverAlign: { key: 'search-cover-image-align', default: 'center' as CoverAlign },
 	eventCoverPos: { key: 'event-cover-position', default: 'bottom' as EventCoverPos },
+	eventTitleSize: { key: 'event-title-size', min: 80, max: 150, step: 5, default: 100 },
 } as const;
 
 export type CoverAlign = 'left' | 'center' | 'right';
@@ -228,6 +229,12 @@ export function applyDescSize(value: number, persist = false) {
 	const v = Math.min(POSTCARD_PREFS.descSize.max, Math.max(POSTCARD_PREFS.descSize.min, value));
 	document.documentElement.style.setProperty('--postcard-desc-scale', String(v / 100));
 	if (persist) localStorage.setItem(POSTCARD_PREFS.descSize.key, String(v));
+}
+
+export function applyEventTitleSize(value: number, persist = false) {
+	const v = Math.min(POSTCARD_PREFS.eventTitleSize.max, Math.max(POSTCARD_PREFS.eventTitleSize.min, value));
+	document.documentElement.style.setProperty('--event-title-scale', String(v / 100));
+	if (persist) localStorage.setItem(POSTCARD_PREFS.eventTitleSize.key, String(v));
 }
 
 export function getSavedTitleSize(): number {
@@ -507,6 +514,7 @@ export function initAppearance() {
 	applyCoverAlign(getSavedCoverAlign());
 	applySearchCoverAlign(getSavedSearchCoverAlign());
 	applyEventCoverPosition(getSavedEventCoverPosition());
+	applyEventTitleSize(numPref(POSTCARD_PREFS.eventTitleSize.key, POSTCARD_PREFS.eventTitleSize.default));
 
 	applyCustomCss();
 	syncThemeColor();

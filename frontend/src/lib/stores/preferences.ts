@@ -141,6 +141,9 @@ export const showEventCovers = createBooleanStore('show-event-covers', true);
 /* Cluster row layout: title above the metadata line (default) or below. */
 export const eventTitleBelow = createBooleanStore('event-title-below', false);
 
+/* Cluster title font-size scale in percent (100 = the 16px base). */
+export const eventTitleSize = createNumberStore('event-title-size', 100);
+
 export type TriState = 'auto' | 'on' | 'off';
 export const embeddedCovers = createStringStore<TriState>('embedded-covers', 'off');
 export const embeddedCoverPosition = createStringStore<CoverPosition>('embedded-cover-position', 'right');

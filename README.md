@@ -6,6 +6,14 @@ Berga learns your preferences automatically through NLP-powered vector affinity,
 
 Deploy with Docker and access Berga from any browser, install it as a PWA on mobile, or use the native Android app.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/img/desktop.png" alt="Berga on desktop — home feed with the Mota AI chat panel" width="78%" />
+  <img src="docs/img/mobile.jpeg" alt="Berga on mobile — personalized For You feed" width="19%" />
+</p>
+<p align="center"><sub>Home feed and Mota chat on desktop · personalized “For You” feed on mobile</sub></p>
+
 ## Features
 
 ### Smart Recommendations

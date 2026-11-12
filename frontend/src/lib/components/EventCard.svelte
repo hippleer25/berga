@@ -270,7 +270,7 @@ import { get } from 'svelte/store';
 
     .event-title {
         font-family: var(--font-post-title);
-        font-size: 16px;
+        font-size: calc(16px * var(--event-title-scale, 1));
         font-weight: var(--postcard-title-weight, 500);
         line-height: 1.4;
         color: var(--color-base-content);

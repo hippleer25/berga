@@ -9,13 +9,14 @@
   import PostCard from '$lib/components/PostCard.svelte';
   import PreviewFrame from '$lib/components/settings/preview/PreviewFrame.svelte';
   import { MOCK_POST, MOCK_EVENT } from '$lib/components/settings/preview/previewMocks';
-  import { applySearchCoverAlign, applySearchCoverRadius, applyEventCoverPosition, POSTCARD_PREFS, type CoverAlign, type EventCoverPos } from '$lib/utils/appearance';
+  import { applySearchCoverAlign, applySearchCoverRadius, applyEventCoverPosition, applyEventTitleSize, POSTCARD_PREFS, type CoverAlign, type EventCoverPos } from '$lib/utils/appearance';
   import {
     searchCoverRadius,
     searchCoverAlign,
     showEventCovers,
     eventCoverPosition,
     eventTitleBelow,
+    eventTitleSize,
     embeddedCovers,
     embeddedCoverPosition,
     type TriState,
@@ -26,6 +27,7 @@
   let eventCoversOn = $state<boolean>(showEventCovers.getValue());
   let eventCoverPosVal = $state<EventCoverPos>('bottom');
   let eventTitleBelowVal = $state<boolean>(false);
+  let eventTitleSizeVal = $state<number>(POSTCARD_PREFS.eventTitleSize.default);
   let embeddedCoversVal = $state<TriState>('off');
   let embeddedPosVal = $state<'right' | 'bottom'>('right');
 
@@ -35,6 +37,7 @@
     eventCoversOn = showEventCovers.getValue();
     eventCoverPosVal = eventCoverPosition.getValue() as EventCoverPos;
     eventTitleBelowVal = eventTitleBelow.getValue();
+    eventTitleSizeVal = eventTitleSize.getValue();
     embeddedCoversVal = embeddedCovers.getValue();
     embeddedPosVal = embeddedCoverPosition.getValue() as 'right' | 'bottom';
   });
@@ -56,6 +59,11 @@
   function setEventTitleBelow(v: boolean) {
     eventTitleBelowVal = v;
     eventTitleBelow.setValue(v);
+  }
+  function setEventTitleSize(v: number) {
+    eventTitleSizeVal = v;
+    applyEventTitleSize(v, true);
+    eventTitleSize.setValue(v);
   }
   function setEventCoverPos(v: EventCoverPos) {
     eventCoverPosVal = v;
@@ -121,6 +129,16 @@
           </button>
         </div>
       </div>
+
+      <SettingsSlider
+        label={$t('settings.eventTitleSize')}
+        value={eventTitleSizeVal}
+        min={POSTCARD_PREFS.eventTitleSize.min}
+        max={POSTCARD_PREFS.eventTitleSize.max}
+        step={POSTCARD_PREFS.eventTitleSize.step}
+        onInput={setEventTitleSize}
+        format={(v) => `${v}%`}
+      />
 
       <SettingsToggle label={$t('settings.showEventCovers')} checked={eventCoversOn} onClick={toggleEventCovers} />
 
