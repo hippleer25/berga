@@ -5,15 +5,28 @@ import Check from '@lucide/svelte/icons/check';
 import Download from '@lucide/svelte/icons/download';
 import Upload from '@lucide/svelte/icons/upload';
 import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 import { t } from 'svelte-i18n';
 import { get } from 'svelte/store';
+import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
 import { apiFetch, clearNativeToken } from '$lib/api';
 import { instance } from '$lib/stores/instance';
+import { version } from '$lib/stores/version';
 import { setSessionLoggedOut } from '$lib/stores/session';
 import { ripple } from '$lib/actions/ripple';
 
 let instanceUrl = $state(instance.getInstance());
+
+onMount(() => {
+	version.load();
+});
+
+function fmtVersion(v: string): string {
+	if (!v) return '';
+	if (v === 'dev') return 'dev';
+	return v.startsWith('v') ? v : `v${v}`;
+}
 
 function saveInstance() {
 	instance.setInstance(instanceUrl);
@@ -286,6 +299,47 @@ async function refreshClusters() {
 	{:else}<RefreshCw size={16} /><span>{$t('settings.refreshClusters')}</span>{/if}
 </button>
 {#if clusterStatus === 'error'}<p class="error-text">{clusterError}</p>{/if}
+
+<div class="section-divider"></div>
+
+<h2 class="section-title">{$t('settings.aboutSection')}</h2>
+
+<div class="about-card">
+	<div class="about-row">
+		<span class="about-label">{$t('settings.versionLabel')}</span>
+		<span class="about-version">{fmtVersion($version.version) || '—'}</span>
+	</div>
+	<div class="about-row">
+		<span class="about-label">{$t('settings.updateStatusLabel')}</span>
+		{#if !$version.loaded}
+			<span class="about-status">—</span>
+		{:else if $version.updateAvailable}
+			<a
+				class="update-badge"
+				href={$version.latestUrl || 'https://github.com/hippleer25/berga/releases'}
+				target="_blank"
+				rel="noopener noreferrer"
+			>
+				{$t('settings.updateAvailable')}
+				<ArrowUpRight size={12} strokeWidth={2.2} />
+			</a>
+		{:else}
+			<span class="about-status up-to-date">
+				<Check size={13} strokeWidth={2.2} />
+				{$t('settings.upToDate')}
+			</span>
+		{/if}
+	</div>
+	<a
+		class="action-btn full-width"
+		href="{$version.latestUrl || 'https://github.com/hippleer25/berga/releases'}"
+		target="_blank"
+		rel="noopener noreferrer"
+		use:ripple
+	>
+		<ArrowUpRight size={16} /><span>{$t('settings.viewReleases')}</span>
+	</a>
+</div>
 </div>
 
 <style>
@@ -335,6 +389,40 @@ async function refreshClusters() {
 	.warn-text { font-size: 12px; color: var(--color-warning, var(--color-accent)); margin-top: 4px; line-height: 1.4; }
 
 	.instance-section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+
+	.about-card { display: flex; flex-direction: column; gap: 10px; }
+	.about-row {
+		display: flex; align-items: center; justify-content: space-between; gap: 12px;
+		padding: 10px 12px;
+		border: var(--ui-border-width) solid var(--ui-border-color);
+		border-radius: var(--ui-radius-sm);
+		background: color-mix(in oklch, var(--color-base-100) 70%, transparent);
+	}
+	.about-label { font-size: 13px; font-weight: 600; color: var(--ui-text-subtle); }
+	.about-version { font-size: 13px; font-weight: 700; color: var(--color-base-content); }
+	.about-status {
+		display: inline-flex; align-items: center; gap: 5px;
+		font-size: 12.5px; font-weight: 600; color: var(--ui-text-subtle);
+	}
+	.about-status.up-to-date { color: var(--color-success); }
+	.update-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		padding: 2px 8px;
+		border: var(--ui-border-width) solid color-mix(in oklch, var(--color-accent) 45%, transparent);
+		border-radius: 999px;
+		background: color-mix(in oklch, var(--color-accent) 12%, transparent);
+		color: var(--color-accent);
+		font-size: 11px;
+		font-weight: 700;
+		text-decoration: none;
+		transition: background var(--ui-dur-1) var(--ui-ease);
+	}
+	.update-badge:hover {
+		background: color-mix(in oklch, var(--color-accent) 20%, transparent);
+	}
+	a.action-btn { text-decoration: none; }
 	.setting-label { font-size: 13px; font-weight: 600; color: color-mix(in oklch, var(--color-base-content) 80%, transparent); padding-left: 2px; }
 	.setting-desc { font-size: 12px; color: color-mix(in oklch, var(--color-base-content) 50%, transparent); margin: 0; line-height: 1.4; }
 	.input-icon-wrap { position: relative; display: flex; align-items: center; }

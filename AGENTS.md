@@ -46,6 +46,7 @@ cd frontend && npm audit                         # JS vulnerability check
 - All env vars live in `.env` at repo root (loaded by docker-compose for the backend container)
 - **Required env vars**: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `QDRANT_HOST`, `QDRANT_PORT`, `REDIS_HOST`, `EMBEDDING_MODEL_NAME`, `SECRET_KEY`
 - `EMBEDDING_MODEL_NAME` must be set or the backend crashes at import time (`intelligence/embeddings.py` enforces this)
+- `APP_VERSION` (`.env`, default `dev`) — installed instance version shown in Settings (`GET /api/version`, `system/version.py`). **Bump it on every release**; it is also compared against the latest GitHub release tag (`UPSTREAM_REPO` override exists) with a 6h Redis-cached check to signal "update available".
 - `EMBEDDING_DESCRIPTION_CHARS` controls how much of the article description is included in the embedding vector (0 = title only, 200 = recommended default). Changing this value after articles are already indexed requires running the `reembed_all` job to update existing vectors.
 - LLM calls go through LiteLLM — model and API key set via env vars. Five tiers (last three fall back to `CHATBOT_LLM_*` if unset):
   - `CLUSTER_LLM_*` — base tier, required (historical cluster model config)
@@ -67,6 +68,7 @@ cd frontend && npm audit                         # JS vulnerability check
 | `database/init_db.py` | MySQL pool + schema creation (idempotent, auto-migrates) |
 | `database/qdrant_utils.py` | Qdrant index helpers, payload indexes, publisher_freq |
 | `rss/schedule.py` | User-scoped feed refresh orchestration |
+| `system/version.py` | Instance version (`APP_VERSION` env) + 6h Redis-cached GitHub release check for the "update available" badge (`GET /api/version`) |
 | `feed/health.py` | Feed-monitor API: `/api/feed-monitor` (health cols + `feed_stats` join incl. `weekday_by_tag` for the spider chart, status ok/failing/dead/silent/unknown; lazily enqueues a stats refresh when stale) and `/api/feed-monitor/tag-coverage` |
 | `feed/stats.py` | Per-feed posting stats (posts/4w, weekday histogram, 12-week trend, avg gap, smart-tag coverage % + per-tag weekday counts) computed via Qdrant scroll + `article_tags` counts, cached in `feed_stats`; arq job `refresh_feed_stats` (daily 05:00 + startup catch-up + one feed after each parse) |
 | `feed/fix.py` | Broken-feed repair (`/api/feed-monitor/{sha}/fix/analyze|apply`): regex + optional LLM (ROUTING tier) diagnosis, candidate RSS re-discovery anchored on the site **origin** (never the dead path) — feedfinder link-sniffing + DDG fallback + common/WordPress path & query probes — each live-validated with feedparser (title/entry count/latest post preview); apply delegates to `structure._edit_feed_url` |

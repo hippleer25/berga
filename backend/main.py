@@ -281,6 +281,14 @@ def settings_summary_language(body: SummaryLanguageRequest, user=Depends(get_cur
     return {"status": "ok", "language": normalized, "synced": ok}
 
 
+@app.get("/api/version")
+def api_version(user=Depends(get_current_user)):
+    """Installed instance version + best-effort upstream release check."""
+    from system.version import check_for_update
+
+    return check_for_update()
+
+
 @app.post("/api/register")
 def register(x_user_data: UserData, response: Response):
     result = auth_register.user_register(x_user_data)

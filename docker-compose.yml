@@ -88,6 +88,7 @@ services:
     env_file:
       - .env
     environment:
+      - APP_VERSION=${APP_VERSION:-dev}
       - HF_HOME=/home/appuser/.cache/huggingface
       - HF_HUB_OFFLINE=1
       - MALLOC_ARENA_MAX=2

@@ -7,8 +7,11 @@
 	import Highlighter from '@lucide/svelte/icons/highlighter';
 	import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
 	import { ripple } from '$lib/actions/ripple';
 	import { t } from 'svelte-i18n';
+	import { version } from '$lib/stores/version';
+	import { onMount } from 'svelte';
 
 	const sections = [
 		{ key: 'appearance', href: '/settings/appearance', icon: Palette },
@@ -25,6 +28,16 @@
 	function desc(key: string): string {
 		return $t(`settings.${key}Desc`);
 	}
+
+	function fmtVersion(v: string): string {
+		if (!v) return '';
+		if (v === 'dev') return 'dev';
+		return v.startsWith('v') ? v : `v${v}`;
+	}
+
+	onMount(() => {
+		version.load();
+	});
 
 	// Desktop has the sidebar in the layout — jump straight to Appearance.
 	$effect(() => {
@@ -44,6 +57,23 @@
 		<div class="ui-kicker hero-kicker">Berga</div>
 		<h2 class="hero-title">{$t('settings.title')}</h2>
 		<p class="hero-sub">{$t('settings.subtitle')}</p>
+		{#if $version.version}
+			<div class="hero-version">
+				<span class="version-text">{fmtVersion($version.version)}</span>
+				{#if $version.updateAvailable}
+					<a
+						class="update-badge"
+						href={$version.latestUrl || 'https://github.com/hippleer25/berga/releases'}
+						target="_blank"
+						rel="noopener noreferrer"
+						onclick={(e) => e.stopPropagation()}
+					>
+						{$t('settings.updateAvailable')}
+						<ArrowUpRight size={12} strokeWidth={2.2} />
+					</a>
+				{/if}
+			</div>
+		{/if}
 	</header>
 
 	<nav class="settings-list" aria-label={$t('settings.title')}>
@@ -63,6 +93,23 @@
 			{/if}
 		{/each}
 	</nav>
+
+	{#if $version.version}
+		<footer class="version-footer">
+			<span class="version-text">{fmtVersion($version.version)}</span>
+			{#if $version.updateAvailable}
+				<a
+					class="update-badge"
+					href={$version.latestUrl || 'https://github.com/hippleer25/berga/releases'}
+					target="_blank"
+					rel="noopener noreferrer"
+				>
+					{$t('settings.updateAvailable')}
+					<ArrowUpRight size={12} strokeWidth={2.2} />
+				</a>
+			{/if}
+		</footer>
+	{/if}
 </div>
 
 <style>
@@ -97,6 +144,52 @@
 		line-height: 1.45;
 		color: var(--ui-text-subtle);
 		margin: 0;
+	}
+
+	.hero-version {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 2px;
+	}
+	.version-text {
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.01em;
+		color: var(--ui-text-subtle);
+	}
+	.update-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		padding: 2px 8px;
+		border: var(--ui-border-width) solid color-mix(in oklch, var(--color-accent) 45%, transparent);
+		border-radius: 999px;
+		background: color-mix(in oklch, var(--color-accent) 12%, transparent);
+		color: var(--color-accent);
+		font-size: 11px;
+		font-weight: 700;
+		text-decoration: none;
+		transition: background var(--ui-dur-1) var(--ui-ease);
+	}
+	.update-badge:hover {
+		background: color-mix(in oklch, var(--color-accent) 20%, transparent);
+	}
+
+	/* ── Mobile version footer ───────────────────────────────── */
+	.version-footer {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 14px 0 6px;
+	}
+	.version-footer .version-text {
+		color: var(--ui-text-faint);
+	}
+	@media (min-width: 768px) {
+		.version-footer { display: none; }
+		.hero-version { display: flex; }
 	}
 
 	/* ── Section list: rows on mobile, cards on desktop ──────── */
