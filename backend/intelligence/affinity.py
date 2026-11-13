@@ -501,6 +501,92 @@ def reset_user_affinity(user_id: int) -> dict:
     logger.info("Affinity reset: user=%s removed=%s", user_id, removed)
     return {"success": True, "removed_boosts": removed}
 
+
+def reset_user_algorithm(
+    user_id: int,
+    *,
+    learned: bool = True,
+    boosts: bool = False,
+    publisher_counters: bool = False,
+    interaction_history: bool = False,
+    publisher_freq: bool = False,
+) -> dict:
+    """
+    Full algorithm wipe: clears whatever parts of the user's preference
+    profile the caller selected. ``learned`` (the interaction-learned
+    pos/neg vectors) is the core of the reset and is always performed;
+    every other part is opt-in via the boolean flags. With an empty
+    positive profile the ranking engine falls back to its cold-start
+    tier, so the algorithm effectively starts from scratch.
+
+    Returns the number of boosts and interactions removed.
+    """
+    if not any((learned, boosts, publisher_counters,
+                interaction_history, publisher_freq)):
+        return {"success": True, "removed_boosts": 0,
+                "removed_interactions": 0}
+
+    removed_boosts = 0
+    removed_interactions = 0
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor(dictionary=True)
+            try:
+                updates: list[str] = []
+                params: list = []
+
+                if learned:
+                    updates.append("pos_vector = '[]', neg_vector = NULL")
+                if boosts:
+                    updates.append(
+                        "affinity_pos_vector = NULL, affinity_neg_vector = NULL")
+                if publisher_counters:
+                    updates.append(
+                        "publisher_likes = '{}', publisher_dislikes = '{}'")
+                if publisher_freq:
+                    updates.append("publisher_freq = '{}'")
+                if updates:
+                    cursor.execute(
+                        f"UPDATE user_vectors SET {', '.join(updates)} "
+                        "WHERE user_id = %s",
+                        (*params, user_id),
+                    )
+
+                if boosts:
+                    cursor.execute(
+                        "DELETE FROM affinity_boosts WHERE user_id = %s",
+                        (user_id,),
+                    )
+                    removed_boosts = cursor.rowcount
+
+                if interaction_history:
+                    cursor.execute(
+                        "DELETE FROM interactions WHERE user_id = %s",
+                        (user_id,),
+                    )
+                    removed_interactions = cursor.rowcount
+
+                conn.commit()
+            finally:
+                cursor.close()
+    except Exception:
+        logger.exception("Error resetting algorithm user=%s", user_id)
+        raise
+
+    invalidate_cache(user_id)
+    logger.info(
+        "Algorithm reset: user=%s learned=%s boosts=%s publisher_counters=%s "
+        "interaction_history=%s publisher_freq=%s removed_boosts=%s "
+        "removed_interactions=%s",
+        user_id, learned, boosts, publisher_counters, interaction_history,
+        publisher_freq, removed_boosts, removed_interactions,
+    )
+    return {
+        "success": True,
+        "removed_boosts": removed_boosts,
+        "removed_interactions": removed_interactions,
+    }
+
 # ── Cluster affinity attachment (weekly events enrichment) ────────────────────
 
 def attach_cluster_affinity(user_id: int, events: list[dict]) -> list[dict]:

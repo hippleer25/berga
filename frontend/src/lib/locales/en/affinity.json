@@ -29,5 +29,19 @@
   "resetConfirm": "This removes every manual boost (positive and negative) and restores your learned profile. This cannot be undone.",
   "resetCancel": "Cancel",
   "resetConfirmBtn": "Reset",
-  "errorStatus": "Error"
+  "errorStatus": "Error",
+  "algoResetBtn": "Reset algorithm",
+  "algoResetConfirm": "This clears your preference profile so recommendations start from scratch. Choose what gets wiped:",
+  "algoResetConfirmBtn": "Wipe profile",
+  "algoOptLearned": "Learned preference vectors",
+  "algoOptLearnedDesc": "The likes/dislikes profile built from your interactions. Always cleared.",
+  "algoOptBoosts": "Manual affinity boosts",
+  "algoOptBoostsDesc": "All manual term boosts (positive and negative) and their vectors.",
+  "algoOptCounters": "Publisher engagement counters",
+  "algoOptCountersDesc": "Per-feed like/dislike counters learned from your behavior.",
+  "algoOptHistory": "Interaction history",
+  "algoOptHistoryDesc": "Permanently deletes the record of your likes, dislikes, saves and reads.",
+  "algoOptFreq": "Publisher frequency stats",
+  "algoOptFreqDesc": "Posting-frequency statistics per feed (recomputed automatically).",
+  "algoResetHint": "With an empty profile, recommendations fall back to popular and recent articles until the algorithm relearns from new interactions."
 }

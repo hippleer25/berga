@@ -29,5 +29,19 @@
   "resetConfirm": "Ceci supprime tous les renforcements manuels (positifs et négatifs) et restaure votre profil appris. Action irréversible.",
   "resetCancel": "Annuler",
   "resetConfirmBtn": "Réinitialiser",
-  "errorStatus": "Erreur"
+  "errorStatus": "Erreur",
+  "algoResetBtn": "Réinitialiser l'algorithme",
+  "algoResetConfirm": "Ceci efface votre profil de préférences pour que les recommandations repartent de zéro. Choisissez ce qui sera supprimé :",
+  "algoResetConfirmBtn": "Effacer le profil",
+  "algoOptLearned": "Vecteurs de préférence appris",
+  "algoOptLearnedDesc": "Le profil d'appréciation/désapprobation construit à partir de vos interactions. Toujours effacé.",
+  "algoOptBoosts": "Renforcements manuels d'affinité",
+  "algoOptBoostsDesc": "Tous les renforcements manuels de termes (positifs et négatifs) et leurs vecteurs.",
+  "algoOptCounters": "Compteurs d'engagement par éditeur",
+  "algoOptCountersDesc": "Compteurs j'aime/n'aime pas par flux appris de votre comportement.",
+  "algoOptHistory": "Historique des interactions",
+  "algoOptHistoryDesc": "Supprime définitivement l'enregistrement de vos j'aime, je n'aime pas, enregistrements et lectures.",
+  "algoOptFreq": "Statistiques de fréquence des éditeurs",
+  "algoOptFreqDesc": "Statistiques de fréquence de publication par flux (recalculées automatiquement).",
+  "algoResetHint": "Avec un profil vide, les recommandations reviennent aux articles populaires et récents jusqu'à ce que l'algorithme réapprenne de nouvelles interactions."
 }

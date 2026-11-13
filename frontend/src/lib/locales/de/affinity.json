@@ -29,5 +29,19 @@
   "resetConfirm": "Dies entfernt alle manuellen Boosts (positiv und negativ) und stellt Ihr gelerntes Profil wieder her. Dies kann nicht rückgängig gemacht werden.",
   "resetCancel": "Abbrechen",
   "resetConfirmBtn": "Zurücksetzen",
-  "errorStatus": "Fehler"
+  "errorStatus": "Fehler",
+  "algoResetBtn": "Algorithmus zurücksetzen",
+  "algoResetConfirm": "Damit wird Ihr Präferenzprofil gelöscht, sodass Empfehlungen bei null beginnen. Wählen Sie, was entfernt wird:",
+  "algoResetConfirmBtn": "Profil löschen",
+  "algoOptLearned": "Gelernte Präferenzvektoren",
+  "algoOptLearnedDesc": "Das aus Ihren Interaktionen aufgebaute Gefallen-/Nichtgefallen-Profil. Wird immer gelöscht.",
+  "algoOptBoosts": "Manuelle Affinitäts-Boosts",
+  "algoOptBoostsDesc": "Alle manuellen Begriffs-Boosts (positiv und negativ) und ihre Vektoren.",
+  "algoOptCounters": "Interaktionszähler pro Publisher",
+  "algoOptCountersDesc": "Gefällt-mir-/Gefällt-mir-nicht-Zähler pro Feed, gelernt aus Ihrem Verhalten.",
+  "algoOptHistory": "Interaktionsverlauf",
+  "algoOptHistoryDesc": "Löscht dauerhaft die Aufzeichnung Ihrer Gefallen, Nichtgefallen, Speicherungen und Lesungen.",
+  "algoOptFreq": "Veröffentlichungsfrequenz-Statistiken",
+  "algoOptFreqDesc": "Statistiken zur Veröffentlichungsfrequenz pro Feed (werden automatisch neu berechnet).",
+  "algoResetHint": "Mit leerem Profil priorisieren die Empfehlungen wieder beliebte und aktuelle Artikel, bis der Algorithmus aus neuen Interaktionen neu lernt."
 }

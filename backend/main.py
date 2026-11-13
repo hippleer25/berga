@@ -36,6 +36,7 @@ from intelligence.affinity import (
     boost_affinity,
     remove_affinity_boost,
     reset_user_affinity,
+    reset_user_algorithm,
     rank_user_terms,
     attach_cluster_affinity,
 )
@@ -198,6 +199,14 @@ class BoostRequest(BaseModel):
 class RemoveBoostRequest(BaseModel):
     term: str
     direction: Literal["positive", "negative"]
+
+
+class ResetAlgorithmRequest(BaseModel):
+    learned: bool = True
+    boosts: bool = False
+    publisher_counters: bool = False
+    interaction_history: bool = False
+    publisher_freq: bool = False
 
 
 class ViewBatch(BaseModel):
@@ -1037,6 +1046,19 @@ def api_remove_boost(body: RemoveBoostRequest, user: dict = Depends(get_current_
 def api_reset_affinity(user: dict = Depends(get_current_user)):
     """Revert every manual boost for the user and re-NULL the affinity vectors."""
     return reset_user_affinity(user["id"])
+
+
+@app.post("/api/affinity/reset-algorithm")
+def api_reset_algorithm(body: ResetAlgorithmRequest, user: dict = Depends(get_current_user)):
+    """Full algorithm wipe: clear the parts of the user preference profile the body selects."""
+    return reset_user_algorithm(
+        user["id"],
+        learned=body.learned,
+        boosts=body.boosts,
+        publisher_counters=body.publisher_counters,
+        interaction_history=body.interaction_history,
+        publisher_freq=body.publisher_freq,
+    )
 
 
 @app.get("/api/affinity/terms")

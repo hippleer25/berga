@@ -29,5 +29,19 @@
   "resetConfirm": "Esto elimina todos los refuerzos manuales (positivos y negativos) y restaura tu perfil aprendido. No se puede deshacer.",
   "resetCancel": "Cancelar",
   "resetConfirmBtn": "Restablecer",
-  "errorStatus": "Error"
+  "errorStatus": "Error",
+  "algoResetBtn": "Restablecer algoritmo",
+  "algoResetConfirm": "Esto borra tu perfil de preferencias para que las recomendaciones empiecen de cero. Elige qué se elimina:",
+  "algoResetConfirmBtn": "Borrar perfil",
+  "algoOptLearned": "Vectores de preferencia aprendidos",
+  "algoOptLearnedDesc": "El perfil de gustos/disgustos construido a partir de tus interacciones. Siempre se borra.",
+  "algoOptBoosts": "Refuerzos manuales de afinidad",
+  "algoOptBoostsDesc": "Todos los refuerzos manuales de términos (positivos y negativos) y sus vectores.",
+  "algoOptCounters": "Contadores de interacción por publisher",
+  "algoOptCountersDesc": "Contadores de me gusta/no me gusta por feed aprendidos de tu comportamiento.",
+  "algoOptHistory": "Historial de interacciones",
+  "algoOptHistoryDesc": "Elimina permanentemente el registro de tus me gusta, no me gusta, guardados y lecturas.",
+  "algoOptFreq": "Estadísticas de frecuencia de publishers",
+  "algoOptFreqDesc": "Estadísticas de frecuencia de publicación por feed (se recalculan automáticamente).",
+  "algoResetHint": "Con el perfil vacío, las recomendaciones vuelven a priorizar artículos populares y recientes hasta que el algoritmo reaprenda con nuevas interacciones."
 }

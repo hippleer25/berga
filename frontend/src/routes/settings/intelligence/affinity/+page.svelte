@@ -9,6 +9,7 @@
 	import ListOrdered from '@lucide/svelte/icons/list-ordered';
 	import X from '@lucide/svelte/icons/x';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { t } from 'svelte-i18n';
 	import { get } from 'svelte/store';
   import { ripple } from '$lib/actions/ripple';
@@ -203,6 +204,46 @@
 
 	function handleKey(e: KeyboardEvent) {
 		if (e.key === 'Enter') analyze();
+	}
+
+	let algoResetConfirm = $state(false);
+	let algoResetStatus = $state<'idle' | 'busy' | 'error'>('idle');
+	let algoResetError = $state('');
+	let algoOptBoosts = $state(true);
+	let algoOptPublisherCounters = $state(true);
+	let algoOptInteractionHistory = $state(false);
+	let algoOptPublisherFreq = $state(false);
+
+	async function resetAlgorithm() {
+		algoResetStatus = 'busy';
+		algoResetError = '';
+		try {
+			const res = await apiFetch('/api/affinity/reset-algorithm', {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					learned: true,
+					boosts: algoOptBoosts,
+					publisher_counters: algoOptPublisherCounters,
+					interaction_history: algoOptInteractionHistory,
+					publisher_freq: algoOptPublisherFreq,
+				}),
+			});
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.error || `${get(t)('affinity.errorStatus')} ${res.status}`);
+			algoResetConfirm = false;
+			history = [];
+			localStorage.removeItem('affinity-history');
+			result = null;
+			term = '';
+			await loadRanking();
+			algoResetStatus = 'idle';
+		} catch (err: any) {
+			algoResetError = err.message;
+			algoResetStatus = 'error';
+			setTimeout(() => (algoResetStatus = 'idle'), 4000);
+		}
 	}
 </script>
 
@@ -408,6 +449,66 @@
 			{/if}
 		</div>
 	{/if}
+
+	<div class="reset-section algo-reset">
+		<button class="action-btn danger" use:ripple onclick={() => (algoResetConfirm = !algoResetConfirm)} disabled={algoResetStatus === 'busy'}>
+			<Trash2 size={14} />
+			<span>{$t('affinity.algoResetBtn')}</span>
+		</button>
+		{#if algoResetStatus === 'error'}<p class="error-text">{algoResetError}</p>{/if}
+		{#if algoResetConfirm}
+			<div class="confirm-card algo-confirm">
+				<p class="confirm-text">{$t('affinity.algoResetConfirm')}</p>
+				<div class="algo-options">
+					<label class="algo-option locked">
+						<input type="checkbox" checked disabled />
+						<span class="algo-option-text">
+							<span class="algo-option-label">{$t('affinity.algoOptLearned')}</span>
+							<span class="algo-option-desc">{$t('affinity.algoOptLearnedDesc')}</span>
+						</span>
+					</label>
+					<label class="algo-option">
+						<input type="checkbox" bind:checked={algoOptBoosts} />
+						<span class="algo-option-text">
+							<span class="algo-option-label">{$t('affinity.algoOptBoosts')}</span>
+							<span class="algo-option-desc">{$t('affinity.algoOptBoostsDesc')}</span>
+						</span>
+					</label>
+					<label class="algo-option">
+						<input type="checkbox" bind:checked={algoOptPublisherCounters} />
+						<span class="algo-option-text">
+							<span class="algo-option-label">{$t('affinity.algoOptCounters')}</span>
+							<span class="algo-option-desc">{$t('affinity.algoOptCountersDesc')}</span>
+						</span>
+					</label>
+					<label class="algo-option">
+						<input type="checkbox" bind:checked={algoOptInteractionHistory} />
+						<span class="algo-option-text">
+							<span class="algo-option-label">{$t('affinity.algoOptHistory')}</span>
+							<span class="algo-option-desc">{$t('affinity.algoOptHistoryDesc')}</span>
+						</span>
+					</label>
+					<label class="algo-option">
+						<input type="checkbox" bind:checked={algoOptPublisherFreq} />
+						<span class="algo-option-text">
+							<span class="algo-option-label">{$t('affinity.algoOptFreq')}</span>
+							<span class="algo-option-desc">{$t('affinity.algoOptFreqDesc')}</span>
+						</span>
+					</label>
+				</div>
+				<p class="algo-hint">{$t('affinity.algoResetHint')}</p>
+				<div class="confirm-actions">
+					<button class="action-btn" use:ripple onclick={() => (algoResetConfirm = false)} disabled={algoResetStatus === 'busy'}>
+						{$t('affinity.resetCancel')}
+					</button>
+					<button class="action-btn danger" use:ripple onclick={resetAlgorithm} disabled={algoResetStatus === 'busy'}>
+						{#if algoResetStatus === 'busy'}<span class="spinner"></span>{:else}<Trash2 size={13} />{/if}
+						<span>{$t('affinity.algoResetConfirmBtn')}</span>
+					</button>
+				</div>
+			</div>
+		{/if}
+	</div>
 </div>
 
 <style>
@@ -629,4 +730,41 @@ font-family: var(--font-post-title);
 	}
 	.confirm-text { font-size: 13px; color: var(--color-base-content); margin: 0 0 12px; line-height: 1.5; }
 	.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+	.algo-reset { margin-top: 4px; border-top: 1px solid var(--color-base-300); padding-top: 16px; }
+	.algo-confirm { display: flex; flex-direction: column; }
+	.algo-options { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+	.algo-option {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		padding: 8px 10px;
+		border-radius: var(--ui-radius-sm);
+		cursor: pointer;
+		transition: background 130ms ease;
+	}
+	.algo-option:hover { background: color-mix(in oklch, var(--color-base-content) 4%, transparent); }
+	.algo-option.locked { cursor: not-allowed; opacity: 0.75; }
+	.algo-option.locked:hover { background: transparent; }
+	.algo-option input[type='checkbox'] {
+		margin: 2px 0 0;
+		width: 15px;
+		height: 15px;
+		accent-color: var(--color-error);
+		flex-shrink: 0;
+		cursor: pointer;
+	}
+	.algo-option.locked input[type='checkbox'] { cursor: not-allowed; accent-color: var(--color-base-content); }
+	.algo-option-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+	.algo-option-label { font-size: 13px; font-weight: 600; color: var(--color-base-content); line-height: 1.4; }
+	.algo-option-desc { font-size: 11px; color: color-mix(in oklch, var(--color-base-content) 55%, transparent); line-height: 1.45; }
+	.algo-hint {
+		font-size: 11px;
+		color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+		border-left: 2px solid var(--color-accent);
+		padding-left: 10px;
+		margin: 0 0 12px;
+		line-height: 1.5;
+	}
+	.algo-confirm .confirm-actions { margin-top: 4px; }
 </style>
