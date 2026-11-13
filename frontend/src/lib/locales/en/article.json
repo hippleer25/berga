@@ -31,5 +31,6 @@
   "commentPlaceholder": "Write your comment in markdown...",
   "mentionHint": "Type @ to mention an article",
   "mentionNoResults": "No articles found",
-  "mentionLoading": "Searching..."
+  "mentionLoading": "Searching...",
+  "sendToMota": "Send to Mota"
 }

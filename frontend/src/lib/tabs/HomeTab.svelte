@@ -7,12 +7,13 @@ import { onMount } from 'svelte';
    import PostCard from '$lib/components/PostCard.svelte';
    import Portal from '$lib/components/Portal.svelte';
  import {
-   selectionMode,
-   selectedPosts,
-   pendingMotaPosts,
-   activeTabIdx,
-   navVisible,
- } from '$lib/stores/swipe';
+    selectionMode,
+    selectedPosts,
+    pendingMotaPosts,
+    activeTabIdx,
+    navVisible,
+    stackedScreenOpen,
+  } from '$lib/stores/swipe';
  import { subscriptionChanged } from '$lib/stores/subscription';
  import { onViewed, flushPending, destroyViewTracker } from '$lib/stores/viewTracker';
 import {
@@ -941,7 +942,7 @@ if (res.ok) {
         {#if $selectionMode}
             <Portal>
             <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-            <div class="selection-bar" class:lifted={$navVisible} transition:slide={{ duration: 220 }} onclick={() => { if (bulkTagPickerOpen) bulkTagPickerOpen = false; }}>
+            <div class="selection-bar" class:lifted={$navVisible && !$stackedScreenOpen} transition:slide={{ duration: 220 }} onclick={() => { if (bulkTagPickerOpen) bulkTagPickerOpen = false; }}>
                 <button class="sel-cancel-btn" onclick={clearSelection} aria-label="{$t('hometab.cancelSelection')}">
                     <X size={17} />
                 </button>

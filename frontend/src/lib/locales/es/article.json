@@ -31,5 +31,6 @@
   "commentPlaceholder": "Escribe tu comentario en markdown...",
   "mentionHint": "Escribe @ para mencionar un artículo",
   "mentionNoResults": "No se encontraron artículos",
-  "mentionLoading": "Buscando..."
+  "mentionLoading": "Buscando...",
+  "sendToMota": "Enviar a Mota"
 }

@@ -15,6 +15,7 @@ import { titleTextAlign, bodyTextAlign, highlightColors, highlightOpacity, highl
 import { hexToRgba } from '$lib/utils/color';
 import ScreenShell from '$lib/components/ScreenShell.svelte';
 import { closeScreen } from '$lib/utils/screenStack';
+import { pendingMotaPosts } from '$lib/stores/swipe';
 
 type ItemMeta = {
   item_id: string;
@@ -549,6 +550,20 @@ const res = await apiFetch(`/api/mota/resume/${loadedItemId}`, {
         }
     }
 
+    // ── Send to Mota (direct, one click) ──────────────────────────────
+    async function sendToMota() {
+        if (!meta || !meta.item_id) return;
+        pendingMotaPosts.set([{
+            item_id: meta.item_id,
+            title: meta.title,
+            link: meta.link,
+            feed_title: meta.feed_title,
+            pub_date: meta.pub_date,
+            author: meta.author,
+        }]);
+        await goto('/mota');
+    }
+
     async function sendVote(type: 'like' | 'dislike') {
         if ((type === 'like' && likeLoading) || (type === 'dislike' && dislikeLoading)) return;
         if (type === 'like') likeLoading = true;
@@ -1042,6 +1057,15 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 				{:else}
 					<Bookmark size={16} fill={saved ? 'currentColor' : 'none'} />
 				{/if}
+			</button>
+
+			<button
+				class="ghost-btn"
+				onclick={sendToMota}
+				title="{$t('article.sendToMota')}"
+				disabled={!meta}
+			>
+				<Sparkles size={16} />
 			</button>
 		</div>
 

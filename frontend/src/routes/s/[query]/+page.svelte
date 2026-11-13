@@ -12,6 +12,7 @@ import { get } from 'svelte/store';
     import { subscriptionChanged } from '$lib/stores/subscription';
     import ScreenShell from '$lib/components/ScreenShell.svelte';
     import { closeScreen } from '$lib/utils/screenStack';
+    import { selectionMode, selectedPosts } from '$lib/stores/swipe';
 
 type Tab = 'articles' | 'feeds';
 
@@ -63,6 +64,27 @@ type Tab = 'articles' | 'feeds';
     function handleTagChange(payload: { item_id: string; tag_id: number; action: 'assign' | 'unassign'; tag?: TagRef }) {
         articleResults = syncFeedItemTags(articleResults, payload.item_id, payload.tag_id, payload.action, payload.tag);
     }
+
+    // ── Multi-select (shared with the global selection bar in HomeTab) ─────
+    function handleToggleSelect(item: any) {
+        selectedPosts.update(current => {
+            const idx = current.findIndex((p: any) => p.item_id === item.item_id);
+            if (idx >= 0) {
+                const next = [...current.slice(0, idx), ...current.slice(idx + 1)];
+                if (next.length === 0) selectionMode.set(false);
+                return next;
+            } else {
+                if (!get(selectionMode)) selectionMode.set(true);
+                return [...current, item];
+            }
+        });
+    }
+
+    // Leaving the screen ends selection so state never leaks into the feeds.
+    onMount(() => () => {
+        selectedPosts.set([]);
+        selectionMode.set(false);
+    });
 
     onMount(loadUserTags);
 
@@ -227,7 +249,17 @@ const res = await apiFetch(
                     </p>
                 {:else}
                     {#each articleResults as item}
-                        <PostCard {item} server="" tags={item.tags || []} userTags={tagList} onTagClick={(tag) => goto(`/home?tag_id=${tag.tag_id}`)} onTagChange={handleTagChange} />
+                        <PostCard
+                            {item}
+                            server=""
+                            tags={item.tags || []}
+                            userTags={tagList}
+                            selectionMode={$selectionMode}
+                            selected={$selectedPosts.some((p: any) => p.item_id === item.item_id)}
+                            onToggleSelect={handleToggleSelect}
+                            onTagClick={(tag) => goto(`/home?tag_id=${tag.tag_id}`)}
+                            onTagChange={handleTagChange}
+                        />
                     {/each}
                 {/if}
 
