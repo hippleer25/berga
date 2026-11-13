@@ -73,6 +73,46 @@ async function importOpml(e: Event) {
 	}
 }
 
+/* ── Recommendation profile (bergapack) ── */
+let profileStatus = $state<'idle' | 'loading' | 'success' | 'partial' | 'error'>('idle');
+let profileError = $state('');
+let profileInput: HTMLInputElement;
+
+async function exportProfile() {
+	const res = await apiFetch('/api/profile-export', { credentials: 'include' });
+	if (!res.ok) return;
+	const blob = await res.blob();
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = 'bergapack.json';
+	a.click();
+	URL.revokeObjectURL(url);
+}
+
+async function importProfile(e: Event) {
+	const file = (e.target as HTMLInputElement).files?.[0];
+	if (!file) return;
+	profileStatus = 'loading';
+	profileError = '';
+	const formData = new FormData();
+	formData.append('file', file);
+	try {
+		const res = await apiFetch('/api/profile-import', { method: 'POST', credentials: 'include', body: formData });
+		const data = await res.json().catch(() => ({}));
+		if (!res.ok) {
+			throw new Error(data.detail || data.message || get(t)('settings.serverError', { values: { status: res.status } }));
+		}
+		profileStatus = data.status === 'partial' ? 'partial' : 'success';
+		setTimeout(() => (profileStatus = 'idle'), 6000);
+	} catch (err: any) {
+		profileStatus = 'error';
+		profileError = err.message;
+	} finally {
+		profileInput.value = '';
+	}
+}
+
 async function fetchAllArticles() {
 	fetchStatus = 'loading';
 	fetchError = '';
@@ -155,6 +195,25 @@ async function refreshClusters() {
 
 <div class="section-divider"></div>
 
+<h2 class="section-title">{$t('settings.profilePack')}</h2>
+<p class="section-desc">{$t('settings.profilePackDesc')}</p>
+
+<div class="btn-group">
+	<button class="action-btn" use:ripple onclick={exportProfile}>
+		<Download size={16} /><span>{$t('settings.exportProfile')}</span>
+	</button>
+	<input bind:this={profileInput} type="file" accept=".json,application/json" class="hidden-input" onchange={importProfile} />
+	<button class="action-btn" use:ripple class:success={profileStatus === 'success' || profileStatus === 'partial'} onclick={() => profileInput.click()} disabled={profileStatus === 'loading'}>
+		{#if profileStatus === 'loading'}<span class="spinner"></span><span>{$t('settings.importing')}</span>
+		{:else if profileStatus === 'success' || profileStatus === 'partial'}<Check size={16} /><span>{$t('settings.imported')}</span>
+		{:else}<Upload size={16} /><span>{$t('settings.importProfile')}</span>{/if}
+	</button>
+</div>
+{#if profileStatus === 'partial'}<p class="warn-text">{$t('settings.profilePackMismatch')}</p>{/if}
+{#if profileStatus === 'error'}<p class="error-text">{profileError}</p>{/if}
+
+<div class="section-divider"></div>
+
 <h2 class="section-title">{$t('settings.fetchNewArticles')}</h2>
 <p class="section-desc">{$t('settings.fetchDesc')}</p>
 <button class="action-btn full-width" use:ripple class:success={fetchStatus === 'success'} class:error={fetchStatus === 'error'} onclick={fetchAllArticles} disabled={fetchStatus === 'loading'}>
@@ -212,6 +271,7 @@ async function refreshClusters() {
 	}
 	@keyframes spin { to { transform: rotate(360deg); } }
 	.error-text { font-size: 12px; color: var(--color-error); margin-top: 4px; }
+	.warn-text { font-size: 12px; color: var(--color-warning, var(--color-accent)); margin-top: 4px; line-height: 1.4; }
 
 	.instance-section { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
 	.setting-label { font-size: 13px; font-weight: 600; color: color-mix(in oklch, var(--color-base-content) 80%, transparent); padding-left: 2px; }

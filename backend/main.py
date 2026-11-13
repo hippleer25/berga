@@ -47,6 +47,7 @@ from post import load
 from post import highlights as hl
 from post import comments as cm
 from utils.opml import opml_import, opml_export
+from utils.profile_pack import pack_import, pack_export
 from utils.regex_utils import validate_regex_pattern
 from feed.following_structure.structure import following_structure, StructureRequest, list_subscriptions, get_folder_info
 from feed.health import monitor_overview, tag_coverage as route_tag_coverage
@@ -762,6 +763,25 @@ async def route_opml_import(
 @app.get("/api/opml-export")
 async def route_opml_export(user: dict = Depends(get_current_user)):
     return opml_export.export(user)
+
+
+@app.get("/api/profile-export")
+async def route_profile_export(user: dict = Depends(get_current_user)):
+    return pack_export.export(user)
+
+
+@app.post("/api/profile-import")
+async def route_profile_import(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    MAX_PACK_SIZE = 2_000_000
+    content = await file.read()
+    if len(content) > MAX_PACK_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (max 2 MB)")
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+    return pack_import.receive(content, user)
 
 
 @app.post("/api/following_structure/")
