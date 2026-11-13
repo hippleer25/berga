@@ -431,6 +431,8 @@ import { get } from 'svelte/store';
     :global([data-event-cover-pos='bottom']) .event-cover {
         width: 100%;
         height: var(--cover-max-h, 160px);
+        /* Breathing room before the row's separator line (user-tunable). */
+        margin-bottom: var(--event-cover-gap, 10px);
     }
     :global([data-event-cover-pos='top']) .expand-chevron,
     :global([data-event-cover-pos='bottom']) .expand-chevron {

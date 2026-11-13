@@ -188,6 +188,8 @@
   "searchCoverImageAlign": "Search image alignment",
   "searchCoverImageAlignHint": "Applies to the photos on the search results page.",
   "eventCoverPosition": "Event image position",
+  "eventCoverSpacing": "Banner bottom spacing",
+  "eventCoverSpacingHint": "Space between the event photo and the separator line below it.",
   "eventTitleOrder": "Title and details order",
   "eventTitleAbove": "Title above",
   "eventTitleBelow": "Title below",

@@ -186,6 +186,11 @@
           if (isFinite(eventTitleSize) && eventTitleSize >= 80 && eventTitleSize <= 150 && eventTitleSize !== 100) {
             document.documentElement.style.setProperty('--event-title-scale', String(eventTitleSize / 100));
           }
+          // Cluster banner bottom spacing (px), before first paint
+          var eventCoverSpacing = parseFloat(localStorage.getItem('event-cover-spacing'));
+          if (isFinite(eventCoverSpacing) && eventCoverSpacing >= 0 && eventCoverSpacing <= 24 && eventCoverSpacing !== 10) {
+            document.documentElement.style.setProperty('--event-cover-gap', eventCoverSpacing + 'px');
+          }
         } catch (e) {}
 
         try {

@@ -188,6 +188,8 @@
   "searchCoverImageAlign": "Bildausrichtung (Suche)",
   "searchCoverImageAlignHint": "Gilt für die Fotos auf der Suchergebnisseite.",
   "eventCoverPosition": "Position des Ereignisbildes",
+  "eventCoverSpacing": "Abstand unter dem Bild",
+  "eventCoverSpacingHint": "Abstand zwischen dem Ereignisfoto und der Trennlinie darunter.",
   "eventTitleOrder": "Reihenfolge von Titel und Details",
   "eventTitleAbove": "Titel oben",
   "eventTitleBelow": "Titel unten",

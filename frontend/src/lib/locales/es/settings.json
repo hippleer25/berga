@@ -188,6 +188,8 @@
   "searchCoverImageAlign": "Alineación de las imágenes (búsqueda)",
   "searchCoverImageAlignHint": "Se aplica a las fotos de la página de resultados de búsqueda.",
   "eventCoverPosition": "Posición de la imagen del evento",
+  "eventCoverSpacing": "Espacio bajo la imagen",
+  "eventCoverSpacingHint": "Espacio entre la foto del evento y la línea separadora inferior.",
   "eventTitleOrder": "Orden del título y los detalles",
   "eventTitleAbove": "Título arriba",
   "eventTitleBelow": "Título abajo",

@@ -9,7 +9,7 @@
   import PostCard from '$lib/components/PostCard.svelte';
   import PreviewFrame from '$lib/components/settings/preview/PreviewFrame.svelte';
   import { MOCK_POST, MOCK_EVENT } from '$lib/components/settings/preview/previewMocks';
-  import { applySearchCoverAlign, applySearchCoverRadius, applyEventCoverPosition, applyEventTitleSize, POSTCARD_PREFS, type CoverAlign, type EventCoverPos } from '$lib/utils/appearance';
+  import { applySearchCoverAlign, applySearchCoverRadius, applyEventCoverPosition, applyEventTitleSize, applyEventCoverSpacing, POSTCARD_PREFS, type CoverAlign, type EventCoverPos } from '$lib/utils/appearance';
   import {
     searchCoverRadius,
     searchCoverAlign,
@@ -17,6 +17,7 @@
     eventCoverPosition,
     eventTitleBelow,
     eventTitleSize,
+    eventCoverSpacing,
     embeddedCovers,
     embeddedCoverPosition,
     type TriState,
@@ -28,6 +29,7 @@
   let eventCoverPosVal = $state<EventCoverPos>('bottom');
   let eventTitleBelowVal = $state<boolean>(false);
   let eventTitleSizeVal = $state<number>(POSTCARD_PREFS.eventTitleSize.default);
+  let eventCoverSpacingVal = $state<number>(POSTCARD_PREFS.eventCoverSpacing.default);
   let embeddedCoversVal = $state<TriState>('off');
   let embeddedPosVal = $state<'right' | 'bottom'>('right');
 
@@ -38,6 +40,7 @@
     eventCoverPosVal = eventCoverPosition.getValue() as EventCoverPos;
     eventTitleBelowVal = eventTitleBelow.getValue();
     eventTitleSizeVal = eventTitleSize.getValue();
+    eventCoverSpacingVal = eventCoverSpacing.getValue();
     embeddedCoversVal = embeddedCovers.getValue();
     embeddedPosVal = embeddedCoverPosition.getValue() as 'right' | 'bottom';
   });
@@ -64,6 +67,11 @@
     eventTitleSizeVal = v;
     applyEventTitleSize(v, true);
     eventTitleSize.setValue(v);
+  }
+  function setEventCoverSpacing(v: number) {
+    eventCoverSpacingVal = v;
+    applyEventCoverSpacing(v, true);
+    eventCoverSpacing.setValue(v);
   }
   function setEventCoverPos(v: EventCoverPos) {
     eventCoverPosVal = v;
@@ -157,6 +165,19 @@
             </button>
           </div>
         </div>
+
+        {#if eventCoverPosVal === 'bottom'}
+          <SettingsSlider
+            label={$t('settings.eventCoverSpacing')}
+            value={eventCoverSpacingVal}
+            min={POSTCARD_PREFS.eventCoverSpacing.min}
+            max={POSTCARD_PREFS.eventCoverSpacing.max}
+            step={POSTCARD_PREFS.eventCoverSpacing.step}
+            onInput={setEventCoverSpacing}
+            format={(v) => `${v}px`}
+          />
+          <p class="row-hint">{$t('settings.eventCoverSpacingHint')}</p>
+        {/if}
       {/if}
 
       <div class="setting-row">

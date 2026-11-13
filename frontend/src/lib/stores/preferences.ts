@@ -141,6 +141,9 @@ export const showEventCovers = createBooleanStore('show-event-covers', true);
 /* Cluster row layout: title above the metadata line (default) or below. */
 export const eventTitleBelow = createBooleanStore('event-title-below', false);
 
+/* Space between the bottom-positioned cluster banner and the row separator, px. */
+export const eventCoverSpacing = createNumberStore('event-cover-spacing', 10);
+
 /* Cluster title font-size scale in percent (100 = the 16px base). */
 export const eventTitleSize = createNumberStore('event-title-size', 100);
 

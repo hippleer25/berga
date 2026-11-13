@@ -180,6 +180,8 @@ export const POSTCARD_PREFS = {
 	searchCoverAlign: { key: 'search-cover-image-align', default: 'center' as CoverAlign },
 	eventCoverPos: { key: 'event-cover-position', default: 'bottom' as EventCoverPos },
 	eventTitleSize: { key: 'event-title-size', min: 80, max: 150, step: 5, default: 100 },
+	/* Space between the bottom-positioned cluster banner and the row separator, px. */
+	eventCoverSpacing: { key: 'event-cover-spacing', min: 0, max: 24, step: 1, default: 10 },
 } as const;
 
 export type CoverAlign = 'left' | 'center' | 'right';
@@ -340,6 +342,14 @@ export function getSavedSearchCoverAlign(): CoverAlign {
 	if (typeof localStorage === 'undefined') return POSTCARD_PREFS.searchCoverAlign.default;
 	const v = localStorage.getItem(POSTCARD_PREFS.searchCoverAlign.key) as CoverAlign | null;
 	return v && COVER_ALIGN_VALUES.includes(v) ? v : POSTCARD_PREFS.searchCoverAlign.default;
+}
+
+/* Space between the bottom-positioned cluster banner and the separator line
+   under the row. Applies only when the cover sits below the text. */
+export function applyEventCoverSpacing(value: number, persist = false) {
+	const v = Math.min(POSTCARD_PREFS.eventCoverSpacing.max, Math.max(POSTCARD_PREFS.eventCoverSpacing.min, value));
+	document.documentElement.style.setProperty('--event-cover-gap', `${v}px`);
+	if (persist) localStorage.setItem(POSTCARD_PREFS.eventCoverSpacing.key, String(v));
 }
 
 /* Cluster cover placement on the event card: right thumbnail (default),
@@ -515,6 +525,7 @@ export function initAppearance() {
 	applySearchCoverAlign(getSavedSearchCoverAlign());
 	applyEventCoverPosition(getSavedEventCoverPosition());
 	applyEventTitleSize(numPref(POSTCARD_PREFS.eventTitleSize.key, POSTCARD_PREFS.eventTitleSize.default));
+	applyEventCoverSpacing(numPref(POSTCARD_PREFS.eventCoverSpacing.key, POSTCARD_PREFS.eventCoverSpacing.default));
 
 	applyCustomCss();
 	syncThemeColor();
