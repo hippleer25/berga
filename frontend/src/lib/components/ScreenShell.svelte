@@ -22,6 +22,7 @@
 	let gLastX = 0;
 	let gLastT = 0;
 	let gVel = 0;
+	let gFrozenTop = 0;
 	let suppressClick = false;
 	// Timer ids so pending callbacks can be cancelled on destroy — an orphaned
 	// snap-back timer would re-set `stackedScreenOpen` after the shell is gone,
@@ -44,6 +45,7 @@
 		gStartY = touch.clientY;
 		gLastT = e.timeStamp;
 		gVel = 0;
+		gFrozenTop = 0;
 	}
 
 	function onTouchMove(e: TouchEvent) {
@@ -57,6 +59,7 @@
 				if (dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.2) {
 					gAxis = 'h';
 					gDragging = true;
+					gFrozenTop = shellEl.scrollTop;
 					stackedScreenOpen.set(false); // reveal the app beneath
 				} else {
 					gAxis = 'v';
@@ -65,6 +68,12 @@
 			return;
 		}
 		if (gAxis !== 'h') return;
+
+		// Horizontal axis locked: suppress vertical scrolling for the whole
+		// gesture (preventDefault blocks new native scrolls; pinning scrollTop
+		// freezes one already in flight).
+		e.preventDefault();
+		shellEl.scrollTop = gFrozenTop;
 
 		const dt = e.timeStamp - gLastT;
 		if (dt > 0) {
@@ -119,8 +128,12 @@
 	onMount(() => {
 		shellOpened(shellEl, hrefAtIdx(get(activeTabIdx)) || '/home');
 		window.addEventListener('keydown', onKeydown);
+		// touchmove must be non-passive so the horizontal drag can preventDefault
+		// (Svelte 5 marks ontouchmove attributes passive by default).
+		shellEl.addEventListener('touchmove', onTouchMove, { passive: false });
 		return () => {
 			window.removeEventListener('keydown', onKeydown);
+			shellEl.removeEventListener('touchmove', onTouchMove);
 			if (snapBackTimer) clearTimeout(snapBackTimer);
 			if (suppressClickTimer) clearTimeout(suppressClickTimer);
 			shellClosed();
@@ -133,7 +146,6 @@
 	class="screen-shell"
 	bind:this={shellEl}
 	ontouchstart={onTouchStart}
-	ontouchmove={onTouchMove}
 	ontouchend={onTouchEnd}
 	ontouchcancel={onTouchEnd}
 	onclickcapture={onClickCapture}

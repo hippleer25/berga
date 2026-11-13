@@ -19,6 +19,7 @@ async function loadTab(id: TabId) {
 }
 
 let trackEl: HTMLElement;
+let viewportEl: HTMLElement;
 
 let activeIdx = $state(0);
 let activeTabId = $state<TabId>('home');
@@ -59,6 +60,13 @@ onMount(async () => {
   for (const t of tabs) {
     if (t.id !== activeTabId) loadTab(t.id);
   }
+});
+
+// touchmove must be non-passive so the horizontal drag can preventDefault
+// (Svelte 5 marks ontouchmove attributes passive by default).
+onMount(() => {
+  viewportEl.addEventListener('touchmove', onTouchMove, { passive: false });
+  return () => viewportEl.removeEventListener('touchmove', onTouchMove);
 });
 
 afterNavigate(async ({ to }) => {
@@ -116,6 +124,13 @@ let lastX = 0;
 let lastT = 0;
 let velPxMs = 0;
 let filterBarTouch = false;
+let frozenTop = 0;
+
+// Panel scroll positions are pinned here while a horizontal drag is locked, so
+// vertical native scroll can never run in parallel with the tab swipe.
+function activePanel(): HTMLElement | undefined {
+  return trackEl?.children[activeIdx] as HTMLElement | undefined;
+}
 
 function onTouchStart(e: TouchEvent) {
 	if (locked) return;
@@ -127,6 +142,7 @@ function onTouchStart(e: TouchEvent) {
 	lastT = e.timeStamp;
 	velPxMs = 0;
 	axis = null;
+	frozenTop = 0;
 	isDragging = false;
 	dragPx = 0;
 }
@@ -138,13 +154,23 @@ function onTouchMove(e: TouchEvent) {
 	const dy = e.touches[0].clientY - startY;
 
 	if (!axis) {
-		if (Math.abs(dx) > 6 || Math.abs(dy) > 6)
+		if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
 			axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v';
+			if (axis === 'h') frozenTop = activePanel()?.scrollTop ?? 0;
+		}
 		return;
 	}
 	if (axis !== 'h') return;
 
-        isDragging = true;
+	// Horizontal axis locked: suppress vertical scrolling for the whole gesture.
+	// preventDefault stops new native scrolls; pinning scrollTop freezes one
+	// already in flight (the browser's own axis lock may start a vertical pan
+	// before ours decides).
+	e.preventDefault();
+	const panel = activePanel();
+	if (panel) panel.scrollTop = frozenTop;
+
+	isDragging = true;
 
         const now = e.timeStamp;
         const dt  = now - lastT;
@@ -244,9 +270,10 @@ function onTouchMove(e: TouchEvent) {
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
     class="viewport"
+    bind:this={viewportEl}
     ontouchstart={onTouchStart}
-    ontouchmove={onTouchMove}
     ontouchend={onTouchEnd}
+    ontouchcancel={onTouchEnd}
 >
 <div class="track" style="--n: {$orderedTabs.length}" bind:this={trackEl}>
   {#each $orderedTabs as def, i (def.id)}
@@ -268,7 +295,8 @@ function onTouchMove(e: TouchEvent) {
         overflow: clip;
         width: 100%;
         height: 100dvh;
-        /* Horizontal swipe between tabs is ours; vertical scroll stays native */
+        /* Horizontal swipe between tabs is ours (JS pins vertical scroll while
+           the axis is locked 'h'); vertical scroll stays native */
         touch-action: pan-y;
     }
 
