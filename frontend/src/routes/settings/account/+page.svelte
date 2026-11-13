@@ -113,6 +113,35 @@ async function importProfile(e: Event) {
 	}
 }
 
+/* ── User data export (notes / highlights / saves) ── */
+let exportFormat = $state<'json' | 'csv' | 'md'>('json');
+let exportStatus = $state<'idle' | 'loading' | 'error'>('idle');
+let exportError = $state('');
+
+async function exportUserData() {
+	exportStatus = 'loading';
+	exportError = '';
+	try {
+		const res = await apiFetch(`/api/export/user-data?fmt=${exportFormat}`, { credentials: 'include' });
+		if (!res.ok) {
+			const data = await res.json().catch(() => ({}));
+			throw new Error(data.detail || data.message || get(t)('settings.serverError', { values: { status: res.status } }));
+		}
+		const blob = await res.blob();
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `berga-export.${exportFormat === 'md' ? 'md' : exportFormat}`;
+		a.click();
+		URL.revokeObjectURL(url);
+	} catch (err: any) {
+		exportStatus = 'error';
+		exportError = err.message;
+	} finally {
+		exportStatus = 'idle';
+	}
+}
+
 async function fetchAllArticles() {
 	fetchStatus = 'loading';
 	fetchError = '';
@@ -214,6 +243,30 @@ async function refreshClusters() {
 
 <div class="section-divider"></div>
 
+<h2 class="section-title">{$t('settings.userDataExport')}</h2>
+<p class="section-desc">{$t('settings.userDataExportDesc')}</p>
+
+<div class="btn-group">
+	<div class="format-toggle" role="radiogroup" aria-label={$t('settings.userDataExportFormat')}>
+		<button
+			class="format-btn" class:active={exportFormat === 'json'}
+			onclick={() => (exportFormat = 'json')}>JSON</button>
+		<button
+			class="format-btn" class:active={exportFormat === 'csv'}
+			onclick={() => (exportFormat = 'csv')}>CSV</button>
+		<button
+			class="format-btn" class:active={exportFormat === 'md'}
+			onclick={() => (exportFormat = 'md')}>Markdown</button>
+	</div>
+	<button class="action-btn" use:ripple onclick={exportUserData} disabled={exportStatus === 'loading'}>
+		{#if exportStatus === 'loading'}<span class="spinner"></span><span>{$t('settings.exporting')}</span>
+		{:else}<Download size={16} /><span>{$t('settings.userDataExportBtn')}</span>{/if}
+	</button>
+</div>
+{#if exportStatus === 'error'}<p class="error-text">{exportError}</p>{/if}
+
+<div class="section-divider"></div>
+
 <h2 class="section-title">{$t('settings.fetchNewArticles')}</h2>
 <p class="section-desc">{$t('settings.fetchDesc')}</p>
 <button class="action-btn full-width" use:ripple class:success={fetchStatus === 'success'} class:error={fetchStatus === 'error'} onclick={fetchAllArticles} disabled={fetchStatus === 'loading'}>
@@ -243,7 +296,15 @@ async function refreshClusters() {
 
 	.account-section { display: flex; flex-direction: column; gap: 12px; }
 
-	.btn-group { display: flex; gap: 8px; }
+	.btn-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+	.format-toggle { display: inline-flex; border: 1px solid var(--color-base-300); border-radius: var(--ui-radius-sm); overflow: hidden; }
+	.format-btn {
+		padding: 9px 12px; border: none; background: transparent; color: var(--color-base-content);
+		font-size: 13px; font-weight: 600; cursor: pointer; transition: background 130ms ease;
+	}
+	.format-btn + .format-btn { border-left: 1px solid var(--color-base-300); }
+	.format-btn:hover { background: var(--color-base-200); }
+	.format-btn.active { background: var(--color-base-200); color: var(--color-accent); }
 	.action-btn {
 		display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 		padding: 10px 16px; border-radius: var(--ui-radius-sm); border: 1px solid var(--color-base-300);
