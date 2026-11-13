@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { Capacitor } from '@capacitor/core';
 	import { SplashScreen } from '@capacitor/splash-screen';
 	import { registerSW } from 'virtual:pwa-register';
@@ -18,7 +18,7 @@
 	import { sessionChecked, sessionLoggedIn } from '$lib/stores/session';
 	import { stackedScreenOpen } from '$lib/stores/swipe';
 	import { splitTab, splitSide } from '$lib/stores/splitView';
-	import { resetScreenStack } from '$lib/utils/screenStack';
+	import { resetScreenStack, consumePendingReconcile } from '$lib/utils/screenStack';
 	import { orderedTabs } from '$lib/config/tabs';
 	import "../app.css";
 
@@ -33,12 +33,25 @@
 	);
 
 	// Leaving the stacked-screen world resets the unwind base.
-	afterNavigate(({ to }) => {
+	afterNavigate(({ to, type }) => {
 		if (!to) return;
 		const path = to.url.pathname;
 		const isTab = $orderedTabs.some(
 			t => path === t.href || path.startsWith(t.href + '/')
 		);
+		// A screen-stack unwind must land on the tab beneath the stack. Stale
+		// history (system-back pops keep forward entries; WebView restore
+		// after minimize can reshape the session) can make history.go(-steps)
+		// overshoot into old entries — including ones still inside the stack,
+		// which leaves the shell mounted but invisible. Force the base tab
+		// whenever the landing misses it. Only a popstate landing can be a
+		// missed unwind — push/goto navigations are always intentional and
+		// must never be hijacked by a stale armed value.
+		const base = consumePendingReconcile();
+		if (base && type === 'popstate' && path !== base) {
+			goto(base, { replaceState: true });
+			return;
+		}
 		if (isTab || AUTH_ROUTES.includes(path)) resetScreenStack();
 	});
 

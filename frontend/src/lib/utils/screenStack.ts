@@ -22,6 +22,23 @@ let openCount = 0;
 let stackBaseLen: number | null = null;
 
 /**
+ * Href of the tab beneath the first screen of the current stack, captured
+ * together with stackBaseLen. Authoritative landing target when unwinding —
+ * unlike history positions it cannot be desynced by system-back pops or
+ * WebView restore.
+ */
+let stackBaseHref: string | null = null;
+
+/**
+ * Set by closeScreen() right before unwinding history; consumed (and
+ * cleared) by the root layout's afterNavigate. If the pop lands on anything
+ * other than the base tab, the layout forces a goto to the base href.
+ * Deliberately NOT cleared by resetScreenStack() — it must survive the
+ * reset closeScreen performs while the pop is still in flight.
+ */
+let pendingReconcile: string | null = null;
+
+/**
  * Called by the root layout after navigating to a non-stacked route (tab or
  * auth). Authoritative reconciliation: no shell can be alive on those routes,
  * so the module state is fully reset and the store is forced closed. This
@@ -30,10 +47,22 @@ let stackBaseLen: number | null = null;
  */
 export function resetScreenStack(): void {
 	stackBaseLen = null;
+	stackBaseHref = null;
 	openCount = 0;
 	activeShell = null;
 	closing = false;
 	stackedScreenOpen.set(false);
+}
+
+/**
+ * Returns (and clears) the href a pending screen-stack unwind is expected
+ * to land on, or null when no unwind is in flight. Called by the root
+ * layout's afterNavigate to reconcile a missed landing.
+ */
+export function consumePendingReconcile(): string | null {
+	const href = pendingReconcile;
+	pendingReconcile = null;
+	return href;
 }
 
 export function isScreenClosing(): boolean {
@@ -43,7 +72,10 @@ export function isScreenClosing(): boolean {
 /** Called by ScreenShell on mount. */
 export function shellOpened(el: HTMLElement, fallbackHref: string): void {
 	activeShell = { el, fallbackHref };
-	if (stackBaseLen === null) stackBaseLen = history.length;
+	if (stackBaseLen === null) {
+		stackBaseLen = history.length;
+		stackBaseHref = fallbackHref;
+	}
 	openCount++;
 	stackedScreenOpen.set(true);
 }
@@ -79,12 +111,19 @@ export async function closeScreen(opts: { animated?: boolean } = {}): Promise<vo
 	if (stackBaseLen !== null && stackBaseLen - 2 >= 0) {
 		const steps = history.length - 1 - (stackBaseLen - 2);
 		if (steps >= 1) {
+			// The pop must land on the base tab. Stale history (system-back
+			// pops keep forward entries; WebView restore can reshape the
+			// session) can overshoot into old entries — arm the reconcile
+			// so the root layout corrects a missed landing.
+			pendingReconcile = stackBaseHref ?? shell.fallbackHref;
 			history.go(-steps);
 		} else {
+			pendingReconcile = null;
 			await goto(shell.fallbackHref, { replaceState: true });
 		}
 	} else {
 		// Deep link with nothing behind: replace with the tab directly.
+		pendingReconcile = null;
 		await goto(shell.fallbackHref, { replaceState: true });
 	}
 	resetScreenStack();

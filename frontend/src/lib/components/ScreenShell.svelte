@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { closeScreen, shellOpened, shellClosed, isScreenClosing } from '$lib/utils/screenStack';
 	import { stackedScreenOpen, activeTabIdx } from '$lib/stores/swipe';
+	import { page } from '$app/stores';
 	import { hrefAtIdx } from '$lib/config/tabs';
 	import { get } from 'svelte/store';
 
@@ -138,6 +139,20 @@
 			if (suppressClickTimer) clearTimeout(suppressClickTimer);
 			shellClosed();
 		};
+	});
+
+	// Self-heal: this component persists across sub-routes of its screen
+	// (e.g. all /settings/* share one layout), so a close animation can leave
+	// it mounted with a stale off-screen transform — invisible, while the tab
+	// layer beneath is interactive and every navigation into the stack looks
+	// like a dead button. Any route change inside a live, non-closing shell
+	// re-asserts it as the visible, owning surface.
+	$effect(() => {
+		$page.url.pathname;
+		if (!shellEl || isScreenClosing()) return;
+		shellEl.style.transform = '';
+		shellEl.style.opacity = '';
+		if (!$stackedScreenOpen) stackedScreenOpen.set(true);
 	});
 </script>
 
