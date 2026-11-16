@@ -407,6 +407,9 @@ font-display: swap;
 --postcard-title-scale: 1;
 --postcard-desc-scale: 1;
 --postcard-padding: 12px 6px 4px;
+--postcard-pad-top: 12px;
+--postcard-pad-x: 6px;
+--postcard-pad-bottom: 4px;
 
 /* Feed density (HomeTab) */
 --feed-density-gap: 0px;

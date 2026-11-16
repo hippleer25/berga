@@ -589,9 +589,10 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
 <style>
     /* ── Card ────────────────────────────────────────────────── */
     .post-card {
+        position: relative;
         display: flex;
         align-items: flex-start;
-        padding: var(--postcard-padding, 12px 6px 4px);
+        padding: var(--postcard-pad-top, 12px) var(--postcard-pad-x, 6px) var(--postcard-pad-bottom, 4px);
         border-bottom: 1px solid var(--color-base-300); /* Cleaner than color-mix */
         transition: background 120ms ease, padding 180ms ease, border-radius 120ms ease;
         -webkit-tap-highlight-color: transparent;
@@ -608,9 +609,14 @@ title={tag.source && tag.source !== 'manual' ? $t('postcard.autoTagTooltip') : u
 }
     .post-card.is-selected {
         background: color-mix(in oklch, var(--color-accent) 8%, transparent);
+        border-radius: var(--ui-hover-radius, var(--ui-radius-lg));
+        /* Extra padding pushes the content away from the ring so it never
+           touches the text (embedded cards have zero horizontal padding). */
+        padding: calc(var(--postcard-pad-top, 12px) + 3px)
+                 calc(var(--postcard-pad-x, 6px) + 6px)
+                 calc(var(--postcard-pad-bottom, 4px) + 5px);
         outline: 2px solid var(--color-accent);
         outline-offset: -2px; /* ring hugs the row from the inside */
-        border-radius: var(--ui-hover-radius, var(--ui-radius-lg));
     }
     .post-card.sel-mode {
         cursor: pointer;

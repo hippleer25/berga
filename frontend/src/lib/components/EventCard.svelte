@@ -1,11 +1,10 @@
 <script lang="ts">
     import { t } from 'svelte-i18n';
-import { get } from 'svelte/store';
-    import { goto } from '$app/navigation';
-    import { ChevronDown, Sparkles } from '@lucide/svelte';
+    import { get } from 'svelte/store';
+    import { ChevronDown } from '@lucide/svelte';
     import PostCard from '$lib/components/PostCard.svelte';
     import { showEventCovers, eventTitleBelow } from '$lib/stores/preferences';
-    import { selectionMode, selectedPosts, pendingMotaPosts } from '$lib/stores/swipe';
+    import { selectionMode, selectedPosts } from '$lib/stores/swipe';
 
     let {
         event,
@@ -137,14 +136,6 @@ import { get } from 'svelte/store';
         });
     }
 
-    /** Send every article of the cluster straight into the Mota chat. */
-    async function sendTopicToMota() {
-        const posts = embeddable.map(asPostItem);
-        if (posts.length === 0) return;
-        pendingMotaPosts.set(posts);
-        await goto('/mota');
-    }
-
     /* Embedded posts load in pages of 5 via the "+N more" button. */
     const MORE_PAGE = 5;
     let visibleCount = $state(8);
@@ -225,14 +216,6 @@ import { get } from 'svelte/store';
             <ChevronDown size={16} strokeWidth={2} />
         </div>
 
-        <button
-            class="send-mota-btn"
-            onclick={(e) => { e.stopPropagation(); sendTopicToMota(); }}
-            title="{$t('eventscard.sendToMota')}"
-            aria-label="{$t('eventscard.sendToMota')}"
-        >
-            <Sparkles size={14} strokeWidth={2} />
-        </button>
     </div>
 
     {#if open}
@@ -457,28 +440,6 @@ import { get } from 'svelte/store';
         transform: rotate(180deg);
     }
 
-    /* Send the whole topic to the Mota chat */
-    .send-mota-btn {
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 28px;
-        height: 28px;
-        padding: 0;
-        margin-left: 2px;
-        border: none;
-        border-radius: 50%;
-        background: transparent;
-        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
-        cursor: pointer;
-        transition: background 140ms, color 140ms;
-    }
-    .send-mota-btn:hover {
-        background: color-mix(in oklch, var(--color-accent) 14%, transparent);
-        color: var(--color-accent);
-    }
-
     /* ── Expanded: real PostCards, same rhythm as the feed ───── */
     .expanded-posts {
         padding: 0 4px 4px;
@@ -494,8 +455,9 @@ import { get } from 'svelte/store';
     .embedded-item :global(.post-card) {
         flex: 1;
         min-width: 0;
-        padding-left: 0;
-        padding-right: 0;
+        /* No horizontal padding (the dash column provides the indent); set via
+           the side var so the selected-state padding bump still applies. */
+        --postcard-pad-x: 0px;
     }
     .embedded-dash {
         flex-shrink: 0;

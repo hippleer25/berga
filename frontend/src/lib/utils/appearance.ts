@@ -202,6 +202,13 @@ const DENSITY_PADDING: Record<Density, string> = {
 	spacious: '20px 10px 8px',
 };
 
+/** Per-side values mirroring DENSITY_PADDING, for calc()-based adjustments. */
+const DENSITY_PADDING_SIDES: Record<Density, { top: string; x: string; bottom: string }> = {
+	compact: { top: '6px', x: '6px', bottom: '2px' },
+	comfortable: { top: '12px', x: '6px', bottom: '4px' },
+	spacious: { top: '20px', x: '10px', bottom: '8px' },
+};
+
 const DENSITY_GAP: Record<Density, string> = {
 	compact: '0px',
 	comfortable: '0px',
@@ -256,7 +263,11 @@ export function getSavedDescSize(): number {
 }
 
 export function applyDensity(value: Density, persist = false) {
+	const sides = DENSITY_PADDING_SIDES[value];
 	document.documentElement.style.setProperty('--postcard-padding', DENSITY_PADDING[value]);
+	document.documentElement.style.setProperty('--postcard-pad-top', sides.top);
+	document.documentElement.style.setProperty('--postcard-pad-x', sides.x);
+	document.documentElement.style.setProperty('--postcard-pad-bottom', sides.bottom);
 	document.documentElement.style.setProperty('--feed-density-gap', DENSITY_GAP[value]);
 	if (persist) localStorage.setItem(POSTCARD_PREFS.density.key, value);
 }
