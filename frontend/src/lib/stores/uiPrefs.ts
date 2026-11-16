@@ -724,6 +724,41 @@ export function getSavedButtonBorders(): boolean {
 
 export const uiButtonBorders: Writable<boolean> = writable(getSavedButtonBorders());
 
+/* ── Mota chat composer buttons ─────────────────────────────────────────── */
+
+const CHAT_BTN_BORDERS_KEY = 'ui-chat-btn-borders';
+
+export function applyChatBtnBorders(on: boolean, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-chat-btn-borders', on ? 'on' : 'off');
+	if (persist) localStorage.setItem(CHAT_BTN_BORDERS_KEY, on ? 'true' : 'false');
+}
+
+export function getSavedChatBtnBorders(): boolean {
+	if (!browser) return false;
+	return localStorage.getItem(CHAT_BTN_BORDERS_KEY) === 'true';
+}
+
+export const uiChatBtnBorders: Writable<boolean> = writable(getSavedChatBtnBorders());
+
+export type ChatBtnLabels = 'text' | 'both' | 'icons';
+const CHAT_BTN_LABELS_KEY = 'ui-chat-btn-labels';
+const CHAT_BTN_LABELS_VALUES: ChatBtnLabels[] = ['text', 'both', 'icons'];
+
+export function applyChatBtnLabels(mode: ChatBtnLabels, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-chat-btn-labels', mode);
+	if (persist) localStorage.setItem(CHAT_BTN_LABELS_KEY, mode);
+}
+
+export function getSavedChatBtnLabels(): ChatBtnLabels {
+	if (!browser) return 'icons';
+	const v = localStorage.getItem(CHAT_BTN_LABELS_KEY) as ChatBtnLabels | null;
+	return v && CHAT_BTN_LABELS_VALUES.includes(v) ? v : 'icons';
+}
+
+export const uiChatBtnLabels: Writable<ChatBtnLabels> = writable(getSavedChatBtnLabels());
+
 /* ── Nav indicator ───────────────────────────────────────────────────────── */
 
 export type NavIndicator = 'modern' | 'classic' | 'none';
@@ -969,6 +1004,8 @@ export function initUiPrefs() {
 	applyWelcomeSpace(getSavedWelcomeSpace());
 	applyNavBg(getSavedNavBg());
 	applyButtonBorders(getSavedButtonBorders());
+	applyChatBtnBorders(getSavedChatBtnBorders());
+	applyChatBtnLabels(getSavedChatBtnLabels());
 	applySettingsIconPlacement(getSavedSettingsIconPlacement());
 	applySidebarCollapsed(getSavedSidebarCollapsed());
 	applySidebarMargin(getSavedSidebarMargin());
@@ -1064,4 +1101,8 @@ export function resetUiPrefs() {
 	applyPageBg('theme', true);
 	uiButtonBorders.set(true);
 	applyButtonBorders(true, true);
+	uiChatBtnBorders.set(false);
+	applyChatBtnBorders(false, true);
+	uiChatBtnLabels.set('icons');
+	applyChatBtnLabels('icons', true);
 }

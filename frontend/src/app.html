@@ -201,6 +201,18 @@
         } catch (e) {}
 
         try {
+          document.documentElement.setAttribute(
+            'data-chat-btn-borders',
+            localStorage.getItem('ui-chat-btn-borders') === 'true' ? 'on' : 'off'
+          );
+          var chatBtnLabels = localStorage.getItem('ui-chat-btn-labels');
+          document.documentElement.setAttribute(
+            'data-chat-btn-labels',
+            (chatBtnLabels === 'text' || chatBtnLabels === 'both' || chatBtnLabels === 'icons') ? chatBtnLabels : 'icons'
+          );
+        } catch (e) {}
+
+        try {
           var sidebarMargin = parseFloat(localStorage.getItem('ui-sidebar-margin'));
           if (isFinite(sidebarMargin) && sidebarMargin >= 0 && sidebarMargin <= 2.5) {
             document.documentElement.style.setProperty('--sidebar-item-margin', sidebarMargin + 'rem');

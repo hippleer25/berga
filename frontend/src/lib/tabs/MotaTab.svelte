@@ -226,6 +226,11 @@
     return opt ? opt.labelShort : get(t)('motatab.sourceMixedShort');
   });
 
+  let currentSourceIcon = $derived.by(() => {
+    const opt = sourceOptions.find(o => o.value === sourcesPreset);
+    return opt ? opt.Icon : Blend;
+  });
+
   /** Grace period after leaving the Mota tab before the chat resets. */
   const RESET_DELAY_MS = 30_000;
 
@@ -1267,6 +1272,7 @@
             aria-label="{$t('motatab.sessions')}"
           >
             <History size={17} />
+            <span class="composer-btn-label">{$t('motatab.sessionsTitle')}</span>
           </button>
           <button
             class="composer-icon-btn"
@@ -1275,6 +1281,7 @@
             aria-label="{$t('motatab.newChat')}"
           >
             <Plus size={17} />
+            <span class="composer-btn-label">{$t('motatab.newChat')}</span>
           </button>
 
           <button
@@ -1284,6 +1291,7 @@
             aria-haspopup="listbox"
             title="{$t('motatab.sourceMode')}"
           >
+            <span class="mode-trigger-icon"><currentSourceIcon size={15}></currentSourceIcon></span>
             <span class="mode-trigger-label">{currentSourceLabel}</span>
             <ChevronUp size={14} />
           </button>
@@ -1983,8 +1991,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   flex-shrink: 0;
-  width: 32px;
   height: 32px;
   padding: 0;
   border: none;
@@ -1992,11 +2000,17 @@
   background: transparent;
   cursor: pointer;
   color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
-  transition: background 140ms, color 140ms;
+  transition: background 140ms, color 140ms, border-color 140ms;
 }
 .composer-icon-btn:hover {
   background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
   color: var(--color-base-content);
+}
+.composer-btn-label {
+  display: none;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* ── Mode trigger (dropdown button) ─────────────────── */
@@ -2011,16 +2025,50 @@
   background: transparent;
   cursor: pointer;
   color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
-  transition: background 140ms, color 140ms;
+  transition: background 140ms, color 140ms, border-color 140ms;
   white-space: nowrap;
 }
 .mode-trigger:hover {
   background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
   color: var(--color-base-content);
 }
+.mode-trigger-icon {
+  display: none;
+  line-height: 0;
+}
 .mode-trigger-label {
   font-size: 13px;
   font-weight: 600;
+}
+
+/* ── Composer buttons: outline + label modes (Appearance → Mota AI) ── */
+:global([data-chat-btn-borders='on']) .composer-icon-btn,
+:global([data-chat-btn-borders='on']) .mode-trigger {
+  border: var(--ui-border-width) solid var(--ui-border-color);
+}
+:global([data-chat-btn-borders='on']) .composer-icon-btn:hover,
+:global([data-chat-btn-borders='on']) .mode-trigger:hover {
+  border-color: var(--ui-border-strong);
+}
+
+:global([data-chat-btn-labels='both']) .composer-icon-btn {
+  width: auto;
+  padding: 0 10px;
+}
+:global([data-chat-btn-labels='both']) .composer-btn-label,
+:global([data-chat-btn-labels='both']) .mode-trigger-icon {
+  display: inline;
+}
+
+:global([data-chat-btn-labels='text']) .composer-icon-btn {
+  width: auto;
+  padding: 0 10px;
+}
+:global([data-chat-btn-labels='text']) .composer-icon-btn :global(svg) {
+  display: none;
+}
+:global([data-chat-btn-labels='text']) .composer-btn-label {
+  display: inline;
 }
 
 /* ── Dropdown panel ─────────────────────────────────── */

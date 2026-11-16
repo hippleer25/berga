@@ -5,6 +5,7 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import Search from '@lucide/svelte/icons/search';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Settings2 from '@lucide/svelte/icons/settings-2';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { goto } from '$app/navigation';
@@ -17,6 +18,7 @@
 		{ href: '/settings/appearance/post', icon: FileText, labelKey: 'subsecPost' },
 		{ href: '/settings/appearance/articles', icon: BookOpen, labelKey: 'subsecArticles' },
 		{ href: '/settings/appearance/search-events', icon: Search, labelKey: 'subsecSearchEvents' },
+		{ href: '/settings/appearance/mota-ai', icon: Sparkles, labelKey: 'subsecMotaAi' },
 		{ href: '/settings/appearance/other', icon: Settings2, labelKey: 'subsecOther' },
 	];
 
