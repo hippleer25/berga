@@ -3,12 +3,21 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { t } from 'svelte-i18n';
-	import { checkSession } from '$lib/stores/session';
+	import { checkSession, peekAuthHint } from '$lib/stores/session';
 
 	let ready = $state(false);
+	// Returning user with a persisted auth hint: no splash. The root layout
+	// load already redirects to /home before this renders; this path covers
+	// client-side navigations to '/'. The background session check bounces
+	// to /login if the token turns out to be dead.
+	const optimistic = browser && peekAuthHint();
 
 	onMount(async () => {
 		if (!browser) return;
+		if (optimistic) {
+			goto('/home', { replaceState: true });
+			return;
+		}
 		try {
 			const ok = await checkSession();
 			if (ok) {
@@ -22,7 +31,7 @@
 	});
 </script>
 
-{#if !ready}
+{#if !ready && !optimistic}
 	<div class="splash">
 		<span class="splash-brand gloock-regular">Berga</span>
 		<span class="splash-spinner"></span>

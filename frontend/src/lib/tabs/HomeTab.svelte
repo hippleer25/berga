@@ -1,7 +1,8 @@
 <script lang="ts">
 import { onMount } from 'svelte';
    import { page } from '$app/stores';
- import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
+  import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
+  import { setSessionLoggedOut } from '$lib/stores/session';
    import { slide } from 'svelte/transition';
    import { get } from 'svelte/store';
    import PostCard from '$lib/components/PostCard.svelte';
@@ -322,6 +323,15 @@ $effect(() => {
 		if (feedBustNeeded()) clearBustFlag();
 	}
 
+	// Session rejected mid-flight: SPA-bounce to /login instead of a full
+	// page reload. A 401 is definitive proof of logout, so clear the session
+	// state first — otherwise the 5-min checkSession TTL cache would still
+	// report "logged in" on the login page and bounce us straight back.
+	function bounceToLogin() {
+		setSessionLoggedOut();
+		goto(`/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`, { replaceState: true });
+	}
+
 	async function loadFeed(reset: boolean = false) {
 		consumeBust();
 		if (reset) {
@@ -336,7 +346,7 @@ $effect(() => {
 				hasMore = true;
 				try {
 					const res = await apiFetch(buildUrl(0), fetchCacheOpt());
-					if (res.status === 401) { window.location.replace('/login'); return; }
+					if (res.status === 401) { bounceToLogin(); return; }
 					if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
 					const data: any[] = await res.json();
 					feed = data;
@@ -355,7 +365,7 @@ $effect(() => {
 		}
 		try {
 			const res = await apiFetch(buildUrl(0), fetchCacheOpt());
-			if (res.status === 401) { window.location.replace('/login'); return; }
+			if (res.status === 401) { bounceToLogin(); return; }
 			if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
 			const data: any[] = await res.json();
 			feed = data;
@@ -384,7 +394,7 @@ $effect(() => {
 				? buildUrl(0, 20, { refresh: true, excludeIds: loadedItemIds() })
 				: buildUrl(0);
 			const res = await apiFetch(url, fetchCacheOpt());
-			if (res.status === 401) { window.location.replace('/login'); return; }
+			if (res.status === 401) { bounceToLogin(); return; }
 			if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
 			let data: any[] = await res.json();
 			// A fresh-batch request (exclude_ids) can legitimately return

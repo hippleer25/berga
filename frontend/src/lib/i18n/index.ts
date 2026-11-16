@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import { init, register, locale } from 'svelte-i18n';
+import { init, register, locale, waitLocale } from 'svelte-i18n';
 
 const STORAGE_KEY = 'lang';
 export const SUPPORTED_LOCALES = ['pt', 'en', 'es', 'de', 'fr'] as const;
@@ -82,6 +82,13 @@ init({
   fallbackLocale: 'en',
   initialLocale,
 });
+
+if (browser) {
+  // Start the dictionary fan-out during module eval instead of waiting for
+  // the layout load / first $t, so the chunk fetches overlap with JS boot.
+  // svelte-i18n's waitLocale() triggers the flush itself.
+  waitLocale(initialLocale).catch(() => {});
+}
 
 export function setLocale(lang: SupportedLocale) {
   console.log('[i18n] setLocale called with:', lang);
