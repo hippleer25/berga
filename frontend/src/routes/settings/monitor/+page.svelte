@@ -753,7 +753,7 @@
 					</div>
 
 					{#if fixPhase === 'loading' || (fixPhase === 'pick' && !fixData)}
-						<div class="fix-diagnosis loading">
+						<div class="fix-diagnosis is-loading">
 							<span class="spinner"></span>
 							<span>{$t('monitor.diagnosing')}<br /><span class="fix-diagnosis-note">{$t('monitor.diagnosingHint')}</span></span>
 						</div>
@@ -1083,7 +1083,7 @@
 		border: 1px solid var(--color-base-300); border-radius: var(--ui-radius-sm);
 		padding: 10px 12px; background: color-mix(in oklch, var(--color-base-content) 4%, transparent);
 	}
-	.fix-diagnosis.loading { flex-direction: row; align-items: center; font-size: 13px; color: color-mix(in oklch, var(--color-base-content) 55%, transparent); }
+	.fix-diagnosis.is-loading { flex-direction: row; align-items: center; font-size: 13px; color: color-mix(in oklch, var(--color-base-content) 55%, transparent); }
 	.fix-diagnosis.ok { flex-direction: row; align-items: center; color: var(--color-success); border-color: color-mix(in oklch, var(--color-success) 35%, transparent); font-size: 13px; font-weight: 600; }
 	.fix-diagnosis-title { margin: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: color-mix(in oklch, var(--color-base-content) 40%, transparent); }
 	.fix-diagnosis-text { margin: 0; font-size: 13px; line-height: 1.45; color: var(--color-base-content); }
