@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import HeartPulse from '@lucide/svelte/icons/heart-pulse';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -15,6 +14,7 @@
 	import { t, locale } from 'svelte-i18n';
 	import { get } from 'svelte/store';
 	import { ripple } from '$lib/actions/ripple';
+	import { openSettings } from '$lib/utils/settingsNav';
 	import { apiFetch } from '$lib/api';
 	import { loadUnreadCounts } from '$lib/stores/unreadCounts';
 
@@ -803,7 +803,7 @@
 					{$t('monitor.tagCoverageEmpty')}
 				</p>
 				<p class="detail-sub subtle">{$t('monitor.tagCoverageCta')}</p>
-				<button class="action-btn accent" use:ripple onclick={() => goto('/settings/intelligence/tags')}>
+				<button class="action-btn accent" use:ripple onclick={() => openSettings('/settings/intelligence/tags')}>
 					<Tag size={13} />
 					<span>{$t('monitor.createTags')}</span>
 				</button>

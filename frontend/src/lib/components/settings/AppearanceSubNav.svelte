@@ -8,9 +8,9 @@
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Settings2 from '@lucide/svelte/icons/settings-2';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import { goto } from '$app/navigation';
 	import { ripple } from '$lib/actions/ripple';
 	import { t } from 'svelte-i18n';
+	import { openSettings } from '$lib/utils/settingsNav';
 
 	const sections = [
 		{ href: '/settings/appearance/dock', icon: PanelBottom, labelKey: 'subsecDock' },
@@ -29,7 +29,7 @@
 
 <div class="settings-group subnav-group">
 	{#each sections as s, i}
-		<button class="subnav-row" use:ripple onclick={() => goto(s.href)} aria-current={isActive(s.href) ? 'page' : undefined}>
+		<button class="subnav-row" use:ripple onclick={() => openSettings(s.href)} aria-current={isActive(s.href) ? 'page' : undefined}>
 			<span class="subnav-icon" class:active={isActive(s.href)}><s.icon size={19} strokeWidth={1.9} /></span>
 			<span class="subnav-label">{$t(`settings.${s.labelKey}`)}</span>
 			<span class="subnav-chevron"><ChevronRight size={17} strokeWidth={1.8} /></span>

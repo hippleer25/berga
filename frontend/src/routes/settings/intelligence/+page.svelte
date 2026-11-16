@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Tag from '@lucide/svelte/icons/tag';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { ripple } from '$lib/actions/ripple';
 	import { t } from 'svelte-i18n';
+	import { openSettings } from '$lib/utils/settingsNav';
 
 	const entries = [
 		{ href: '/settings/intelligence/affinity', icon: SlidersHorizontal, titleKey: 'settings.affinityTitle', descKey: 'settings.affinityDesc' },
@@ -12,7 +12,7 @@
 	];
 
 	function open(href: string) {
-		goto(href);
+		openSettings(href);
 	}
 </script>
 

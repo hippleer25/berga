@@ -1,11 +1,4 @@
-<script module lang="ts">
-	// True once the settings list ("/settings") has been mounted in the
-	// current settings session — lets sub-pages go back to it.
-	let settingsListVisited = false;
-</script>
-
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Palette from '@lucide/svelte/icons/palette';
@@ -16,7 +9,7 @@
 	import { ripple } from '$lib/actions/ripple';
 	import { t } from 'svelte-i18n';
 	import ScreenShell from '$lib/components/ScreenShell.svelte';
-	import { closeScreen } from '$lib/utils/screenStack';
+	import { openSettings, settingsBack } from '$lib/utils/settingsNav';
 
 	const { children } = $props();
 
@@ -44,35 +37,11 @@
 		return tab ? label(tab.key) : $t('settings.title');
 	});
 
-	// Mark the list as visited so sub-pages know "back" means drill-down.
-	$effect(() => {
-		if (onList) settingsListVisited = true;
-	});
-	// Leaving the settings route group entirely resets the session flag.
-	$effect(() => {
-		return () => { settingsListVisited = false; };
-	});
-
-	// Sub-navigation: drill-in (push) on mobile; the desktop sidebar keeps
-	// replaceState so the whole settings session stays one history entry.
-	function openTab(href: string) {
-		if (window.matchMedia('(min-width: 768px)').matches) {
-			goto(href, { replaceState: true });
-		} else {
-			goto(href);
-		}
-	}
-
+	// Sub-navigation is hierarchy-driven: both back buttons (desktop sidebar
+	// and mobile top bar) climb one route level inside settings and only
+	// close the stacked screen at the bottom of the hierarchy.
 	function goBack() {
-		if (onList) {
-			closeScreen();
-			return;
-		}
-		if (settingsListVisited) {
-			history.back();
-		} else {
-			closeScreen();
-		}
+		settingsBack($page.url.pathname);
 	}
 </script>
 
@@ -86,7 +55,7 @@
 					class="sidebar-item"
 					use:ripple
 					title={$t('settings.back')}
-					onclick={() => closeScreen()}
+					onclick={() => goBack()}
 				>
 					<ArrowLeft size={20} strokeWidth={1.6} />
 					<span class="s-label">{$t('settings.back')}</span>
@@ -100,7 +69,7 @@
 						aria-current={isActive(tab.href) ? 'page' : undefined}
 						use:ripple
 						title={label(tab.key)}
-						onclick={(e) => { e.preventDefault(); openTab(tab.href); }}
+						onclick={(e) => { e.preventDefault(); openSettings(tab.href); }}
 					>
 						<tab.icon size={20} strokeWidth={isActive(tab.href) ? 2.2 : 1.6} />
 						<span class="s-label">{label(tab.key)}</span>

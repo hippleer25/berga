@@ -12,6 +12,7 @@
 	import { t } from 'svelte-i18n';
 	import { version } from '$lib/stores/version';
 	import { onMount } from 'svelte';
+	import { openSettings } from '$lib/utils/settingsNav';
 
 	const sections = [
 		{ key: 'appearance', href: '/settings/appearance', icon: Palette },
@@ -48,7 +49,7 @@
 	});
 
 	function open(href: string) {
-		goto(href);
+		openSettings(href);
 	}
 </script>
 
