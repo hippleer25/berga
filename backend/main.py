@@ -259,6 +259,11 @@ class SummaryLanguageRequest(BaseModel):
     language: str = "auto"
 
 
+class UnreadSettingsRequest(BaseModel):
+    window_days: int = 30
+    read_actions: List[str] = ["like", "dislike", "view", "read"]
+
+
 class HighlightRequest(BaseModel):
     text: str
     color: str
@@ -279,6 +284,29 @@ def settings_summary_language(body: SummaryLanguageRequest, user=Depends(get_cur
     normalized = summary_language.normalize_language(body.language)
     ok = summary_language.set_stored_language(normalized)
     return {"status": "ok", "language": normalized, "synced": ok}
+
+
+@app.get("/api/settings/unread")
+def settings_get_unread(user=Depends(get_current_user)):
+    from feed.unread import get_unread_prefs
+
+    return get_unread_prefs(user["id"])
+
+
+@app.post("/api/settings/unread")
+def settings_post_unread(body: UnreadSettingsRequest, user=Depends(get_current_user)):
+    """Persist the per-user unread-badge preferences (window + read actions)."""
+    from feed.unread import set_unread_prefs
+
+    return set_unread_prefs(user["id"], body.window_days, body.read_actions)
+
+
+@app.get("/api/unread-counts")
+def route_unread_counts(user=Depends(get_current_user)):
+    """Unread article counts per subscribed feed (for the Followers badges)."""
+    from feed.unread import get_unread_counts
+
+    return get_unread_counts(user["id"])
 
 
 @app.get("/api/version")
@@ -506,39 +534,63 @@ def delete_comment(item_id: str, user=Depends(get_current_user)):
     return cm.delete_comment(user["id"], item_id)
 
 
+def _invalidate_unread(user_id: int) -> None:
+    """Best-effort drop of the user's unread counts cache after an interaction."""
+    try:
+        from feed.unread import invalidate_unread_cache
+
+        invalidate_unread_cache(user_id)
+    except Exception:
+        pass
+
+
 @app.post("/api/feed/{item_id}/like")
 def like(item_id: str, user=Depends(get_current_user)):
-    return like_article(user["id"], item_id)
+    result = like_article(user["id"], item_id)
+    _invalidate_unread(user["id"])
+    return result
 
 
 @app.post("/api/feed/{item_id}/dislike")
 def dislike(item_id: str, user=Depends(get_current_user)):
-    return dislike_article(user["id"], item_id)
+    result = dislike_article(user["id"], item_id)
+    _invalidate_unread(user["id"])
+    return result
 
 
 @app.post("/api/feed/{item_id}/view")
 def view(item_id: str, user=Depends(get_current_user)):
-    return view_article(user["id"], item_id)
+    result = view_article(user["id"], item_id)
+    _invalidate_unread(user["id"])
+    return result
 
 
 @app.post("/api/feed/{item_id}/read")
 def read(item_id: str, user=Depends(get_current_user)):
-    return read_article(user["id"], item_id)
+    result = read_article(user["id"], item_id)
+    _invalidate_unread(user["id"])
+    return result
 
 
 @app.post("/api/articles/views")
 def bulk_view(batch: ViewBatch, user=Depends(get_current_user)):
-    return bulk_view_articles(user["id"], batch.item_ids)
+    result = bulk_view_articles(user["id"], batch.item_ids)
+    _invalidate_unread(user["id"])
+    return result
 
 
 @app.post("/api/feed/{item_id}/save")
 def save(item_id: str, user=Depends(get_current_user)):
-    return save_article(user["id"], item_id)
+    result = save_article(user["id"], item_id)
+    _invalidate_unread(user["id"])
+    return result
 
 
 @app.delete("/api/feed/{item_id}/save")
 def unsave(item_id: str, user=Depends(get_current_user)):
-    return unsave_article(user["id"], item_id)
+    result = unsave_article(user["id"], item_id)
+    _invalidate_unread(user["id"])
+    return result
 
 
 def _enrich_with_tags(items: list[dict], user_id: int) -> list[dict]:

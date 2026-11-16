@@ -17,5 +17,6 @@
   "cancel": "Cancelar",
   "create": "Crear",
   "loadError": "Error al cargar las suscripciones",
+  "unreadBadge": "{n} sin leer",
   "toggleFolder": "Abrir/cerrar carpeta"
 }

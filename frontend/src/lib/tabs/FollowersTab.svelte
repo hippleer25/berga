@@ -11,6 +11,7 @@ import {
     import { get } from 'svelte/store';
 import { notifySubscriptionChanged } from '$lib/stores/subscription';
  import { apiFetch } from '$lib/api';
+ import { unreadCounts, loadUnreadCounts, unreadFor, sumUnread } from '$lib/stores/unreadCounts';
 
     // ── Types ────────────────────────────────────────────
     type Feed = {
@@ -118,6 +119,7 @@ async function loadSubscriptions(quiet = false) {
             const init: Record<string, boolean> = {};
             for (const f of feeds) init[String(f.folder?.id ?? '__root__')] = true;
             expandedFolders = init;
+            loadUnreadCounts();
         } catch (err: any) {
             subsError = err.message || get(t)('followerstab.loadError');
         } finally {
@@ -633,6 +635,15 @@ async function loadSubscriptions(quiet = false) {
 
                             <span class="folder-badge">{group.feeds.length}</span>
 
+                            {#if sumUnread($unreadCounts, group.feeds.map((f) => f.feed_sha256)) > 0}
+                                <span
+                                    class="unread-badge"
+                                    title={$t('followerstab.unreadBadge', { values: { n: sumUnread($unreadCounts, group.feeds.map((f) => f.feed_sha256)) } })}
+                                >
+                                    {sumUnread($unreadCounts, group.feeds.map((f) => f.feed_sha256))}
+                                </span>
+                            {/if}
+
                             <button
                                 class="more-btn"
                                 title="{$t('followerstab.options')}"
@@ -693,6 +704,15 @@ async function loadSubscriptions(quiet = false) {
                                         {/if}
 
                                         <span class="feed-label">{feedDisplayTitle(feed)}</span>
+
+                                        {#if unreadFor($unreadCounts, feed.feed_sha256) > 0}
+                                            <span
+                                                class="unread-badge"
+                                                title={$t('followerstab.unreadBadge', { values: { n: unreadFor($unreadCounts, feed.feed_sha256) } })}
+                                            >
+                                                {unreadFor($unreadCounts, feed.feed_sha256)}
+                                            </span>
+                                        {/if}
 
                                         {#if feed.last_error}
                                             <button
@@ -1374,6 +1394,20 @@ async function loadSubscriptions(quiet = false) {
         overflow: hidden;
         text-overflow: ellipsis;
         line-height: 1.35;
+    }
+
+    .unread-badge {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: color-mix(in oklch, var(--color-accent) 60%, var(--color-base-content));
+        background: color-mix(in oklch, var(--color-accent) 12%, transparent);
+        border: 1px solid color-mix(in oklch, var(--color-accent) 28%, transparent);
+        padding: 1px 6px;
+        border-radius: var(--ui-radius-lg);
+        line-height: 1.7;
+        min-width: 20px;
+        text-align: center;
+        flex-shrink: 0;
     }
 
     .feed-error-badge {

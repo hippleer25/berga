@@ -17,5 +17,6 @@
   "cancel": "Cancelar",
   "create": "Criar",
   "loadError": "Falha ao carregar inscrições",
+  "unreadBadge": "{n} não lidos",
   "toggleFolder": "Abrir/fechar pasta"
 }

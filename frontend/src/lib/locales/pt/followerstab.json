@@ -8,6 +8,7 @@
   "searchAria": "Buscar feeds",
   "clearSearch": "Limpar busca",
   "loadError": "Falha ao carregar inscrições",
+  "unreadBadge": "{n} não lidos",
   "tryAgain": "Tentar novamente",
   "emptyTitle": "Você ainda não segue nenhum feed.",
   "addFirstFeed": "Adicionar primeiro feed",

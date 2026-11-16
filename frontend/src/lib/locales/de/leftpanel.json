@@ -17,5 +17,6 @@
   "cancel": "Abbrechen",
   "create": "Erstellen",
   "loadError": "Fehler beim Laden der Abonnements",
+  "unreadBadge": "{n} ungelesen",
   "toggleFolder": "Ordner auf-/zuklappen"
 }

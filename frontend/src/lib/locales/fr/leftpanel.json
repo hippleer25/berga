@@ -17,5 +17,6 @@
   "cancel": "Annuler",
   "create": "Créer",
   "loadError": "Échec du chargement des abonnements",
+  "unreadBadge": "{n} non lus",
   "toggleFolder": "Ouvrir/fermer le dossier"
 }

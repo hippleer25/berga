@@ -17,5 +17,6 @@
   "cancel": "Cancel",
   "create": "Create",
   "loadError": "Failed to load subscriptions",
+  "unreadBadge": "{n} unread",
   "toggleFolder": "Toggle folder"
 }

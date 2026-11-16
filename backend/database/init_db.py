@@ -463,6 +463,17 @@ def init_db():
             """)
             _ensure_unique_index(cursor, "users", "uq_users_email", "email")
             cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS user_settings (
+                user_id INT NOT NULL,
+                pref_key VARCHAR(64) NOT NULL,
+                pref_value TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, pref_key),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) {_TABLE_OPTIONS}
+            """)
+            cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS feeds (
                 feed_sha256 VARCHAR(64) PRIMARY KEY,
                 feed_url TEXT NOT NULL,

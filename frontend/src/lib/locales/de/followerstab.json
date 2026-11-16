@@ -8,6 +8,7 @@
   "searchAria": "Feeds suchen",
   "clearSearch": "Suche löschen",
   "loadError": "Fehler beim Laden der Abonnements",
+  "unreadBadge": "{n} ungelesen",
   "tryAgain": "Erneut versuchen",
   "emptyTitle": "Du folgst noch keinen Feeds.",
   "addFirstFeed": "Ersten Feed hinzufügen",

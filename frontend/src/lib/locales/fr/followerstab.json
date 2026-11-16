@@ -8,6 +8,7 @@
   "searchAria": "Rechercher des flux",
   "clearSearch": "Effacer la recherche",
   "loadError": "Échec du chargement des abonnements",
+  "unreadBadge": "{n} non lus",
   "tryAgain": "Réessayer",
   "emptyTitle": "Vous ne suivez encore aucun flux.",
   "addFirstFeed": "Ajouter le premier flux",

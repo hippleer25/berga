@@ -8,6 +8,7 @@
   "searchAria": "Search feeds",
   "clearSearch": "Clear search",
   "loadError": "Failed to load subscriptions",
+  "unreadBadge": "{n} unread",
   "tryAgain": "Try again",
   "emptyTitle": "You don't follow any feeds yet.",
   "addFirstFeed": "Add first feed",

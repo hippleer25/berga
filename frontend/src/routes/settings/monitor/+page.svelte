@@ -16,6 +16,7 @@
 	import { get } from 'svelte/store';
 	import { ripple } from '$lib/actions/ripple';
 	import { apiFetch } from '$lib/api';
+	import { loadUnreadCounts } from '$lib/stores/unreadCounts';
 
 	type Status = 'ok' | 'failing' | 'dead' | 'silent' | 'unknown';
 
@@ -118,6 +119,68 @@
 	let tagsLoading = $state(true);
 	let tagsError = $state('');
 
+	// Unread badge preferences
+	type UnreadAction = 'like' | 'dislike' | 'view' | 'saved' | 'read';
+	const UNREAD_ACTIONS: UnreadAction[] = ['like', 'dislike', 'view', 'saved', 'read'];
+	const DEFAULT_UNREAD_ACTIONS: UnreadAction[] = ['like', 'dislike', 'view', 'read'];
+	let unreadWindow = $state(30);
+	let unreadActions = $state<UnreadAction[]>([...DEFAULT_UNREAD_ACTIONS]);
+	let unreadLoading = $state(true);
+	let unreadSaveState: 'idle' | 'saving' | 'saved' | 'error' = $state('idle');
+	let unreadSaveError = $state('');
+
+	function toggleUnreadAction(action: UnreadAction) {
+		if (unreadSaveState === 'saving') return;
+		unreadActions = unreadActions.includes(action)
+			? unreadActions.filter((a) => a !== action)
+			: [...unreadActions, action];
+		unreadSaveState = 'idle';
+	}
+
+	function onUnreadWindowInput(e: Event) {
+		const value = Number((e.target as HTMLInputElement).value);
+		unreadWindow = Number.isFinite(value) ? Math.max(0, Math.min(value, 3650)) : 0;
+		unreadSaveState = 'idle';
+	}
+
+	async function loadUnreadSettings() {
+		try {
+			const res = await apiFetch('/api/settings/unread', { credentials: 'include' });
+			const data = await res.json().catch(() => ({}));
+			if (res.ok) {
+				unreadWindow = Number(data.window_days ?? 30);
+				const actions = Array.isArray(data.read_actions) ? data.read_actions : [];
+				unreadActions = actions.filter((a: string) => UNREAD_ACTIONS.includes(a as UnreadAction));
+				if (unreadActions.length === 0) unreadActions = [...DEFAULT_UNREAD_ACTIONS];
+			}
+		} catch {
+			// defaults stay in place
+		} finally {
+			unreadLoading = false;
+		}
+	}
+
+	async function saveUnreadSettings() {
+		unreadSaveState = 'saving';
+		unreadSaveError = '';
+		try {
+			const res = await apiFetch('/api/settings/unread', {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ window_days: unreadWindow, read_actions: unreadActions })
+			});
+			if (!res.ok) throw new Error(String(res.status));
+			unreadSaveState = 'saved';
+			// Badges reflect the new window/actions immediately.
+			await loadUnreadCounts(true);
+			setTimeout(() => { unreadSaveState = 'idle'; }, 2500);
+		} catch (err: any) {
+			unreadSaveState = 'error';
+			unreadSaveError = err.message || String(err);
+		}
+	}
+
 	const DAY_KEYS = ['dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 'daySun'];
 
 	let problems = $derived(feeds.filter((f) => f.status !== 'ok'));
@@ -125,6 +188,7 @@
 	onMount(() => {
 		load();
 		loadTags();
+		loadUnreadSettings();
 		// Cross-link from feed error badges: /settings/monitor?feed=<sha>
 		const sha = get(page).url.searchParams.get('feed');
 		if (sha) expandedSha = sha;
@@ -410,6 +474,62 @@
 		<div>
 			<h2 class="section-title">{$t('monitor.title')}</h2>
 			<p class="section-desc tight">{$t('monitor.subtitle')}</p>
+		</div>
+	</div>
+
+	<div class="section-block">
+		<h3 class="section-divider-label">{$t('monitor.unreadTitle')}</h3>
+		<p class="section-desc tight">{$t('monitor.unreadDesc')}</p>
+	</div>
+
+	<div class="unread-card" class:opacity-dim={unreadLoading}>
+		<div class="unread-row">
+			<label class="unread-label" for="unread-window">{$t('monitor.unreadWindowLabel')}</label>
+			<div class="unread-window-field">
+				<input
+					id="unread-window"
+					class="unread-window-input"
+					type="number"
+					min="0"
+					max="3650"
+					step="1"
+					value={unreadWindow}
+					oninput={onUnreadWindowInput}
+					disabled={unreadLoading}
+				/>
+				<span class="unread-window-suffix">{$t('monitor.unreadWindowDays')}</span>
+			</div>
+		</div>
+		<p class="unread-hint">{$t('monitor.unreadWindowHint')}</p>
+
+		<div class="unread-row">
+			<span class="unread-label">{$t('monitor.unreadActionsLabel')}</span>
+			<div class="unread-actions">
+				{#each UNREAD_ACTIONS as action (action)}
+					<label class="unread-action" class:selected={unreadActions.includes(action)}>
+						<input
+							type="checkbox"
+							checked={unreadActions.includes(action)}
+							onchange={() => toggleUnreadAction(action)}
+							disabled={unreadLoading}
+						/>
+						<span>{$t('monitor.unreadAction' + action.charAt(0).toUpperCase() + action.slice(1))}</span>
+					</label>
+				{/each}
+			</div>
+		</div>
+		<p class="unread-hint">{$t('monitor.unreadActionsHint')}</p>
+
+		<div class="unread-save-row">
+			<button class="action-btn accent" use:ripple onclick={saveUnreadSettings} disabled={unreadLoading || unreadSaveState === 'saving'}>
+				{#if unreadSaveState === 'saving'}<span class="spinner"></span>{:else}<Check size={14} />{/if}
+				<span>{unreadSaveState === 'saving' ? $t('monitor.unreadSaving') : $t('monitor.unreadSave')}</span>
+			</button>
+			{#if unreadSaveState === 'saved'}
+				<span class="unread-saved">{$t('monitor.unreadSaved')}</span>
+			{:else if unreadSaveState === 'error'}
+				<span class="error-text">{unreadSaveError}</span>
+			{/if}
 		</div>
 	</div>
 
@@ -852,6 +972,62 @@
 		font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
 		color: color-mix(in oklch, var(--color-base-content) 45%, transparent); margin: 0 0 2px;
 	}
+
+	/* ── Unread badge preferences ── */
+	.unread-card {
+		display: flex; flex-direction: column; gap: 6px;
+		padding: 16px; border-radius: var(--ui-radius-sm);
+		border: 1px solid var(--color-base-300);
+		background: color-mix(in oklch, var(--color-base-200) 40%, transparent);
+		box-shadow: var(--ui-shadow-1);
+		transition: opacity 150ms ease;
+	}
+	.unread-card.opacity-dim { opacity: 0.55; }
+	.unread-row {
+		display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+	}
+	.unread-label {
+		font-size: 13px; font-weight: 600; color: var(--color-base-content);
+	}
+	.unread-window-field {
+		display: inline-flex; align-items: center; gap: 8px;
+	}
+	.unread-window-input {
+		width: 88px; padding: 8px 10px; font-size: 13px; font-weight: 600;
+		color: var(--color-base-content);
+		border: 1px solid var(--color-base-300);
+		border-radius: var(--ui-radius-sm);
+		background: var(--color-base-100);
+	}
+	.unread-window-input:focus {
+		outline: none; border-color: var(--color-accent);
+		box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-accent) 22%, transparent);
+	}
+	.unread-window-suffix {
+		font-size: 12px; color: color-mix(in oklch, var(--color-base-content) 62%, transparent);
+	}
+	.unread-hint {
+		margin: 0; font-size: 12px; line-height: 1.45;
+		color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+	}
+	.unread-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+	.unread-action {
+		display: inline-flex; align-items: center; gap: 6px;
+		padding: 7px 11px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+		border: 1px solid var(--color-base-300);
+		border-radius: var(--ui-radius-sm);
+		background: transparent; color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
+		transition: all 130ms ease; user-select: none;
+	}
+	.unread-action input { position: absolute; opacity: 0; pointer-events: none; }
+	.unread-action:hover { background: color-mix(in oklch, var(--color-base-content) 5%, transparent); }
+	.unread-action.selected {
+		border-color: var(--color-accent);
+		color: color-mix(in oklch, var(--color-accent) 65%, var(--color-base-content));
+		background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+	}
+	.unread-save-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+	.unread-saved { font-size: 12px; font-weight: 600; color: var(--color-success, var(--color-accent)); }
 
 	.spinner {
 		width: 15px; height: 15px; flex-shrink: 0;
