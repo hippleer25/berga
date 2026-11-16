@@ -31,6 +31,8 @@ from mota.chat_config import (
     RECENCY_HALF_LIFE_DAYS,
     RECENCY_BOOST_WEIGHT,
     ENABLE_WEB_VERTICAL,
+    CONVERSATION_URL_BOOST,
+    ENABLE_CONVERSATION_EVIDENCE,
 )
 from mota.tokens import (
     count_tokens,
@@ -245,6 +247,45 @@ def _apply_publisher_boost(
     articles.sort(key=lambda a: a.get("similarity_score", 0), reverse=True)
     if boosted:
         logger.info(f"[PUB_AFFINITY] {boosted} artigos locais reordenados por engajamento")
+
+    return articles
+
+
+def _apply_conversation_boost(
+    articles: list[dict],
+    discussed: Optional[list[dict]],
+) -> list[dict]:
+    """
+    Boost (+CONVERSATION_URL_BOOST) for search results whose URL was already
+    discussed earlier in this chat session, so follow-up questions about a
+    previously delivered article surface it again instead of competitors.
+    Re-sorts after the recency/publisher boosts. Never explained to the model.
+    """
+    if not ENABLE_CONVERSATION_EVIDENCE or not discussed:
+        return articles
+
+    known: set[str] = set()
+    for e in discussed:
+        if isinstance(e, dict):
+            n = _normalize_url(e.get("url", "") or e.get("link", ""))
+            if n:
+                known.add(n)
+    if not known:
+        return articles
+
+    boosted = 0
+    for art in articles:
+        url = _normalize_url(art.get("link", "") or art.get("url", ""))
+        if not url or url not in known:
+            continue
+        art["similarity_score_raw"] = art.get("similarity_score_raw", art.get("similarity_score", 0))
+        art["similarity_score"] = art["similarity_score_raw"] + CONVERSATION_URL_BOOST
+        art["conversation_boost"] = CONVERSATION_URL_BOOST
+        boosted += 1
+
+    if boosted:
+        articles.sort(key=lambda a: a.get("similarity_score", 0), reverse=True)
+        logger.info(f"[CONV_BOOST] {boosted} artigos já discutidos reordenados para o topo")
 
     return articles
 
@@ -504,6 +545,7 @@ def run_searches(
     id_assigner: Callable[[dict], int] | None = None,
     token_budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
     publisher_affinity: Optional[dict] = None,
+    discussed_articles: Optional[list[dict]] = None,
 ) -> tuple[str, list[dict]]:
     """
     Executa múltiplas buscas (em paralelo) e consolida os resultados.
@@ -518,6 +560,9 @@ def run_searches(
         publisher_affinity: {'likes': {feed: n}, 'dislikes': {feed: n}} do
                      perfil do usuário; aplica boost leve a resultados locais
                      de feeds com engajamento positivo/negativo.
+        discussed_articles: artigos já discutidos nesta sessão de chat;
+                     aplica boost de ranking aos resultados cuja URL
+                     aparece nessa lista.
 
     Returns:
         (texto formatado para o LLM, lista de artigos únicos)
@@ -553,6 +598,7 @@ def run_searches(
     all_articles = _apply_recency_boost(all_articles)
     if publisher_affinity:
         all_articles = _apply_publisher_boost(all_articles, publisher_affinity)
+    all_articles = _apply_conversation_boost(all_articles, discussed_articles)
     all_articles = _apply_context_budget(all_articles, budget=token_budget)
 
     logger.info(f"[SEARCH] ✓ TOTAL: {len(all_articles)} artigos (após dedup + boost)")

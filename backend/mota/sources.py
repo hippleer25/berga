@@ -13,7 +13,18 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from mota.chat_config import DISCUSSED_SNIPPET_CHARS
+
 _CITATION_RE = re.compile(r"\[(\d{1,2})\]")
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _snippet_from_description(description: str) -> str:
+    """Plain-text snippet of the article description for the discussed memory."""
+    if not description:
+        return ""
+    return re.sub(r"\s+", " ", _TAG_RE.sub(" ", description)).strip()[:DISCUSSED_SNIPPET_CHARS]
 
 
 class SourceRegistry:
@@ -25,7 +36,12 @@ class SourceRegistry:
     # ── Registration ─────────────────────────────────────────────────────────
 
     def add(self, article: dict) -> int:
-        """Register an article, returning its citation id. Skips dupes by URL."""
+        """Register an article, returning its citation id. Skips dupes by URL.
+
+        Also captures a short description snippet — it feeds the
+        discussed-article memory (`conversation.append_discussed`) so
+        follow-ups can re-inject the content without a re-fetch.
+        """
         url = article.get("link", "") or article.get("url", "")
         if url:
             for e in self.entries:
@@ -38,6 +54,7 @@ class SourceRegistry:
             "title": (article.get("title", "") or "Untitled")[:160],
             "date": (article.get("pub_date") or "")[:10],
             "url": url,
+            "snippet": _snippet_from_description(article.get("description", "")),
         }
         self.entries.append(entry)
         self._next_id += 1
@@ -88,7 +105,12 @@ class SourceRegistry:
         return [e for e in self.entries if e["id"] in cited]
 
     def sse_payload(self, answer_text: str) -> Optional[list[dict]]:
-        """Payload for the `sources` SSE event. None when nothing was cited/known."""
+        """Payload for the `sources` SSE event. None when nothing was cited/known.
+
+        Includes the description snippet — the frontend ignores the extra
+        field, while the persisted sources JSON keeps it for the
+        discussed-article memory re-hydration.
+        """
         cited = self.cited_entries(answer_text)
         if not cited:
             return None
@@ -99,6 +121,7 @@ class SourceRegistry:
                 "title": e["title"],
                 "url": e["url"],
                 "date": e["date"],
+                "snippet": e.get("snippet", ""),
             }
             for e in cited
         ]

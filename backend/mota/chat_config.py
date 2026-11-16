@@ -75,6 +75,27 @@ HISTORY_VERBATIM_TURNS = int(os.getenv("HISTORY_VERBATIM_TURNS", "3"))
 # Max tokens per turn summary block (summarized older turns are folded into one).
 SUMMARY_CACHE_TTL_SECONDS = 3600
 
+# ── Discussed-article memory ─────────────────────────────────────────────────
+# Articles actually cited in a session's answers are tracked per session and
+# re-injected as first-class evidence on follow-ups, so the conversation keeps
+# working over the articles it has already delivered.
+# Master switch (0 disables the whole feature — ranking boost included).
+ENABLE_CONVERSATION_EVIDENCE = bool(int(os.getenv("ENABLE_CONVERSATION_EVIDENCE", "1")))
+
+# Max discussed articles kept per session (oldest dropped).
+DISCUSSED_MAX_ARTICLES = int(os.getenv("DISCUSSED_MAX_ARTICLES", "20"))
+
+# Chars of the article description stored as snippet in the discussed entry.
+DISCUSSED_SNIPPET_CHARS = int(os.getenv("DISCUSSED_SNIPPET_CHARS", "400"))
+
+# Token budget for the "already discussed" evidence block injected into the
+# agent loop and synthesis prompts.
+CONVERSATION_EVIDENCE_TOKEN_BUDGET = int(os.getenv("CONVERSATION_EVIDENCE_TOKEN_BUDGET", "1200"))
+
+# Similarity boost applied to local search results whose URL was already
+# discussed in this session (same scale as _CHAT_PUB_AFFINITY_WEIGHT).
+CONVERSATION_URL_BOOST = float(os.getenv("CONVERSATION_URL_BOOST", "0.12"))
+
 # ── Chat session titles ──────────────────────────────────────────────────────
 # AI-generated session titles (like Claude's): a one-shot LLM call on the
 # SUMMARIZE tier after the first user turn of a session. 0 disables.

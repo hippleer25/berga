@@ -196,6 +196,7 @@ def _handle_direct_articles(
     history: list[dict] | None = None,
     registry: SourceRegistry | None = None,
     session_id: str | None = None,
+    discussed_articles: list[dict] | None = None,
 ) -> Iterator:
     """Processa artigos enviados diretamente pelo usuário (com citações)."""
     from i18n.prompts import get_prompt
@@ -245,6 +246,9 @@ def _handle_direct_articles(
     system_prompt = get_prompt("direct_articles")
     if registry_block:
         system_prompt = f"{system_prompt}\n\n{registry_block}"
+    discussed_block = conversation.discussed_evidence_block(discussed_articles or [])
+    if discussed_block:
+        system_prompt = f"{system_prompt}\n\n{discussed_block}"
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -300,6 +304,11 @@ def _generate_chat_stream(chat_request, user, history: list[dict] | None = None,
     logger.info(f"[CHAT] Escopo: {scope} | folder={folder_id} | feed={feed_sha256} "
                 f"| feed_filter: {len(feed_filter) if feed_filter else 'global'}")
 
+    user_id = user.get("id") if isinstance(user, dict) else None
+    discussed = conversation.load_discussed(user_id, conversation_id) if user_id else []
+    if discussed:
+        logger.info(f"[CHAT] Memória de artigos discutidos: {len(discussed)} artigo(s)")
+
     # ── CASO 1: Artigos diretos do feed ──────────────────────────────────────
     raw_articles = getattr(chat_request, "articles", None) or []
     direct_articles = [
@@ -309,7 +318,8 @@ def _generate_chat_stream(chat_request, user, history: list[dict] | None = None,
     if direct_articles:
         logger.info(f"[CHAT] Modo: artigos diretos ({len(direct_articles)} artigos)")
         yield from _handle_direct_articles(
-            user_message, direct_articles, history=history, session_id=gateway_session
+            user_message, direct_articles, history=history, session_id=gateway_session,
+            discussed_articles=discussed,
         )
         return
 
@@ -321,8 +331,10 @@ def _generate_chat_stream(chat_request, user, history: list[dict] | None = None,
         return
 
     # ── CASO 3: Router LLM + agent loop ──────────────────────────────────────
-    user_id = user.get("id") if isinstance(user, dict) else None
-    digest = conversation.digest_for_router(user_id, conversation_id) if user_id else ""
+    digest = (
+        conversation.digest_for_router(user_id, conversation_id, discussed=discussed)
+        if user_id else ""
+    )
     usage_out: dict = {}
 
     yield _Status("planning")
@@ -346,7 +358,7 @@ def _generate_chat_stream(chat_request, user, history: list[dict] | None = None,
     publisher_affinity = _get_publisher_affinity(user_id) if (scope == "mine" and feed_filter) else None
     logger.info(f"[CHAT] Router: kind={plan['kind']} sources={plan['sources']} "
                 f"sub_queries={[q['query'] for q in plan['sub_queries']]} mode={effective_mode} "
-                f"pub_aff={bool(publisher_affinity)}")
+                f"pub_aff={bool(publisher_affinity)} discussed={len(discussed)}")
 
     yield from run_agent(
         plan,
@@ -358,6 +370,7 @@ def _generate_chat_stream(chat_request, user, history: list[dict] | None = None,
         usage_out=usage_out,
         publisher_affinity=publisher_affinity,
         session_id=gateway_session,
+        discussed_articles=discussed,
     )
 
     if user_id:
@@ -465,6 +478,10 @@ def _persist_turn(chat_request, user, user_id, assistant_chunks, sources_to_pers
                 user_id, conversation_id, "assistant", assistant_response,
                 sources=sources_to_persist,
             )
+    # Track articles actually cited in this answer for the discussed-article
+    # memory (fail-open; entries carry title/url/date + description snippet).
+    if sources_to_persist:
+        conversation.append_discussed(user_id, sources_to_persist, conversation_id)
     if first_turn:
         # Enqueue AI title generation for this brand-new session (fail-open).
         _enqueue_title_generation(user_id, conversation_id)

@@ -40,6 +40,7 @@ from mota.chat_tool_parser import (
 )
 from mota.chat_search import run_searches, _truncate_content, _strip_html
 from mota.sources import SourceRegistry
+from mota.conversation import discussed_evidence_block
 from mota.tokens import count_tokens
 from intelligence.cluster import load_events_from_db
 from intelligence.similar import get_similar_articles
@@ -322,6 +323,7 @@ def _direct_plan_search(
     registry: SourceRegistry,
     collected_queries: Optional[list[str]] = None,
     publisher_affinity: Optional[dict] = None,
+    discussed_articles: Optional[list[dict]] = None,
 ) -> tuple[str, list[dict]]:
     """Executa as sub_queries do plano em uma passada paralela + wiki opcional."""
     searches: list[dict] = []
@@ -342,6 +344,7 @@ def _direct_plan_search(
         feed_filter=feed_filter,
         id_assigner=registry.add,
         publisher_affinity=publisher_affinity,
+        discussed_articles=discussed_articles,
     )
 
     if ENABLE_WIKI and "wiki" in plan.get("sources", []):
@@ -385,6 +388,7 @@ def run_agent(
     usage_out: Optional[dict] = None,
     publisher_affinity: Optional[dict] = None,
     session_id: str | None = None,
+    discussed_articles: Optional[list[dict]] = None,
 ) -> Iterator:
     """
     Bounded agent loop.
@@ -399,8 +403,25 @@ def run_agent(
     tool_rounds_used = 0
     executed_queries: list[str] = []
 
+    # Sources already known to the registry (seeded from prior turns) and the
+    # discussed-article memory make `[n]` references resolvable for the tool
+    # loop — otherwise the routing model never learns these articles exist.
+    agent_system = get_prompt("agent")
+    registry_block = registry.prompt_block()
+    if registry_block:
+        agent_system = f"{agent_system}\n\n{registry_block}"
+    discussed_block = discussed_evidence_block(discussed_articles or [])
+    if discussed_block:
+        agent_system = (
+            f"{agent_system}\n\n{discussed_block}\n\n"
+            "If the user's question refers back to one of these articles "
+            '(e.g. "that article", "what he said"), you may call '
+            'read_article with the "[n]" reference to recover its full text '
+            "before answering."
+        )
+
     loop_messages: list[dict] = [
-        {"role": "system", "content": get_prompt("agent")},
+        {"role": "system", "content": agent_system},
         *history,
         {
             "role": "user",
@@ -459,7 +480,9 @@ def run_agent(
             if round_idx == 1 and not got_articles:
                 yield _Status("searching")
                 text, arts = _direct_plan_search(
-                    plan, feed_filter, source_mode, registry, executed_queries
+                    plan, feed_filter, source_mode, registry, executed_queries,
+                    publisher_affinity=publisher_affinity,
+                    discussed_articles=discussed_articles,
                 )
                 if arts:
                     got_articles = True
@@ -476,7 +499,8 @@ def run_agent(
             if name == "topic_search" and isinstance(args, dict) and args.get("query"):
                 executed_queries.append(str(args["query"]))
             text, arts = _dispatch_tool(
-                name, args, plan, feed_filter, source_mode, registry, publisher_affinity
+                name, args, plan, feed_filter, source_mode, registry, publisher_affinity,
+                discussed_articles=discussed_articles,
             )
             used_tools = True
             if arts:
@@ -497,7 +521,8 @@ def run_agent(
             if dsml["name"] == "topic_search" and isinstance(dsml["args"], dict) and dsml["args"].get("query"):
                 executed_queries.append(str(dsml["args"]["query"]))
             text, arts = _dispatch_tool(
-                dsml["name"], dsml["args"], plan, feed_filter, source_mode, registry, publisher_affinity
+                dsml["name"], dsml["args"], plan, feed_filter, source_mode, registry,
+                publisher_affinity, discussed_articles=discussed_articles,
             )
             used_tools = True
             if arts:
@@ -522,7 +547,11 @@ def run_agent(
     # ── Garantia de evidência mínima (nunca responde no vácuo) ────────────────
     if not evidence_blocks:
         yield _Status("searching")
-        text, arts = _direct_plan_search(plan, feed_filter, source_mode, registry, executed_queries, publisher_affinity)
+        text, arts = _direct_plan_search(
+            plan, feed_filter, source_mode, registry, executed_queries,
+            publisher_affinity=publisher_affinity,
+            discussed_articles=discussed_articles,
+        )
         if arts:
             got_articles = True
         evidence_blocks.append(_truncate_content(text, 6000))
@@ -539,6 +568,7 @@ def run_agent(
                 "topic_search",
                 {"query": gap_query, "vertical": verdict.get("vertical", "news")},
                 plan, feed_filter, source_mode, registry, publisher_affinity,
+                discussed_articles=discussed_articles,
             )
             if arts:
                 got_articles = True
@@ -559,6 +589,11 @@ def run_agent(
     system_prompt = get_prompt("synthesis")
     if registry_block:
         system_prompt = f"{system_prompt}\n\n{registry_block}"
+
+    if discussed_block:
+        # Already-discussed articles go first-class: the synthesis model sees
+        # them (with snippets) even when this turn's searches didn't re-find.
+        evidence = f"{discussed_block}\n\nEvidência desta rodada:\n{evidence}" if evidence else discussed_block
 
     synthesis_msgs = [
         {"role": "system", "content": system_prompt},
@@ -611,6 +646,7 @@ def _dispatch_tool(
     source_mode: str,
     registry: SourceRegistry,
     publisher_affinity: Optional[dict] = None,
+    discussed_articles: Optional[list[dict]] = None,
 ) -> tuple[str, list[dict]]:
     """Run a single tool call. Returns (tool_text_for_llm, attached_articles)."""
     name = (name or "").strip()
@@ -631,6 +667,7 @@ def _dispatch_tool(
             feed_filter=feed_filter,
             id_assigner=registry.add,
             publisher_affinity=publisher_affinity,
+            discussed_articles=discussed_articles,
         )
 
     if name == "get_current_events":

@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from typing import Optional
 
 import redis
@@ -30,6 +31,9 @@ from mota.tokens import count_tokens
 from mota.chat_config import (
     HISTORY_TOKEN_BUDGET,
     HISTORY_VERBATIM_TURNS,
+    DISCUSSED_MAX_ARTICLES,
+    DISCUSSED_SNIPPET_CHARS,
+    ENABLE_CONVERSATION_EVIDENCE,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,6 +85,21 @@ def _summary_key(user_id: int, session_id) -> str:
 
 def _sources_key(user_id: int, session_id) -> str:
     return f"mota:conv:{user_id}:{session_id}:sources"
+
+
+def _discussed_key(user_id: int, session_id) -> str:
+    return f"mota:conv:{user_id}:{session_id}:discussed"
+
+
+def _normalize_url_for_dedup(url: str) -> str:
+    """Same normalization as the chat-search dedup, for discussed-entry dedup."""
+    if not url:
+        return ""
+    url = url.lower().strip()
+    url = re.sub(r"^https?://(www\.)?", "", url)
+    url = re.sub(r"[?#].*$", "", url)
+    url = re.sub(r"/+$", "", url)
+    return url
 
 
 # ── MySQL hydration ───────────────────────────────────────────────────────────
@@ -193,7 +212,10 @@ def clear(user_id: int, session_id=None) -> bool:
     if client is None or session_id is None:
         return False
     try:
-        client.delete(_key(user_id, session_id), _summary_key(user_id, session_id), _sources_key(user_id, session_id))
+        client.delete(
+            _key(user_id, session_id), _summary_key(user_id, session_id),
+            _sources_key(user_id, session_id), _discussed_key(user_id, session_id),
+        )
         logger.info(f"[CONV] Cleared history user={user_id} session={session_id}")
         return True
     except Exception as e:
@@ -290,18 +312,30 @@ def prepare_history(user_id: int, session_id=None) -> list[dict]:
     return messages
 
 
-def digest_for_router(user_id: int, session_id=None, max_chars: int = 1200) -> str:
+def digest_for_router(
+    user_id: int, session_id=None, max_chars: int = 1200,
+    discussed: Optional[list[dict]] = None,
+) -> str:
     """
     Compact text digest of the last few turns, used as router context.
     Returns "" when there is no history.
+
+    `discussed` appends the titles of articles already discussed in the
+    session so the router can anchor its rewrite/sub-queries on them.
     """
     history = load_history(user_id, session_id)
-    if not history:
-        return ""
     lines = []
     for t in history[-4:]:
         label = "User" if t.get("role") == "user" else "Mota"
         lines.append(f"{label}: {t.get('content', '')[:300]}")
+    if ENABLE_CONVERSATION_EVIDENCE and discussed:
+        titles = [f"[{e.get('id', '?')}] {e.get('title', '')}" for e in discussed if isinstance(e, dict)]
+        if titles:
+            lines.append(
+                "Articles already discussed in this session: " + "; ".join(titles)
+            )
+    if not lines:
+        return ""
     digest = "\n".join(lines)
     return digest[-max_chars:]
 
@@ -337,6 +371,168 @@ def save_sources(user_id: int, sources: list[dict], session_id=None) -> None:
         )
     except Exception as e:
         logger.warning(f"[CONV] Failed to save sources user={user_id} session={session_id}: {e}")
+
+
+# ── Discussed-article memory ─────────────────────────────────────────────────
+# Accumulated across the session: every article actually cited in an answer
+# is appended here (with its description snippet), so follow-up turns can
+# re-inject it as first-class evidence and boost it in search ranking.
+
+def _strip_snippet_tags(text: str) -> str:
+    if not text:
+        return ""
+    clean = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", clean).strip()
+
+
+def discussed_evidence_block(
+    discussed: list[dict],
+    token_budget: int | None = None,
+) -> str:
+    """Format the discussed-article memory as a prompt evidence block.
+
+    Each entry renders as `[n] date — Title (Outlet)` + description snippet.
+    Entries are ordered oldest → newest; the newest ones are kept when the
+    CONVERSATION_EVIDENCE_TOKEN_BUDGET is exceeded. Returns "" when empty
+    or the feature is disabled.
+    """
+    if not ENABLE_CONVERSATION_EVIDENCE or not discussed:
+        return ""
+    if token_budget is None:
+        from mota.chat_config import CONVERSATION_EVIDENCE_TOKEN_BUDGET
+        token_budget = CONVERSATION_EVIDENCE_TOKEN_BUDGET
+
+    rendered: list[tuple[int, str]] = []
+    for e in discussed:
+        if not isinstance(e, dict):
+            continue
+        title = (e.get("title") or "Untitled")[:160]
+        outlet = e.get("outlet") or "web"
+        date = e.get("date") or ""
+        snippet = _strip_snippet_tags(e.get("snippet") or "")[:DISCUSSED_SNIPPET_CHARS]
+        id_ref = e.get("id") or "?"
+        head = f"[{id_ref}] {date} — {title} ({outlet})".strip()
+        rendered.append((id_ref if isinstance(id_ref, int) else 0, f"{head}\n{snippet}".strip()))
+
+    if not rendered:
+        return ""
+
+    # Newest entries survive the budget cut (list is oldest → newest).
+    selected: list[str] = []
+    used = 0
+    for _, line in reversed(rendered):
+        cost = count_tokens(line)
+        if selected and used + cost > token_budget:
+            break
+        selected.append(line)
+        used += cost
+    selected.reverse()
+
+    body = "\n\n".join(selected)
+    header = (
+        "Articles already discussed earlier in this conversation (the numbers "
+        "match the citation registry). When the user's question refers back to "
+        "the conversation, prioritize these articles and treat them as known "
+        "context:\n"
+    )
+    return header + body
+
+def _hydrate_discussed_from_db(user_id: int, session_id) -> list[dict]:
+    """Rebuild the discussed list from the durable chat_messages sources."""
+    try:
+        from mota import chat_sessions
+        turns = chat_sessions.get_messages(user_id, session_id)
+    except Exception as e:
+        logger.warning(f"[CONV] Discussed hydration failed user={user_id} session={session_id}: {e}")
+        return []
+    rebuild: list[dict] = []
+    for t in turns:
+        if t.get("role") == "assistant" and isinstance(t.get("sources"), list):
+            rebuild.extend(t["sources"])
+    return rebuild
+
+
+def load_discussed(user_id: int, session_id=None) -> list[dict]:
+    """Load the session's discussed-article list. Returns [] on any failure."""
+    if not ENABLE_CONVERSATION_EVIDENCE:
+        return []
+    client = _get_client()
+    if client is None or session_id is None:
+        return []
+    try:
+        raw = client.get(_discussed_key(user_id, session_id))
+        if raw:
+            entries = json.loads(raw)
+            return entries if isinstance(entries, list) else []
+        # Cold cache: rebuild from the durable turn log and re-seed.
+        entries = _hydrate_discussed_from_db(user_id, session_id)
+        if entries:
+            try:
+                client.setex(
+                    _discussed_key(user_id, session_id), _TTL_SECONDS,
+                    json.dumps(entries, ensure_ascii=False),
+                )
+            except Exception:
+                pass
+        return entries
+    except Exception as e:
+        logger.warning(f"[CONV] Failed to load discussed user={user_id}: {e}")
+        return []
+
+
+def append_discussed(user_id: int, entries: list[dict], session_id=None) -> None:
+    """Append cited-article entries to the session's discussed list.
+
+    Dedups by normalized URL (refreshing snippets when a fuller one arrives),
+    caps at DISCUSSED_MAX_ARTICLES (oldest dropped) and refreshes the TTL.
+    Fail-open: silently no-ops without Redis or when the feature is off.
+    """
+    if not ENABLE_CONVERSATION_EVIDENCE:
+        return
+    clean = [
+        e for e in (entries or [])
+        if isinstance(e, dict) and (e.get("url") or e.get("title"))
+    ]
+    if not clean:
+        return
+    client = _get_client()
+    if client is None or session_id is None:
+        return
+    try:
+        raw = client.get(_discussed_key(user_id, session_id))
+        current: list[dict] = json.loads(raw) if raw else []
+        if not isinstance(current, list):
+            current = []
+
+        by_key: dict[str, dict] = {}
+        ordered_keys: list[str] = []
+        for e in current:
+            key = _normalize_url_for_dedup(e.get("url", "")) or f"title:{(e.get('title') or '').strip().lower()}"
+            if key not in by_key:
+                by_key[key] = e
+                ordered_keys.append(key)
+
+        for e in clean:
+            key = _normalize_url_for_dedup(e.get("url", "")) or f"title:{(e.get('title') or '').strip().lower()}"
+            existing = by_key.get(key)
+            if existing:
+                # Refresh id to the current turn numbering and upgrade snippets.
+                existing["id"] = e.get("id", existing.get("id"))
+                if e.get("snippet") and len(e["snippet"]) > len(existing.get("snippet", "") or ""):
+                    existing["snippet"] = e["snippet"]
+                if e.get("date") and not existing.get("date"):
+                    existing["date"] = e["date"]
+            else:
+                by_key[key] = dict(e)
+                ordered_keys.append(key)
+
+        merged = [by_key[k] for k in ordered_keys][-DISCUSSED_MAX_ARTICLES:]
+        client.setex(
+            _discussed_key(user_id, session_id), _TTL_SECONDS,
+            json.dumps(merged, ensure_ascii=False),
+        )
+    except Exception as e:
+        logger.warning(f"[CONV] Failed to append discussed user={user_id}: {e}")
 
 
 # ── Daily token guardrail ────────────────────────────────────────────────────
