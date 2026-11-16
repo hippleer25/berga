@@ -4,6 +4,7 @@
   import { t } from 'svelte-i18n';
   import SettingsToggle from '$lib/components/settings/SettingsToggle.svelte';
   import SettingsSlider from '$lib/components/settings/SettingsSlider.svelte';
+  import SettingsPicker from '$lib/components/settings/SettingsPicker.svelte';
   import DockPreview from '$lib/components/settings/preview/DockPreview.svelte';
   import PreviewFrame from '$lib/components/settings/preview/PreviewFrame.svelte';
   import { ripple } from '$lib/actions/ripple';
@@ -222,6 +223,10 @@
   function setNavBg(v: NavBg) {
     navBgVal = v; applyNavBg(v, true); uiNavBg.set(v);
   }
+  function navBgTrigger(v: NavBg): string {
+    const opt = NAV_BG_OPTIONS.find((o) => o.value === v);
+    return opt ? $t(opt.labelKey) : v;
+  }
   function toggleSidebarCollapsed() {
     sidebarCollapsed = !sidebarCollapsed;
     applySidebarCollapsed(sidebarCollapsed, true);
@@ -336,24 +341,13 @@
 
       <div class="setting-row">
         <span class="setting-label">{$t('settings.dockColor')}</span>
-        <div class="navstyle-picker">
-          {#each NAV_BG_OPTIONS as opt (opt.value)}
-            <button
-              class="navstyle-card"
-              class:active={navBgVal === opt.value}
-              use:ripple
-              onclick={() => setNavBg(opt.value)}
-              aria-pressed={navBgVal === opt.value}
-            >
-              <span
-                class="navbg-swatch"
-                style:background={opt.color}
-                class:navbg-swatch--theme={opt.color === null}
-              ></span>
-              <span class="navstyle-label">{$t(opt.labelKey)}</span>
-            </button>
-          {/each}
-        </div>
+        <SettingsPicker
+          value={navBgVal}
+          options={NAV_BG_OPTIONS}
+          onSelect={(v) => setNavBg(v as NavBg)}
+          colorList
+          trigger={navBgTrigger(navBgVal)}
+        />
       </div>
 
       <div class="setting-row">

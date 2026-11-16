@@ -67,6 +67,11 @@
     { value: 'amoled', labelKey: 'settings.bgColorAmoled', color: '#000000' },
   ];
 
+  const MODE_OPTIONS: { value: DesignMode; labelKey: string; descKey: string }[] = [
+    { value: 'elegant', labelKey: 'settings.designElegant', descKey: 'settings.designElegantDesc' },
+    { value: 'modern', labelKey: 'settings.designModern', descKey: 'settings.designModernDesc' },
+  ];
+
   const ACCENT_PRESETS: (string | null)[] = [
     null,
     '#F5B942',
@@ -150,6 +155,16 @@
     return custom ? label : `${label} ${$t('settings.fontAutoSuffix')}`;
   }
 
+  function pageBgTrigger(v: PageBg): string {
+    const opt = PAGE_BG_OPTIONS.find((o) => o.value === v);
+    return opt ? $t(opt.labelKey) : v;
+  }
+
+  function modeTrigger(mode: DesignMode): string {
+    const opt = MODE_OPTIONS.find((o) => o.value === mode);
+    return opt ? $t(opt.labelKey) : mode;
+  }
+
   function handleLocaleChange(lang: SupportedLocale) {
     setLocale(lang);
   }
@@ -210,52 +225,18 @@
   <AppearanceSubNav />
 
   <div class="settings-group">
-    <div class="group-label">{$t('settings.designLanguage')}</div>
-    <div class="group-card">
-      <p class="section-desc">{$t('settings.designLanguageDesc')}</p>
-      <div class="mode-picker">
-        <button
-          class="mode-card"
-          class:active={designModeVal === 'elegant'}
-          use:ripple
-          onclick={() => setDesignMode('elegant')}
-          aria-pressed={designModeVal === 'elegant'}
-        >
-          <span class="mode-preview mode-preview--elegant" aria-hidden="true">
-            <span class="mode-aa">Aa</span>
-            <span class="mode-lines"><i></i><i></i></span>
-          </span>
-          <span class="mode-copy">
-            <span class="mode-name">{$t('settings.designElegant')}</span>
-            <span class="mode-desc">{$t('settings.designElegantDesc')}</span>
-          </span>
-          {#if designModeVal === 'elegant'}<Check size={15} class="mode-check" />{/if}
-        </button>
-
-        <button
-          class="mode-card"
-          class:active={designModeVal === 'modern'}
-          use:ripple
-          onclick={() => setDesignMode('modern')}
-          aria-pressed={designModeVal === 'modern'}
-        >
-          <span class="mode-preview mode-preview--modern" aria-hidden="true">
-            <span class="mode-aa">Aa</span>
-            <span class="mode-lines"><i></i><i></i></span>
-          </span>
-          <span class="mode-copy">
-            <span class="mode-name">{$t('settings.designModern')}</span>
-            <span class="mode-desc">{$t('settings.designModernDesc')}</span>
-          </span>
-          {#if designModeVal === 'modern'}<Check size={15} class="mode-check" />{/if}
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <div class="settings-group">
     <div class="group-label">{$t('settings.appearanceGeneral')}</div>
     <div class="group-card">
+      <div class="setting-row">
+        <span class="setting-label">{$t('settings.designLanguage')}</span>
+        <SettingsPicker
+          value={designModeVal}
+          options={MODE_OPTIONS}
+          onSelect={(v) => setDesignMode(v as DesignMode)}
+          trigger={modeTrigger(designModeVal)}
+        />
+      </div>
+
       <div class="setting-row">
         <span class="setting-label">{$t('settings.language')}</span>
         <SettingsPicker
@@ -278,24 +259,13 @@
 
       <div class="setting-row">
         <span class="setting-label">{$t('settings.bgColor')}</span>
-        <div class="navstyle-picker">
-          {#each PAGE_BG_OPTIONS as opt (opt.value)}
-            <button
-              class="navstyle-card"
-              class:active={pageBgVal === opt.value}
-              use:ripple
-              onclick={() => setPageBg(opt.value)}
-              aria-pressed={pageBgVal === opt.value}
-            >
-              <span
-                class="navbg-swatch"
-                style:background={opt.color}
-                class:navbg-swatch--theme={opt.color === null}
-              ></span>
-              <span class="navstyle-label">{$t(opt.labelKey)}</span>
-            </button>
-          {/each}
-        </div>
+        <SettingsPicker
+          value={pageBgVal}
+          options={PAGE_BG_OPTIONS}
+          onSelect={(v) => setPageBg(v as PageBg)}
+          colorList
+          trigger={pageBgTrigger(pageBgVal)}
+        />
       </div>
 
       <div class="setting-row accent-row">
@@ -375,70 +345,10 @@
 </div>
 
 <style>
-  .mode-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 4px; }
-  .mode-card {
-    position: relative;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 12px;
-    text-align: left;
-    background: transparent;
-    border: var(--ui-border-width) solid var(--ui-border-color);
-    border-radius: var(--ui-radius-lg);
-    color: var(--color-base-content);
-    cursor: pointer;
-    transition:
-      border-color var(--ui-dur-2) var(--ui-ease),
-      background-color var(--ui-dur-2) var(--ui-ease),
-      box-shadow var(--ui-dur-2) var(--ui-ease),
-      transform var(--ui-dur-1) var(--ui-ease);
-  }
-  .mode-card:hover {
-    border-color: var(--ui-border-strong);
-    background: color-mix(in oklch, var(--color-base-content) 4%, transparent);
-    transform: translateY(-1px);
-    box-shadow: var(--ui-shadow-1);
-  }
-  .mode-card.active {
-    border-color: var(--color-accent);
-    background: var(--color-accent-soft);
-    box-shadow: var(--ui-shadow-1), inset 0 0 0 1px var(--color-accent-line);
-  }
-  .mode-preview {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 46px;
-    padding: 0 10px;
-    border-radius: var(--ui-radius-sm);
-    border: 1px solid var(--ui-hairline);
-    background: color-mix(in oklch, var(--color-base-200) 70%, transparent);
-    overflow: hidden;
-  }
-  .mode-aa { font-size: 25px; line-height: 1; color: var(--color-base-content); }
-  .mode-preview--elegant .mode-aa { font-family: 'Newsreader', serif; letter-spacing: -0.01em; }
-  .mode-preview--modern .mode-aa { font-family: 'Figtree', sans-serif; font-weight: 600; letter-spacing: -0.03em; }
-  .mode-lines { display: flex; flex-direction: column; gap: 5px; flex: 1; }
-  .mode-lines i { display: block; height: 3px; background: color-mix(in oklch, var(--color-base-content) 24%, transparent); }
-  .mode-lines i:first-child { width: 82%; }
-  .mode-lines i:last-child { width: 58%; }
-  .mode-preview--elegant .mode-lines i { border-radius: 0; background: color-mix(in oklch, var(--color-base-content) 34%, transparent); }
-  .mode-preview--modern .mode-lines i { border-radius: 999px; background: var(--color-accent); opacity: 0.55; }
-  .mode-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .mode-name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
-  .mode-desc { font-size: 11.5px; line-height: 1.35; color: var(--ui-text-subtle); }
-  .mode-card :global(.mode-check) { position: absolute; top: 9px; right: 9px; color: var(--color-accent); }
-
   .reset-card {
     border: var(--ui-border-width) solid var(--ui-border-color);
     border-radius: var(--ui-radius-lg);
     padding: 10px 4px;
   }
   .settings-action-btn--block { width: 100%; }
-
-  @media (max-width: 420px) {
-    .mode-picker { grid-template-columns: 1fr; }
-  }
 </style>

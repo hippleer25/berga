@@ -10,6 +10,10 @@
 		label?: string;
 		/** Optional style hint shown next to the option (font pickers). */
 		category?: string;
+		/** Secondary hint rendered small next to the label. */
+		descKey?: string;
+		/** Fill of the option swatch (`null` = theme gradient). Requires `colorList`. */
+		color?: string | null;
 	};
 
 	type Props = {
@@ -24,8 +28,10 @@
 		 * Only meaningful when options carry `category`.
 		 */
 		fontList?: boolean;
+		/** Renders a color swatch per option (and in the trigger). */
+		colorList?: boolean;
 	};
-	let { options, onSelect, value, trigger, fontList = false }: Props = $props();
+	let { options, onSelect, value, trigger, fontList = false, colorList = false }: Props = $props();
 
 	let open = $state(false);
 	let btnEl: HTMLButtonElement | null = $state(null);
@@ -55,6 +61,10 @@
 		return option.value;
 	}
 
+	function colorOf(value: string): string | null | undefined {
+		return options.find((o) => o.value === value)?.color;
+	}
+
 	function onClickOutside(e: MouseEvent) {
 		const target = e.target as Node;
 		if (!btnEl || !btnEl.contains(target)) {
@@ -67,9 +77,19 @@
 <div class="picker-wrap">
 	<button bind:this={btnEl} class="setting-btn" onclick={toggle} aria-haspopup="listbox" aria-expanded={open}>
 		{#if trigger}
-			<span
-				style={fontList ? `font-family: '${value}', sans-serif;` : ''}
-			>{trigger}</span>
+			<span style={fontList ? `font-family: '${value}', sans-serif;` : ''}>
+				{#if colorList}
+					{@const cur = colorOf(value)}
+					{#if cur !== undefined}
+						<span
+							class="sp-swatch sp-swatch--sm"
+							class:sp-swatch--theme={cur === null}
+							style:background={cur}
+						></span>
+					{/if}
+				{/if}
+				{trigger}
+			</span>
 		{/if}
 		<span class="chevron-icon" class:rotated={open}>
 			<ChevronDown size={14} />
@@ -89,15 +109,25 @@
 					aria-selected={value === option.value}
 					onclick={() => pick(option)}
 				>
-					{#if fontList}
-						<span class="sp-item-text" style={`font-family: '${option.value}', sans-serif;`}>
-							{option.label ?? option.value}
-						</span>
-						<span class="sp-cat-label">{option.category === 'serif' ? $t('settings.serif') : $t('settings.sans')}</span>
-					{:else}
-						<span class="sp-item-text">{labelOf(option)}</span>
+				{#if fontList}
+					<span class="sp-item-text" style={`font-family: '${option.value}', sans-serif;`}>
+						{option.label ?? option.value}
+					</span>
+					<span class="sp-cat-label">{option.category === 'serif' ? $t('settings.serif') : $t('settings.sans')}</span>
+				{:else}
+					{#if colorList && option.color !== undefined}
+						<span
+							class="sp-swatch"
+							class:sp-swatch--theme={option.color === null}
+							style:background={option.color}
+						></span>
 					{/if}
-					{#if value === option.value}<Check size={12} class="sp-check" />{/if}
+					<span class="sp-item-text">{labelOf(option)}</span>
+					{#if option.descKey}
+						<span class="sp-item-desc">{$t(option.descKey)}</span>
+					{/if}
+				{/if}
+				{#if value === option.value}<Check size={12} class="sp-check" />{/if}
 				</button>
 			{/each}
 		</div>
