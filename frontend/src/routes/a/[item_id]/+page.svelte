@@ -2,7 +2,7 @@
     import { page } from '$app/stores';
     import { goto, beforeNavigate } from '$app/navigation';
     import { onMount } from 'svelte';
-    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Tag, X, Highlighter, Trash2, MessageSquare, AtSign, Bold, Italic, Heading, Link2, List, ListOrdered, Quote, Code } from '@lucide/svelte';
+    import { Heart, ThumbsDown, Bookmark, ArrowLeft, ExternalLink, FileText, Globe, AlertTriangle, Sparkles, Tag, X, Highlighter, Trash2, MessageSquare, AtSign, Bold, Italic, Heading, Link2, List, ListOrdered, Quote, Code, FileSearchCorner, ChevronUp, ChevronDown } from '@lucide/svelte';
     import ArticleMention from '$lib/components/ArticleMention.svelte';
 
 import { t, locale } from 'svelte-i18n';
@@ -13,6 +13,7 @@ import { flushPending } from '$lib/stores/viewTracker';
 	import { clearFeedCache } from '$lib/stores/feedCache';
 import { titleTextAlign, bodyTextAlign, highlightColors, highlightOpacity, highlightRadius, highlightCustomColorDefault, summaryLanguage } from '$lib/stores/preferences';
 import { hexToRgba } from '$lib/utils/color';
+import { findMatches, scrollRangeIntoView } from '$lib/utils/findInText';
 import ScreenShell from '$lib/components/ScreenShell.svelte';
 import { closeScreen } from '$lib/utils/screenStack';
 import { pendingMotaPosts } from '$lib/stores/swipe';
@@ -95,6 +96,17 @@ type Highlight = {
     let commentError   = $state('');
     let commentDeleteConfirm = $state(false);
     let commentEditor: HTMLTextAreaElement | undefined = $state();
+
+    // In-article search state
+    const SEARCH_HIGHLIGHT_ALL = 'article-search';
+    const SEARCH_HIGHLIGHT_ACTIVE = 'article-search-active';
+    const SEARCH_MATCH_CAP = 500;
+    let searchOpen      = $state(false);
+    let searchQuery     = $state('');
+    let searchMatches   = $state<Range[]>([]);
+    let currentMatch    = $state(-1);
+    let searchInputEl: HTMLInputElement | undefined = $state();
+    let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     function handleMentionAccept(snippet: string, start: number, end: number) {
         const ta = commentEditor;
@@ -254,6 +266,8 @@ let articleBodyEl: HTMLDivElement | undefined = $state();
         resumeLoading = false;
         resumeError = '';
 
+        closeSearch();
+
         commentError = '';
         commentVisible = false;
         editingComment = false;
@@ -384,6 +398,7 @@ function toggleTagDropdown() {
     if (id) loadArticle(id);
 
     document.addEventListener('selectionchange', onSelectionChange);
+    window.addEventListener('keydown', onGlobalKeydown);
 
     // bfcache eligibility: abort in-flight resume stream + persist scroll on hide.
     const onVisibilityHidden = () => {
@@ -416,6 +431,9 @@ function toggleTagDropdown() {
         document.removeEventListener('visibilitychange', onVisibilityHidden);
         window.removeEventListener('pagehide', onPageHide);
         window.removeEventListener('pageshow', onPageShow);
+        window.removeEventListener('keydown', onGlobalKeydown);
+        clearSearchHighlights();
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
         abortResume();
         if (selectionDebounceTimer) clearTimeout(selectionDebounceTimer);
     };
@@ -437,6 +455,7 @@ function formatDate(dateStr?: string) {
     }
 
     function toggleView() {
+        closeSearch();
         webView = !webView;
         if (webView) {
             iframeLoading = true;
@@ -713,12 +732,16 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
     function renderHighlights() {
         if (!articleBodyEl) return;
         clearHighlightMarks();
-        if (highlights.length === 0) return;
+        if (highlights.length === 0) {
+            refreshSearch();
+            return;
+        }
 
         const sorted = [...highlights].sort((a, b) => a.sort_order - b.sort_order);
         for (const hl of sorted) {
             wrapTextInMark(articleBodyEl, hl.text, hl.id, hl.color);
         }
+        refreshSearch();
     }
 
     function clearHighlightMarks() {
@@ -962,6 +985,108 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
             applyHighlight(input.value);
         }
     }
+
+    // ── In-article search ────────────────────────────────────────────
+
+    function clearSearchHighlights() {
+        if (typeof CSS !== 'undefined' && CSS.highlights) {
+            CSS.highlights.delete(SEARCH_HIGHLIGHT_ALL);
+            CSS.highlights.delete(SEARCH_HIGHLIGHT_ACTIVE);
+        }
+    }
+
+    function paintSearchHighlights() {
+        if (typeof CSS === 'undefined' || !CSS.highlights) return;
+        clearSearchHighlights();
+        if (searchMatches.length > 0) {
+            CSS.highlights.set(SEARCH_HIGHLIGHT_ALL, new Highlight(...searchMatches));
+            const active = searchMatches[currentMatch];
+            if (active) CSS.highlights.set(SEARCH_HIGHLIGHT_ACTIVE, new Highlight(active));
+        }
+    }
+
+    function openSearch() {
+        if (webView || loading || error || !readerData) return;
+        searchOpen = true;
+        requestAnimationFrame(() => searchInputEl?.focus());
+    }
+
+    function closeSearch() {
+        searchOpen = false;
+        searchQuery = '';
+        searchMatches = [];
+        currentMatch = -1;
+        clearSearchHighlights();
+        if (searchDebounceTimer) {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = null;
+        }
+    }
+
+    function runSearch(query: string) {
+        searchQuery = query;
+        if (searchDebounceTimer) {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = null;
+        }
+        if (!query || !articleBodyEl || !searchOpen) {
+            searchMatches = [];
+            currentMatch = -1;
+            clearSearchHighlights();
+            return;
+        }
+        searchDebounceTimer = setTimeout(() => {
+            searchDebounceTimer = null;
+            if (!articleBodyEl || query !== searchQuery) return;
+            searchMatches = findMatches(articleBodyEl, query, SEARCH_MATCH_CAP);
+            currentMatch = searchMatches.length > 0 ? 0 : -1;
+            paintSearchHighlights();
+            if (currentMatch === 0 && readerScrollEl) scrollRangeIntoView(readerScrollEl, searchMatches[0]);
+        }, 150);
+    }
+
+    function gotoMatch(dir: 1 | -1) {
+        if (searchMatches.length === 0) return;
+        const next = (currentMatch + dir + searchMatches.length) % searchMatches.length;
+        currentMatch = next;
+        paintSearchHighlights();
+        if (readerScrollEl) scrollRangeIntoView(readerScrollEl, searchMatches[next]);
+    }
+
+    function onSearchKeydown(e: KeyboardEvent) {
+        e.stopPropagation();
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeSearch();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            gotoMatch(e.shiftKey ? -1 : 1);
+        }
+    }
+
+    function onGlobalKeydown(e: KeyboardEvent) {
+        if (e.key === 'Escape' && searchOpen) { closeSearch(); return; }
+        if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'f') return;
+        if (webView || loading || error || !readerData) return;
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName ?? '';
+        const editable = tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable === true;
+        if (editable && target !== searchInputEl) return;
+        e.preventDefault();
+        if (!searchOpen) openSearch();
+        else requestAnimationFrame(() => searchInputEl?.select());
+    }
+
+    /** Re-run the current search after DOM mutations (highlights render) invalidate stored ranges. */
+    function refreshSearch() {
+        if (!searchOpen || !searchQuery || !articleBodyEl) return;
+        const previous = currentMatch;
+        searchMatches = findMatches(articleBodyEl, searchQuery, SEARCH_MATCH_CAP);
+        currentMatch = searchMatches.length > 0
+            ? Math.min(Math.max(previous, 0), searchMatches.length - 1)
+            : -1;
+        paintSearchHighlights();
+    }
 </script>
 
 <svelte:head>
@@ -1061,6 +1186,17 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 
 			<button
 				class="ghost-btn"
+				class:search-active={searchOpen}
+				onclick={openSearch}
+				title={webView ? $t('article.searchWebViewHint') : $t('article.searchInArticle')}
+				aria-label={$t('article.searchInArticle')}
+				disabled={webView || loading || !!error}
+			>
+				<FileSearchCorner size={16} />
+			</button>
+
+			<button
+				class="ghost-btn"
 				onclick={sendToMota}
 				title="{$t('article.sendToMota')}"
 				disabled={!meta}
@@ -1098,7 +1234,56 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 				</a>
 			{/if}
 		</div>
-        </div>
+		</div>
+
+		{#if searchOpen}
+			<div class="search-panel" role="search" aria-label={$t('article.searchInArticle')}>
+				<span class="search-panel-icon"><FileSearchCorner size={15} /></span>
+				<input
+					bind:this={searchInputEl}
+					bind:value={searchQuery}
+					class="search-input"
+					type="text"
+					placeholder={$t('article.searchPlaceholder')}
+					aria-label={$t('article.searchInArticle')}
+					oninput={(e) => runSearch((e.currentTarget as HTMLInputElement).value)}
+					onkeydown={onSearchKeydown}
+				/>
+				<span class="search-count" aria-live="polite">
+					{#if searchQuery && searchMatches.length === 0}
+						{$t('article.searchNoResults')}
+					{:else if searchMatches.length > 0}
+						{currentMatch + 1}/{searchMatches.length}{searchMatches.length >= SEARCH_MATCH_CAP ? '+' : ''}
+					{/if}
+				</span>
+				<button
+					class="search-nav-btn"
+					onclick={() => gotoMatch(-1)}
+					title={$t('article.searchPrev')}
+					aria-label={$t('article.searchPrev')}
+					disabled={searchMatches.length === 0}
+				>
+					<ChevronUp size={15} />
+				</button>
+				<button
+					class="search-nav-btn"
+					onclick={() => gotoMatch(1)}
+					title={$t('article.searchNext')}
+					aria-label={$t('article.searchNext')}
+					disabled={searchMatches.length === 0}
+				>
+					<ChevronDown size={15} />
+				</button>
+				<button
+					class="search-nav-btn"
+					onclick={closeSearch}
+					title={$t('article.searchClose')}
+					aria-label={$t('article.searchClose')}
+				>
+					<X size={15} />
+				</button>
+			</div>
+		{/if}
     </header>
 
     <!-- ── Web view ──────────────────────────────────────────── -->
@@ -1490,6 +1675,85 @@ const res = await apiFetch(`/api/feed/${loadedItemId}/${type}`, {
 .ghost-btn.action-active { color: var(--color-error); }
 .ghost-btn.action-save-active { color: var(--color-accent); }
 .ghost-btn.action-tag-active { color: var(--color-accent); }
+.ghost-btn.search-active { color: var(--color-accent); }
+
+    /* ── In-article Search Panel ───────────────────────────── */
+    .search-panel {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 12px;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        min-width: 0;
+        max-width: calc(100vw - 24px);
+        background: var(--color-base-100);
+        border: 1px solid var(--ui-border-color, var(--color-base-300));
+        border-radius: var(--ui-radius-sm);
+        box-shadow: var(--ui-shadow-2, 0 4px 16px rgba(0, 0, 0, 0.12));
+        animation: search-panel-in 160ms var(--ui-ease, ease-out);
+    }
+    @media (min-width: 768px) {
+        .search-panel { width: 340px; }
+    }
+    @keyframes search-panel-in {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .search-panel { animation: none; }
+    }
+    .search-panel-icon { display: inline-flex; align-items: center; color: color-mix(in oklch, var(--color-base-content) 45%, transparent); flex-shrink: 0; }
+    .search-input {
+        flex: 1 1 auto;
+        min-width: 0;
+        border: none;
+        outline: none;
+        background: transparent;
+        color: var(--color-base-content);
+        font-family: var(--font-ui, inherit);
+        font-size: 13.5px;
+        padding: 4px 2px;
+    }
+    .search-input::placeholder {
+        color: color-mix(in oklch, var(--color-base-content) 35%, transparent);
+    }
+    .search-count {
+        flex-shrink: 0;
+        font-size: 11.5px;
+        font-variant-numeric: tabular-nums;
+        color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
+        white-space: nowrap;
+        min-width: 34px;
+        text-align: right;
+    }
+    .search-nav-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        flex-shrink: 0;
+        border: none;
+        border-radius: var(--ui-radius-xs);
+        background: transparent;
+        color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+        cursor: pointer;
+        transition: background 140ms, color 140ms;
+    }
+    .search-nav-btn:hover { background: var(--color-base-200); color: var(--color-base-content); }
+    .search-nav-btn:disabled { opacity: 0.35; cursor: default; }
+
+    :global(::highlight(article-search)) {
+        background: color-mix(in oklch, var(--color-accent) 30%, transparent);
+        color: inherit;
+    }
+    :global(::highlight(article-search-active)) {
+        background: var(--color-accent);
+        color: var(--color-base-100);
+    }
 
     /* ── Content Centralizer ─────────────────────────────────── */
     .reader-content {

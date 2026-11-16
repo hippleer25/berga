@@ -32,5 +32,12 @@
   "mentionHint": "Digite @ para mencionar um artigo",
   "mentionNoResults": "Nenhum artigo encontrado",
   "mentionLoading": "Buscando...",
-  "sendToMota": "Enviar para Mota"
+  "sendToMota": "Enviar para Mota",
+  "searchInArticle": "Buscar no artigo",
+  "searchPlaceholder": "Encontrar no artigo…",
+  "searchNoResults": "Nenhum resultado",
+  "searchPrev": "Ocorrência anterior",
+  "searchNext": "Próxima ocorrência",
+  "searchClose": "Fechar busca",
+  "searchWebViewHint": "A busca está disponível no texto extraído (use a busca do navegador na página original)"
 }

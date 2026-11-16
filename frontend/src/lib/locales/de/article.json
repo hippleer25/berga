@@ -32,5 +32,12 @@
   "mentionHint": "@ tippen, um einen Artikel zu erwähnen",
   "mentionNoResults": "Keine Artikel gefunden",
   "mentionLoading": "Suche...",
-  "sendToMota": "An Mota senden"
+  "sendToMota": "An Mota senden",
+  "searchInArticle": "Im Artikel suchen",
+  "searchPlaceholder": "Im Artikel finden…",
+  "searchNoResults": "Keine Treffer",
+  "searchPrev": "Vorheriger Treffer",
+  "searchNext": "Nächster Treffer",
+  "searchClose": "Suche schließen",
+  "searchWebViewHint": "Die Suche ist im extrahierten Text verfügbar (nutze die Browsersuche auf der Originalseite)"
 }

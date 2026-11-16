@@ -32,5 +32,12 @@
   "mentionHint": "Type @ to mention an article",
   "mentionNoResults": "No articles found",
   "mentionLoading": "Searching...",
-  "sendToMota": "Send to Mota"
+  "sendToMota": "Send to Mota",
+  "searchInArticle": "Search in article",
+  "searchPlaceholder": "Find in article…",
+  "searchNoResults": "No matches",
+  "searchPrev": "Previous match",
+  "searchNext": "Next match",
+  "searchClose": "Close search",
+  "searchWebViewHint": "Search is available in the extracted text view (use the browser find on the original page)"
 }
