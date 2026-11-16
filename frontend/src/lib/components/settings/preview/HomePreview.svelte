@@ -93,7 +93,7 @@
 		color: color-mix(in oklch, var(--color-base-content) 65%, transparent);
 		cursor: pointer;
 	}
-	.mode-btn.active { color: var(--color-accent); background: color-mix(in oklch, var(--color-accent) 10%, transparent); }
+	.mode-btn.active { color: var(--color-accent); background: color-mix(in oklch, var(--color-accent) 16%, transparent); }
 	.mode-ic { display: flex; }
 
 	.filter-chip {
