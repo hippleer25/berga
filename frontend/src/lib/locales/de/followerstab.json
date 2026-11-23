@@ -43,5 +43,7 @@
   "feedUrl": "Feed-URL",
   "displayName": "Anzeigename",
   "displayNamePlaceholder": "Eigener Name (optional)",
-  "save": "Speichern"
+  "save": "Speichern",
+  "rename": "Umbenennen",
+  "renameFolderTitle": "Ordner umbenennen"
 }

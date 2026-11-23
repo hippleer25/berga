@@ -18,5 +18,8 @@
   "create": "Crear",
   "loadError": "Error al cargar las suscripciones",
   "unreadBadge": "{n} sin leer",
-  "toggleFolder": "Abrir/cerrar carpeta"
+  "toggleFolder": "Abrir/cerrar carpeta",
+  "rename": "Renombrar",
+  "renameFolderTitle": "Renombrar carpeta",
+  "save": "Guardar"
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Rss, ChevronRight, ChevronDown, X, MoreHorizontal, FolderPlus, Trash2, Share2, FolderOpen, Folder, AlertTriangle } from '@lucide/svelte';
+    import { Rss, ChevronRight, ChevronDown, X, MoreHorizontal, FolderPlus, Trash2, Share2, FolderOpen, Folder, AlertTriangle, Pencil } from '@lucide/svelte';
     import { t } from 'svelte-i18n';
     import { get } from 'svelte/store';
     import { goto } from '$app/navigation';
@@ -51,6 +51,9 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
     let dragOverKey = $state<number | string | null>(null);
 
     let newFolderDialog = $state<{ parentFolderKey: number | null; parentFolderName: string | null; name: string } | null>(null);
+
+    let renameFolderDialog = $state<{ folderId: number; folderName: string; name: string } | null>(null);
+    let renameFolderInput = $state<HTMLInputElement | null>(null);
 
     // ── Load ─────────────────────────────────────────────
     $effect(() => {
@@ -309,6 +312,42 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
         }
         newFolderDialog = null;
     }
+
+    // ── Rename Folder ─────────────────────────────────────
+    function openRenameFolderDialog() {
+        if (!contextMenu || contextMenu.type !== 'folder') return;
+        const id = Number(contextMenu.id);
+        if (!Number.isFinite(id)) { contextMenu = null; return; }
+        renameFolderDialog = { folderId: id, folderName: contextMenu.name, name: contextMenu.name };
+        contextMenu = null;
+        setTimeout(() => renameFolderInput?.focus(), 50);
+    }
+
+    function closeRenameFolderDialog() {
+        renameFolderDialog = null;
+    }
+
+    async function confirmRenameFolder() {
+        if (!renameFolderDialog?.name.trim()) return;
+        const { folderId, name, folderName } = renameFolderDialog;
+        const newName = name.trim();
+        if (newName === folderName) { closeRenameFolderDialog(); return; }
+        renameFolderDialog = null;
+        try {
+            await callStructureApi('rename_folder', { folder: folderId, name: newName });
+            subsData = subsData.map(f =>
+                f.folder?.id === folderId && f.folder
+                    ? { ...f, folder: { ...f.folder, name: newName } }
+                    : f
+            );
+            notifySubscriptionChanged();
+            loadSubscriptions().catch((e) => console.error('reload after folder rename failed:', e));
+        } catch (err) {
+            console.error('Rename folder failed:', err);
+            alert(err instanceof Error ? err.message : String(err));
+            await loadSubscriptions();
+        }
+    }
 </script>
 
 {#if open}
@@ -370,6 +409,13 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
                                 toggleFolder(groupKey);
                             }}
                             onkeydown={(e) => e.key === 'Enter' && toggleFolder(groupKey)}
+                            oncontextmenu={(e) => openContextMenu(
+                                e, 'folder',
+                                String(group.folder?.id ?? '__root__'),
+                                group.folder?.name ?? $t('leftpanel.defaultFolder'),
+                                undefined,
+                                group.folder?.id ?? null,
+                            )}
                         >
                             <button class="folder-chevron" onclick={(e) => { e.stopPropagation(); toggleFolder(groupKey); }} aria-label={$t('leftpanel.toggleFolder')}>
                                 {#if folderExpanded}
@@ -416,7 +462,7 @@ import { notifySubscriptionChanged } from '$lib/stores/subscription';
                         {#if folderExpanded && group.feeds.length > 0}
 <ul class="feed-list" role="list">
 		{#each group.feeds as feed (feed.feed_sha256)}
-			<div
+ 			<div
 				class="feed-row"
 				role="button"
 style="padding-left: {28 + indent}px;"
@@ -425,6 +471,13 @@ style="padding-left: {28 + indent}px;"
 				onclick={() => navigateToFeed(feed.feed_sha256!)}
 				tabindex="0"
 				onkeydown={(e) => e.key === 'Enter' && navigateToFeed(feed.feed_sha256!)}
+				oncontextmenu={(e) => openContextMenu(
+					e, 'feed',
+					feed.feed_sha256!,
+					feedDisplayTitle(feed),
+					feed.url ?? undefined,
+					feed.folder?.id ?? null,
+				)}
 				title={feedDisplayTitle(feed)}
 			>
                                         <span class="drag-handle" aria-hidden="true">⠿</span>
@@ -497,6 +550,12 @@ style="padding-left: {28 + indent}px;"
             <div class="ctx-item-label">{contextMenu.name}</div>
             <hr class="ctx-divider" />
             {#if contextMenu.type === 'folder'}
+                {#if contextMenu.id !== '__root__'}
+                    <button class="ctx-item" onclick={openRenameFolderDialog}>
+                        <Pencil size={14} strokeWidth={2} />
+                        <span>{$t('leftpanel.rename')}</span>
+                    </button>
+                {/if}
                 <button class="ctx-item" onclick={() => openNewFolderDialog(Number(contextMenu!.id), contextMenu!.name)}>
                     <FolderPlus size={14} strokeWidth={2} />
                     <span>{$t('leftpanel.newSubfolder')}</span>
@@ -536,6 +595,34 @@ style="padding-left: {28 + indent}px;"
             <div class="dialog-actions">
                 <button class="dialog-btn dialog-btn--ghost" onclick={() => newFolderDialog = null}>{$t('leftpanel.cancel')}</button>
                 <button class="dialog-btn dialog-btn--primary" onclick={confirmCreateFolder}>{$t('leftpanel.create')}</button>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Rename Folder Dialog -->
+    {#if renameFolderDialog}
+        <div class="dialog-backdrop" onclick={closeRenameFolderDialog} aria-hidden="true"></div>
+        <div class="dialog" role="dialog" aria-modal="true" aria-label="{$t('leftpanel.renameFolderTitle')}">
+            <p class="dialog-title">{$t('leftpanel.renameFolderTitle')}</p>
+            <p class="dialog-sub">{renameFolderDialog.folderName}</p>
+            <input
+                bind:this={renameFolderInput}
+                class="dialog-input"
+                type="text"
+                placeholder="{$t('leftpanel.folderNamePlaceholder')}"
+                bind:value={renameFolderDialog.name}
+                onkeydown={(e) => {
+                    if (e.key === 'Enter') confirmRenameFolder();
+                    if (e.key === 'Escape') closeRenameFolderDialog();
+                }}
+            />
+            <div class="dialog-actions">
+                <button class="dialog-btn dialog-btn--ghost" onclick={closeRenameFolderDialog}>{$t('leftpanel.cancel')}</button>
+                <button
+                    class="dialog-btn dialog-btn--primary"
+                    onclick={confirmRenameFolder}
+                    disabled={!renameFolderDialog.name.trim()}
+                >{$t('leftpanel.save')}</button>
             </div>
         </div>
     {/if}

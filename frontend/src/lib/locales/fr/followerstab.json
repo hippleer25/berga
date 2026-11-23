@@ -43,5 +43,7 @@
   "feedUrl": "URL du flux",
   "displayName": "Nom d'affichage",
   "displayNamePlaceholder": "Nom personnalisé (facultatif)",
-  "save": "Enregistrer"
+  "save": "Enregistrer",
+  "rename": "Renommer",
+  "renameFolderTitle": "Renommer le dossier"
 }

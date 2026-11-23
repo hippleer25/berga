@@ -272,6 +272,61 @@ def _move_folder(cursor, user_id: int, folder_id: str, new_parent_id: str | None
     return {"moved_folder": folder_id, "to_parent_id": new_parent_id}
 
 
+def _rename_folder(cursor, user_id: int, folder_id: str, new_name: str | None) -> dict:
+    if not new_name or not new_name.strip():
+        raise HTTPException(status_code=400, detail="Folder name must not be empty")
+
+    if not _folder_belongs_to_user(cursor, folder_id, user_id):
+        raise HTTPException(status_code=403, detail="Folder not found or access denied")
+
+    new_name = new_name.strip()
+
+    cursor.execute("SELECT name, parent_id FROM folders WHERE id = %s AND user_id = %s", (folder_id, user_id))
+    row = cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=403, detail="Folder not found or access denied")
+    old_name, parent_id = row
+
+    if new_name == old_name:
+        return {"renamed_folder": folder_id, "name": new_name, "unchanged": True}
+
+    # UNIQUE (user_id, name, parent_id) — reject a sibling with the same name.
+    # (NULL-safe comparison: root-level folders have parent_id = NULL.)
+    cursor.execute(
+        """
+        SELECT id FROM folders
+        WHERE user_id = %s AND name = %s AND id != %s
+          AND ((parent_id = %s) OR (parent_id IS NULL AND %s IS NULL))
+        """,
+        (user_id, new_name, folder_id, parent_id, parent_id),
+    )
+    if cursor.fetchone():
+        raise HTTPException(
+            status_code=409,
+            detail=f"A folder named '{new_name}' already exists at this level",
+        )
+
+    # Keep the folder id stable (same model as _move_folder): /c/<id> links,
+    # feed_folders rows and children parent_id all keep working.
+    cursor.execute(
+        "UPDATE folders SET name = %s WHERE id = %s AND user_id = %s",
+        (new_name, folder_id, user_id),
+    )
+
+    # Sync the leaf tag of feeds directly in this folder (mirrors _move_feed).
+    cursor.execute(
+        """
+        UPDATE feed_tags ft
+        JOIN feed_folders ff ON ff.user_id = ft.user_id AND ff.feed_sha256 = ft.feed_sha256
+        SET ft.tag = %s
+        WHERE ft.user_id = %s AND ff.folder_id = %s AND ft.tag = %s
+        """,
+        (new_name, user_id, folder_id, old_name),
+    )
+
+    return {"renamed_folder": folder_id, "name": new_name, "old_name": old_name}
+
+
 def _rename_feed(cursor, user_id: int, feed_sha256: str, custom_title: str | None) -> dict:
     if not _feed_belongs_to_user(cursor, feed_sha256, user_id):
         raise HTTPException(status_code=403, detail="Feed not found or access denied")
@@ -533,7 +588,7 @@ def list_subscriptions(user_id: int) -> dict:
 
 VALID_TASKS = {
     "create_folder", "delete_folder", "delete_feed", "move_feed", "move_folder",
-    "rename_feed", "edit_feed_url", "refresh_feed",
+    "rename_folder", "rename_feed", "edit_feed_url", "refresh_feed",
 }
 
 
@@ -575,6 +630,11 @@ async def following_structure(body: StructureRequest, user: dict, request=None):
                 if body.folder is None:
                     raise HTTPException(status_code=400, detail="'folder' is required for move_folder")
                 result = _move_folder(cursor, user_id, body.folder, body.parent_folder)
+
+            case "rename_folder":
+                if body.folder is None:
+                    raise HTTPException(status_code=400, detail="'folder' is required for rename_folder")
+                result = _rename_folder(cursor, user_id, body.folder, body.name)
 
             case "rename_feed":
                 if not body.feed:

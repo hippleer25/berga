@@ -18,5 +18,8 @@
   "create": "Erstellen",
   "loadError": "Fehler beim Laden der Abonnements",
   "unreadBadge": "{n} ungelesen",
-  "toggleFolder": "Ordner auf-/zuklappen"
+  "toggleFolder": "Ordner auf-/zuklappen",
+  "rename": "Umbenennen",
+  "renameFolderTitle": "Ordner umbenennen",
+  "save": "Speichern"
 }

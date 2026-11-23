@@ -18,5 +18,8 @@
   "create": "Criar",
   "loadError": "Falha ao carregar inscrições",
   "unreadBadge": "{n} não lidos",
-  "toggleFolder": "Abrir/fechar pasta"
+  "toggleFolder": "Abrir/fechar pasta",
+  "rename": "Renomear",
+  "renameFolderTitle": "Renomear pasta",
+  "save": "Salvar"
 }

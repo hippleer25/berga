@@ -43,5 +43,7 @@
   "feedUrl": "URL do feed",
   "displayName": "Nome de exibição",
   "displayNamePlaceholder": "Nome personalizado (opcional)",
-  "save": "Salvar"
+  "save": "Salvar",
+  "rename": "Renomear",
+  "renameFolderTitle": "Renomear pasta"
 }

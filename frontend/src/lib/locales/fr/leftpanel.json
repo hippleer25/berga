@@ -18,5 +18,8 @@
   "create": "Créer",
   "loadError": "Échec du chargement des abonnements",
   "unreadBadge": "{n} non lus",
-  "toggleFolder": "Ouvrir/fermer le dossier"
+  "toggleFolder": "Ouvrir/fermer le dossier",
+  "rename": "Renommer",
+  "renameFolderTitle": "Renommer le dossier",
+  "save": "Enregistrer"
 }
