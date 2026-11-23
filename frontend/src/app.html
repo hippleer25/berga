@@ -202,6 +202,13 @@
 
         try {
           document.documentElement.setAttribute(
+            'data-top-bar',
+            localStorage.getItem('ui-top-bar') === 'true' ? 'on' : 'off'
+          );
+        } catch (e) {}
+
+        try {
+          document.documentElement.setAttribute(
             'data-chat-btn-borders',
             localStorage.getItem('ui-chat-btn-borders') === 'true' ? 'on' : 'off'
           );

@@ -1,18 +1,17 @@
 <script lang="ts">
  import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
     import EventCard from '$lib/components/EventCard.svelte';
-    import { Search } from '@lucide/svelte';
  import { t } from 'svelte-i18n';
- import { get } from 'svelte/store';
- import { apiFetch } from '$lib/api';
+  import { get } from 'svelte/store';
+  import { apiFetch } from '$lib/api';
     import { activeTabIdx, stackedScreenOpen } from '$lib/stores/swipe';
     import { orderedTabs } from '$lib/config/tabs';
+  import SearchInput from '$lib/components/filtering/SearchInput.svelte';
+  import { uiTopBar } from '$lib/stores/uiPrefs';
 
 let events = $state<any[]>([]);
     let loading = $state(true);
     let error   = $state('');
-    let query   = $state('');
     /* Accordion: at most one cluster expanded at a time (stable cluster_hash key). */
     let openCluster = $state<string | null>(null);
 
@@ -47,36 +46,19 @@ onMount(async () => {
 
         loading = false;
 });
-
-function handleSearch(e: Event) {
-        e.preventDefault();
-        const q = query.trim();
-        if (q) goto(`/s/${encodeURIComponent(q)}`);
-    }
 </script>
 
 <div class="page-root">
     <div class="main-content">
 
-        <!-- ── Header & Search ──────────────────────────── -->
-        <header class="page-header">
-            <form class="search-form" onsubmit={handleSearch}>
-                <div class="search-wrap">
-                    <!-- 1. Input primeiro (ocupa o espaço flex) -->
-                    <input
-                        class="search-input"
-                        type="search"
-                        placeholder="{$t('searchtab.placeholder', { default: 'Search posts, feeds, or topics...' })}"
-                        bind:value={query}
-                        autocomplete="off"
-                        autocorrect="off"
-                        spellcheck="false"
-                    />
-                    <!-- 2. Ícone por último (vai para a direita) -->
-                    <Search size={18} class="search-icon" />
-                </div>
-            </form>
-        </header>
+        <!-- ── Header & Search (hidden while the top bar hosts it) ── -->
+        {#if !$uiTopBar}
+            <header class="page-header">
+                <SearchInput />
+            </header>
+        {:else}
+            <div class="topbar-gap" aria-hidden="true"></div>
+        {/if}
 
         <!-- ── Trending Events Section ──────────────────── -->
         <section class="events-section">
@@ -135,52 +117,11 @@ function handleSearch(e: Event) {
         padding: 24px 0 0;
     }
 
-    /* ── Search Input ──────────────────────────────────── */
-    .search-form { width: 100%; }
-    .search-wrap {
-        display: flex;
-        align-items: center;
-        gap: 12px; /* Safe space between text and icon */
-        background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
-        border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
-        border-radius: var(--ui-radius-sm);
-        padding: 0 16px;
-        height: 46px;
-        user-select: none;
-        -webkit-tap-highlight-color: transparent;
-        transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-    }
-    .search-wrap:focus-within {
-        background: var(--color-base-100);
-        border-color: var(--color-accent);
-        box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 15%, transparent);
-    }
+    /* When the top bar hosts the search field the in-tab header is
+       gone — keep a matching breathing room before the clusters. */
+    .topbar-gap { height: 24px; }
 
-    .search-input {
-        flex: 1;
-        min-width: 0; /* Prevents input from pushing the icon out of the bar */
-        background: transparent; border: none; outline: none;
-        font-size: 14px; color: var(--color-base-content); line-height: 1;
-        caret-color: var(--color-accent);
-        user-select: text;
-        -webkit-appearance: none; appearance: none;
-        -webkit-search-decoration: none;
-    }
-    .search-input::placeholder { color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent)); }
-    .search-input::-webkit-search-cancel-button { display: none; }
-    .search-input::-webkit-search-decoration { display: none; }
-    .search-input::selection { background: transparent; }
-    .search-input:focus,
-    .search-input:focus-visible {
-        outline: none !important;
-        box-shadow: none !important;
-    }
-
-    .search-wrap :global(.search-icon) {
-        flex-shrink: 0; /* Prevents the magnifying glass from shrinking or being hidden */
-        color: var(--color-accent);
-        transition: color 180ms ease;
-    }
+    /* ── Search input ── lives in filtering/SearchInput.svelte ── */
 
     /* ── Events Section ────────────────────────────────── */
     .events-section {

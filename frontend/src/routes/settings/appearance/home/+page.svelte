@@ -24,6 +24,9 @@
     uiChipIcons,
     getSavedChipIcons,
     applyChipIcons,
+    uiTopBar,
+    getSavedTopBar,
+    applyTopBar,
     WELCOME_SPACE_MIN,
     WELCOME_SPACE_MAX,
     type WelcomeStyle,
@@ -48,6 +51,7 @@
   let welcomeStyleVal = $state<WelcomeStyle>(getSavedWelcomeStyle());
   let welcomeSpace = $state<number>(getSavedWelcomeSpace());
   let chipIcons = $state<boolean>(getSavedChipIcons());
+  let topBar = $state<boolean>(getSavedTopBar());
 
   onMount(() => {
     titleFontCustom = hasCustomFont('page-title');
@@ -68,6 +72,11 @@
     chipIcons = !chipIcons;
     applyChipIcons(chipIcons, true);
     uiChipIcons.set(chipIcons);
+  }
+  function toggleTopBar() {
+    topBar = !topBar;
+    applyTopBar(topBar, true);
+    uiTopBar.set(topBar);
   }
   function selectTitleFont(fontName: string) {
     applyFont('page-title', fontName, true);
@@ -129,6 +138,18 @@
       />
 
       <SettingsToggle label={$t('settings.chipIcons')} checked={chipIcons} onClick={toggleChipIcons} />
+    </div>
+  </div>
+
+  <div class="settings-group">
+    <div class="group-label">{$t('settings.topBarGroup')}</div>
+    <div class="group-card">
+      <SettingsToggle
+        label={$t('settings.topBar')}
+        desc={$t('settings.topBarHint')}
+        checked={topBar}
+        onClick={toggleTopBar}
+      />
     </div>
   </div>
 

@@ -1,254 +1,83 @@
 <script lang="ts">
-    import { onMount, tick } from 'svelte';
-    import { goto } from '$app/navigation';
-    import { Search, Rss } from '@lucide/svelte';
-    import LeftPanel from './LeftPanel.svelte';
-    import { drawerOpen } from '$lib/stores/drawer';
-    import { t } from 'svelte-i18n';
+	import { browser } from '$app/environment';
+	import HomeFilterBar from '$lib/components/filtering/HomeFilterBar.svelte';
+	import SearchInput from '$lib/components/filtering/SearchInput.svelte';
+	import { uiTopBar } from '$lib/stores/uiPrefs';
+	import { activeTabId, type TabId } from '$lib/config/tabs';
+	import { stackedScreenOpen } from '$lib/stores/swipe';
 
-    interface Props {
-        showSubscriptionsButton?: boolean;
-        showSearchButton?: boolean;
-    }
+	// Adaptive content: each tab contributes the controls it owns
+	// (home → mode pill + filter chips; events → search field).
+	// Tabs without bar content (mota, followers) render nothing.
+	const tabId = $derived<TabId>($activeTabId);
+	const hasContent = $derived(tabId === 'home' || tabId === 'events');
+	const visible = $derived($uiTopBar && !$stackedScreenOpen && hasContent);
 
-    let {
-        showSubscriptionsButton = true,
-        showSearchButton = true
-    }: Props = $props();
-
-    // ── Scroll visibility ────────────────────────────────
-    let topBarVisible = $state(true);
-    let lastScrollY = 0;
-
-    onMount(() => {
-        const handleScroll = () => {
-            const y = window.scrollY;
-            if (y < 10)               topBarVisible = true;
-            else if (y < lastScrollY) topBarVisible = true;
-            else if (y > lastScrollY) topBarVisible = false;
-            lastScrollY = y;
-        };
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
-    });
-
-    // ── Search ───────────────────────────────────────────
-    let searchExpanded = $state(false);
-    let searchQuery    = $state('');
-    let inputEl = $state<HTMLInputElement>();
-
-    async function openSearch() {
-        searchExpanded = true;
-        await tick();
-        inputEl?.focus();
-    }
-
-    function closeSearch() {
-        searchExpanded = false;
-        searchQuery    = '';
-    }
-
-    function handleSearchKey(e: KeyboardEvent) {
-        if (e.key === 'Enter' && searchQuery.trim()) {
-            goto(`/s/${encodeURIComponent(searchQuery.trim())}`);
-            closeSearch();
-        }
-        if (e.key === 'Escape') closeSearch();
-    }
-
-    // Close search on outside click
-    function handleWindowClick(e: MouseEvent) {
-        if (!searchExpanded) return;
-        if (!(e.target as HTMLElement).closest('.search-pill')) closeSearch();
-    }
+	// The tab layer reserves the bar's height while it is rendered —
+	// PageTrack sizes its mobile scroll containers with `--topbar-h`.
+	const TOPBAR_H = '44px';
+	$effect(() => {
+		if (!browser) return;
+		if (visible) {
+			document.documentElement.style.setProperty('--topbar-h', TOPBAR_H);
+		} else {
+			document.documentElement.style.removeProperty('--topbar-h');
+		}
+		return () => {
+			if (browser) document.documentElement.style.removeProperty('--topbar-h');
+		};
+	});
 </script>
 
-<svelte:window onclick={handleWindowClick} />
-
-<!-- ── Top bar ─────────────────────────────────────────── -->
-<div class="top-bar" class:top-bar--hidden={!topBarVisible}>
-    <div class="top-bar-inner">
-
-        <!-- Left: RSS / Subscriptions outlined button (only if allowed) -->
-        {#if showSubscriptionsButton}
-            <button
-                class="topbar-btn"
-                onclick={(e) => { e.stopPropagation(); $drawerOpen = true; }}
-                aria-label="{$t('topbar.subscriptions')}"
-            >
-                <Rss size={16} strokeWidth={2} />
-            </button>
-        {:else}
-            <!-- Empty spacer to keep layout balanced when search button is present -->
-            <div style="width: 36px;"></div>
-        {/if}
-
-        <!-- Right: search icon button (only if allowed) -->
-        {#if showSearchButton}
-            {#if !searchExpanded}
-                <button
-                    class="topbar-btn"
-                    onclick={(e) => { e.stopPropagation(); openSearch(); }}
-                    aria-label="{$t('topbar.search')}"
-                >
-                    <Search size={16} strokeWidth={2} />
-                </button>
-            {/if}
-        {:else}
-            <!-- Empty spacer to keep layout balanced when subscriptions button is present -->
-            <div style="width: 36px;"></div>
-        {/if}
-
-    </div>
-
-    <!-- Full-width search overlay (only shown when search is expanded) -->
-    {#if showSearchButton && searchExpanded}
-        <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-        <div
-            class="search-overlay"
-            onclick={(e) => e.stopPropagation()}
-            style="background: var(--glass-bg); backdrop-filter: var(--glass-blur);"
-        >
-            <div class="search-overlay-inner">
-                <div class="search-input-wrapper">
-                    <input
-                        bind:this={inputEl}
-                        bind:value={searchQuery}
-                        onkeydown={handleSearchKey}
-                        type="text"
-                        placeholder="{$t('topbar.searchPlaceholder')}"
-                        class="ui-field w-full h-12 pr-10 backdrop-blur-sm"
-                        autocomplete="off"
-                        spellcheck="false"
-                    />
-                    <span class="search-icon-right">
-                        <Search size={18} />
-                    </span>
-                </div>
-            </div>
-        </div>
-    {/if}
-</div>
-
-<!-- ── Subscriptions left panel (only mounted if subscriptions button is allowed) ───────────────────────── -->
-{#if showSubscriptionsButton}
-    <LeftPanel bind:open={$drawerOpen} />
+{#if visible}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="top-bar">
+		<div class="top-bar-inner">
+			{#if tabId === 'home'}
+				<HomeFilterBar variant="bar" />
+			{:else if tabId === 'events'}
+				<SearchInput compact />
+			{/if}
+		</div>
+	</div>
 {/if}
 
 <style>
-    /* ── Top bar ──────────────────────────────────────── */
-    .top-bar {
-        position: sticky;
-        top: 0;
-        z-index: 30;
-        isolation: isolate;
-        transform: translateY(0);
-        transition: transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
-        background: var(--glass-bg);
-        backdrop-filter: var(--glass-blur);
-        -webkit-backdrop-filter: var(--glass-blur);
-    }
-    .top-bar--hidden {
-        transform: translateY(-110%);
-    }
+	/* ── Slim chrome bar, always visible at the top of the tab layer ──
+	   Background follows the navbar palette (--nav-bg / --nav-bg-content). */
+	.top-bar {
+		position: sticky; /* desktop: window scroll — mobile: in-flow above panels */
+		top: 0;
+		z-index: 30;
+		isolation: isolate;
+		background: var(--nav-bg, var(--color-base-100));
+		color: var(--nav-bg-content, var(--color-base-content));
+		/* Chrome text/icons read against the navbar palette */
+		--color-base-content: var(--nav-bg-content, var(--color-base-content));
+		border-bottom: 1px solid var(--ui-border-color, color-mix(in oklch, var(--color-base-content) 14%, transparent));
+	}
 
-    .top-bar-inner {
-        max-width: 42rem;
-        margin: 0 auto;
-        padding: 10px 16px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
+	.top-bar-inner {
+		display: flex;
+		align-items: center;
+		min-height: 44px;
+		max-width: 42rem;
+		margin: 0 auto;
+		padding: 4px 16px;
+	}
 
-    @media (min-width: 768px) {
-        .top-bar-inner {
-            margin-left: calc(50vw - 21rem - 220px);
-            margin-right: 0;
-        }
-    }
-
-    /* ── Outlined top-bar buttons ────────────────────── */
-    .topbar-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 36px;
-        height: 36px;
-        border-radius: var(--ui-radius-sm);
-        border: 1.5px solid var(--color-primary);
-        background: var(--color-base-100);
-        color: var(--color-base-content);
-        cursor: pointer;
-        flex-shrink: 0;
-        transition:
-            border-color 150ms ease,
-            background   150ms ease,
-            color        150ms ease,
-            box-shadow   150ms ease;
-    }
-    .topbar-btn:hover {
-        border-color: var(--color-primary);
-        background: var(--color-base-200);
-        color: var(--color-primary);
-        box-shadow: var(--color-base-200);
-    }
-    .topbar-btn:active {
-        background: color-mix(in oklch, var(--color-primary) 16%, var(--color-base-200));
-    }
-
-    /* ── Full-width search overlay ───────────────────── */
-    .search-overlay {
-        position: absolute;
-        inset: 0;
-        z-index: 10;
-        display: flex;
-        align-items: center;
-        animation: overlay-expand 260ms cubic-bezier(0.4, 0, 0.2, 1) both;
-    }
-
-    .search-overlay-inner {
-        position: relative;
-        display: flex;
-        align-items: center;
-        width: 100%;
-        max-width: 42rem;
-        margin: 0 auto;
-        padding: 0 16px;
-    }
-
-    @media (min-width: 768px) {
-        .search-overlay-inner {
-            margin-left: calc(50vw - 21rem - 220px);
-            margin-right: 0;
-        }
-    }
-
-    .search-input-wrapper {
-        position: relative;
-        width: 100%;
-    }
-
-    .search-icon-right {
-        position: absolute;
-        right: 12px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: var(--color-primary);
-        pointer-events: none;
-        display: flex;
-        align-items: center;
-        z-index: 10;
-    }
-
-    @keyframes overlay-expand {
-        from {
-            clip-path: inset(0 0 0 100%);
-            opacity: 0.5;
-        }
-        to {
-            clip-path: inset(0 0 0 0%);
-            opacity: 1;
-        }
-    }
+	@media (min-width: 768px) {
+		.top-bar-inner {
+			padding: 4px 0;
+			margin-left: max(var(--sidebar-w, 240px), calc(50vw - 21rem));
+			margin-right: auto;
+		}
+		/* Split viewer: re-center within the 50% pane (same contract as tabs) */
+		:global(.tabs-layer.split) .top-bar-inner {
+			margin-left: auto !important;
+			margin-right: auto !important;
+			max-width: none;
+			padding: 4px 16px;
+		}
+	}
 </style>

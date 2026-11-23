@@ -8,6 +8,7 @@
 	import { t } from 'svelte-i18n';
 	import NavBar from '$lib/components/NavBar.svelte';
 	import PageTrack from '$lib/components/PageTrack.svelte';
+	import TopBar from '$lib/components/TopBar.svelte';
 	import LeftPanel from '$lib/components/LeftPanel.svelte';
 	import SplitView from '$lib/components/SplitView.svelte';
 	import SplitDropZones from '$lib/components/SplitDropZones.svelte';
@@ -108,7 +109,10 @@
             {#if $splitTab && $splitSide === 'left'}
                 <div class="pane pane-split"><SplitView /></div>
             {/if}
-            <div class="pane pane-main"><PageTrack /></div>
+            <div class="pane pane-main">
+                <TopBar />
+                <PageTrack />
+            </div>
             {#if $splitTab && $splitSide === 'right'}
                 <div class="pane pane-split"><SplitView /></div>
             {/if}

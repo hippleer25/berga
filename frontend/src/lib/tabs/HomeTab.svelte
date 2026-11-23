@@ -18,39 +18,35 @@ import { onMount } from 'svelte';
  import { subscriptionChanged } from '$lib/stores/subscription';
  import { onViewed, flushPending, destroyViewTracker } from '$lib/stores/viewTracker';
 import {
-		Rss, FolderOpen, ChevronDown,
-		X, Check, Settings, Share2, Sparkles, Bookmark, Tag, RotateCw,
+		X, Check, Settings, Share2, Sparkles, Tag, RotateCw,
 	} from '@lucide/svelte';
  import LoaderCircle from '@lucide/svelte/icons/loader-circle';
  import TypedTitle from '$lib/components/TypedTitle.svelte';
  import { t } from 'svelte-i18n';
 import { apiFetch } from '$lib/api';
-  import {
+ 	import {
   	feedCacheKey,
   	loadFeedCache,
   	saveFeedCache,
   	clearFeedCache,
  	feedBustNeeded,
  	clearBustFlag,
-  	loadSubsCache,
-  	saveSubsCache,
-  	clearSubsCache,
+ 	clearSubsCache,
   } from '$lib/stores/feedCache';
   import { syncFeedItemTags, type TagRef } from '$lib/utils/syncFeedTags';
+  import HomeFilterBar from '$lib/components/filtering/HomeFilterBar.svelte';
+  import { uiTopBar } from '$lib/stores/uiPrefs';
+  import {
+  	homeFilters,
+  	homeSubs,
+  	homeTags,
+  	selectHomeTag,
+  	applyHomeTagFromUrl,
+  	loadHomeSubs,
+  } from '$lib/stores/homeFilters';
+  import { getDropdownStyleUp, containPickerScroll } from '$lib/utils/pickerUtils';
 
 const TAB_ROUTES = ['/followers', '/home', '/events', '/mota'];
-
-type Mode = 'recommendations' | 'recents' | 'saved';
-
-    // Mode & filter
-    let mode               = $state<Mode>('recommendations');
-    let selectedFolderId   = $state<string | null>(null);
-    let selectedFolderName = $state<string | null>(null);
-let selectedFeedSha = $state<string | null>(null);
-let selectedFeedName = $state<string | null>(null);
-let selectedTagId = $state<number | null>(null);
-let selectedTagName = $state<string | null>(null);
-let tagList = $state<Array<{ id: number; name: string; color?: string }>>([]);
 
     // Feed
 let feed = $state<any[]>([]);
@@ -60,7 +56,6 @@ let loadingMore = $state<boolean>(false);
     let hasMore     = $state<boolean>(true);
     let error       = $state<string>('');
 let pageNum = $state<number>(0);
-    let subsData    = $state<any[]>([]);
 
     // Share feedback
     let shareCopied = $state(false);
@@ -68,22 +63,6 @@ let pageNum = $state<number>(0);
     // Sentinel element for IntersectionObserver
     let sentinelEl: HTMLDivElement | null = $state(null);
     let observer:   IntersectionObserver | null = null;
-
-// Filter bar touch tracking
-let filterBarAxis: 'h' | 'v' | null = null;
-let filterBarStartX = 0;
-let filterBarStartY = 0;
-
-// Dropdowns
-let showFolderPicker = $state<boolean>(false);
-let showFeedPicker = $state<boolean>(false);
-let showTagPicker = $state<boolean>(false);
-let folderDropStyle = $state<string>('');
-let feedDropStyle = $state<string>('');
-let tagDropStyle = $state<string>('');
-let folderBtnEl = $state<HTMLButtonElement | null>(null);
-let feedBtnEl = $state<HTMLButtonElement | null>(null);
-let tagBtnEl = $state<HTMLButtonElement | null>(null);
 
 // Bulk tag
 let bulkTagPickerOpen = $state<boolean>(false);
@@ -108,31 +87,6 @@ const MAX_EXCLUDE_IDS = 80;
 const PTR_WHEEL_IDLE_MS = 220;
 
     // Derived lists
-    let folders = $derived.by(() => {
-        const seen   = new Set<number>();
-        const result: Array<{ id: number; name: string }> = [];
-        for (const f of subsData) {
-            if (f.folder?.id && !seen.has(f.folder.id)) {
-                seen.add(f.folder.id);
-                result.push({ id: f.folder.id, name: f.folder.name });
-            }
-        }
-        return result.sort((a, b) => a.name.localeCompare(b.name));
-    });
-
-    let feedsList = $derived.by(() =>
-        subsData
-            .filter((f: any) => !f._empty_folder && f.feed_sha256)
-            .map((f: any) => {
-                let title = f.title && f.title !== 'No title' ? f.title : '';
-                if (!title) {
-                    try { title = new URL(f.url).hostname; } catch (_e) { title = f.url || ''; }
-                }
-                return { sha: f.feed_sha256 as string, title, icon: f.icon as string | undefined };
-            })
-            .sort((a: any, b: any) => a.title.localeCompare(b.title))
-    );
-
     const SKELETON_INITIAL = Array.from({ length: 6 }, (_, i) => i);
     const SKELETON_MORE    = Array.from({ length: 3 }, (_, i) => i);
 
@@ -219,7 +173,7 @@ const PTR_WHEEL_IDLE_MS = 220;
 	const wheelTarget: EventTarget = scrollContainer ?? window;
 	wheelTarget.addEventListener('wheel', onWheelPull as EventListener, { passive: true });
 
-	loadSubscriptions();
+	loadHomeSubs();
 		loadFeed(true);
 		applyTagFromUrl();
 
@@ -227,7 +181,7 @@ const PTR_WHEEL_IDLE_MS = 220;
 			if (val > 0) {
 				clearFeedCache();
 				clearSubsCache();
-				loadSubscriptions();
+				loadHomeSubs(true);
 				loadFeed(true);
 			}
 		});
@@ -262,28 +216,19 @@ $effect(() => {
   }
 });
 
-	async function loadSubscriptions() {
-		const cached = loadSubsCache<any>();
-		if (cached) {
-			const raw = cached;
-			subsData = Array.isArray(raw) ? raw : (raw.feeds ?? []);
-		}
+	// Filter changes (mode / folder / feed / tag) live in the shared
+	// homeFilters store — any change reloads the feed. The first run is
+	// skipped because onMount already performs the initial load.
+	let filtersInitialized = false;
+	$effect(() => {
+		$homeFilters;
+		if (!filtersInitialized) { filtersInitialized = true; return; }
+		loadFeed(true);
+	});
 
-		try {
-			const res = await apiFetch('/api/list-subscriptions', { credentials: 'include' });
-			if (!res.ok) throw new Error('failed');
-			const raw = await res.json();
-			subsData = Array.isArray(raw) ? raw : (raw.feeds ?? []);
-			saveSubsCache(raw);
-		} catch (_e) { /* silently ignore */ }
-
-		try {
-			const res = await apiFetch('/api/tags', { credentials: 'include' });
-			if (res.ok) {
-				const data = await res.json();
-				tagList = data.tags ?? [];
-			}
-		} catch { /* non-critical */ }
+	function currentCacheKey() {
+		const f = $homeFilters;
+		return feedCacheKey(f.mode, f.selectedFolderId, f.selectedFeedSha, f.selectedTagId);
 	}
 
 	function buildUrl(
@@ -292,10 +237,11 @@ $effect(() => {
 		opts?: { refresh?: boolean; excludeIds?: string[] },
 	): string {
 		const p = new URLSearchParams({ limit: String(limit) });
-		if (selectedFolderId) p.set('folder_id', selectedFolderId);
-		if (selectedFeedSha) p.set('feed_sha256', selectedFeedSha);
-		if (selectedTagId) p.set('tag_id', String(selectedTagId));
-		if (mode === 'recommendations') {
+		const f = $homeFilters;
+		if (f.selectedFolderId) p.set('folder_id', f.selectedFolderId);
+		if (f.selectedFeedSha) p.set('feed_sha256', f.selectedFeedSha);
+		if (f.selectedTagId) p.set('tag_id', String(f.selectedTagId));
+		if (f.mode === 'recommendations') {
 			p.set('page', String(pageNum));
 			if (opts?.refresh) p.set('refresh', '1');
 			if (opts?.excludeIds && opts.excludeIds.length > 0) {
@@ -303,7 +249,7 @@ $effect(() => {
 			}
 			return `/api/feed/recommendations?${p}`;
 		}
-		if (mode === 'saved') {
+		if (f.mode === 'saved') {
 			p.set('page', String(pageNum));
 			return `/api/feed/saved?${p}`;
 		}
@@ -335,7 +281,7 @@ $effect(() => {
 	async function loadFeed(reset: boolean = false) {
 		consumeBust();
 		if (reset) {
-			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
+			const cacheKey = currentCacheKey();
 			const cached = loadFeedCache<any[]>(cacheKey);
 			if (cached && cached.length > 0) {
 				feed = cached;
@@ -370,7 +316,7 @@ $effect(() => {
 			const data: any[] = await res.json();
 			feed = data;
 			hasMore = data.length > 0;
-			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
+			const cacheKey = currentCacheKey();
 			saveFeedCache(cacheKey, data);
 		} catch (e: any) {
 			error = (e as Error).message || get(t)('hometab.loadError');
@@ -390,7 +336,7 @@ $effect(() => {
 		hasMore = true;
 		try {
 			await flushPending();
-			const url = mode === 'recommendations'
+			const url = $homeFilters.mode === 'recommendations'
 				? buildUrl(0, 20, { refresh: true, excludeIds: loadedItemIds() })
 				: buildUrl(0);
 			const res = await apiFetch(url, fetchCacheOpt());
@@ -401,7 +347,7 @@ $effect(() => {
 			// nothing when the ranked corpus is smaller than what we already
 			// show. Fall back to a plain page-0 fetch instead of blanking the
 			// feed; if that yields nothing either, keep what we have.
-			if (data.length === 0 && mode === 'recommendations') {
+			if (data.length === 0 && $homeFilters.mode === 'recommendations') {
 				const fbRes = await apiFetch(buildUrl(0), fetchCacheOpt());
 				if (fbRes.ok) {
 					const fbData: any[] = await fbRes.json();
@@ -413,7 +359,7 @@ $effect(() => {
 				hasMore = data.length > 0;
 			}
 			loading = false;
-			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
+			const cacheKey = currentCacheKey();
 			if (data.length > 0) saveFeedCache(cacheKey, data);
 		} catch (e: any) {
 			error = (e as Error).message || get(t)('hometab.loadError');
@@ -429,7 +375,7 @@ $effect(() => {
     try {
       let newItems: any[];
 
-      if (mode === 'recommendations') {
+      if ($homeFilters.mode === 'recommendations') {
         // Cursor mode: send already-loaded ids so the backend returns the
         // next unseen batch (no skips/duplicates when articles get excluded
         // between pages). Flush pending views first so the DB is current.
@@ -445,7 +391,7 @@ $effect(() => {
         newItems = data.filter((x: any) => !seen.has(x.item_id));
         if (newItems.length === 0) { hasMore = false; loadingMore = false; return; }
         hasMore = true;
-      } else if (mode === 'saved') {
+      } else if ($homeFilters.mode === 'saved') {
         const nextPage = pageNum + 1;
         const res = await apiFetch(buildUrl(nextPage), { credentials: 'include' });
         if (!res.ok) throw new Error(`${get(t)('hometab.loadError')} (${res.status})`);
@@ -472,8 +418,8 @@ $effect(() => {
 
 		feed = [...feed, ...newItems];
 
-		if (mode === 'recommendations' || mode === 'saved') {
-			const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
+		if ($homeFilters.mode === 'recommendations' || $homeFilters.mode === 'saved') {
+			const cacheKey = currentCacheKey();
 			saveFeedCache(cacheKey, feed);
 		}
     } catch (e: any) {
@@ -483,53 +429,13 @@ $effect(() => {
   loadingMore = false;
   }
 
-  function setMode(next: Mode) {
-        if (mode === next) return;
-        mode = next;
-        loadFeed(true);
-    }
-
-	function selectFolder(id: number | null, name: string | null) {
-		selectedFolderId = id !== null ? String(id) : null;
-		selectedFolderName = name;
-		selectedFeedSha = null;
-		selectedFeedName = null;
-		selectedTagId = null;
-		selectedTagName = null;
-		showFolderPicker = false;
-		loadFeed(true);
-	}
-
-	function selectFeed(sha: string | null, name: string | null) {
-		selectedFeedSha = sha;
-		selectedFeedName = name;
-		selectedFolderId = null;
-		selectedFolderName = null;
-		selectedTagId = null;
-		selectedTagName = null;
-		showFeedPicker = false;
-		loadFeed(true);
-	}
-
-	function selectTag(id: number | null, name: string | null) {
-		selectedTagId = id;
-		selectedTagName = name;
-		selectedFolderId = null;
-		selectedFolderName = null;
-		selectedFeedSha = null;
-		selectedFeedName = null;
-		showTagPicker = false;
-		loadFeed(true);
-	}
-
-	function handleTagClick(tag: { tag_id: number; name: string; color?: string; source: string }) {
-		selectTag(tag.tag_id, tag.name);
+  function handleTagClick(tag: { tag_id: number; name: string; color?: string; source: string }) {
+		selectHomeTag(tag.tag_id, tag.name);
 	}
 
 	function handleTagChange(payload: { item_id: string; tag_id: number; action: 'assign' | 'unassign'; tag?: TagRef }) {
 		feed = syncFeedItemTags(feed, payload.item_id, payload.tag_id, payload.action, payload.tag);
-		const cacheKey = feedCacheKey(mode, selectedFolderId, selectedFeedSha, selectedTagId);
-		saveFeedCache(cacheKey, feed);
+		saveFeedCache(currentCacheKey(), feed);
 	}
 
 	function applyTagFromUrl() {
@@ -537,57 +443,12 @@ $effect(() => {
 		const tid = params.get('tag_id');
 		if (tid) {
 			const id = Number(tid);
-			const found = tagList.find(t => t.id === id);
+			const found = $homeTags.find(t => t.id === id);
 			if (found) {
-				selectedTagId = found.id;
-				selectedTagName = found.name;
+				applyHomeTagFromUrl(found.id, found.name);
 			}
 		}
 	}
-
-	/** Anchor the popup below (or above) the trigger chip and clamp its
-	    height to the real viewport space so it is never cut off. The
-	    inline `max-height` returned here is the single source of truth
-	    for popup height at every breakpoint (CSS only widens on desktop). */
-	function getDropdownStyle(btnEl: HTMLButtonElement, tall = false): string {
-        const r          = btnEl.getBoundingClientRect();
-        const DROPDOWN_W = 196;
-        const PADDING    = 8;
-        const GAP        = 6;
-        const desktop    = window.matchMedia('(min-width: 768px)').matches;
-        const target     = desktop ? (tall ? 520 : 420) : (tall ? 320 : 280);
-        const top        = r.bottom + GAP;
-        const maxH       = Math.max(Math.floor(Math.min(target, window.innerHeight - top - PADDING)), 160);
-        if (r.right + PADDING > window.innerWidth) {
-            return `top:${top}px; max-height:${maxH}px; right:${Math.max(window.innerWidth - r.right, PADDING)}px;`;
-        }
-        const left = Math.max(Math.min(r.left, window.innerWidth - DROPDOWN_W - PADDING), PADDING);
-        return `top:${top}px; max-height:${maxH}px; left:${left}px;`;
-    }
-
-function toggleFolderPicker() {
-        showFolderPicker = !showFolderPicker;
-        showFeedPicker = false;
-        showTagPicker = false;
-        bulkTagPickerOpen = false;
-        if (showFolderPicker && folderBtnEl) folderDropStyle = getDropdownStyle(folderBtnEl);
-}
-
-function toggleFeedPicker() {
-        showFeedPicker = !showFeedPicker;
-        showFolderPicker = false;
-        showTagPicker = false;
-        bulkTagPickerOpen = false;
-        if (showFeedPicker && feedBtnEl) feedDropStyle = getDropdownStyle(feedBtnEl, true);
-}
-
-function toggleTagPicker() {
-        showTagPicker = !showTagPicker;
-        showFolderPicker = false;
-        showFeedPicker = false;
-        bulkTagPickerOpen = false;
-        if (showTagPicker && tagBtnEl) tagDropStyle = getDropdownStyle(tagBtnEl);
-}
 
 	function handleToggleSelect(item: any) {
         selectedPosts.update(current => {
@@ -627,60 +488,7 @@ $effect(() => {
 
 	function toggleBulkTagPicker() {
         bulkTagPickerOpen = !bulkTagPickerOpen;
-        showFolderPicker = false;
-        showFeedPicker = false;
-        showTagPicker = false;
         if (bulkTagPickerOpen && bulkTagBtnEl) bulkDropStyle = getDropdownStyleUp(bulkTagBtnEl);
-}
-
-/** Floating selection bar sits at the screen's bottom edge — open its
-    dropdown upward so it never fights the viewport. */
-function getDropdownStyleUp(btnEl: HTMLButtonElement, tall = false): string {
-        const r          = btnEl.getBoundingClientRect();
-        const DROPDOWN_W = 196;
-        const PADDING    = 8;
-        const GAP        = 6;
-        const desktop    = window.matchMedia('(min-width: 768px)').matches;
-        const target     = desktop ? (tall ? 520 : 420) : (tall ? 320 : 280);
-        const bottom     = window.innerHeight - r.top + GAP;
-        const maxH       = Math.max(Math.floor(Math.min(target, r.top - GAP - PADDING)), 160);
-        if (r.right + PADDING > window.innerWidth) {
-            return `bottom:${bottom}px; max-height:${maxH}px; right:${Math.max(window.innerWidth - r.right, PADDING)}px;`;
-        }
-        const left = Math.max(Math.min(r.left, window.innerWidth - DROPDOWN_W - PADDING), PADDING);
-        return `bottom:${bottom}px; max-height:${maxH}px; left:${left}px;`;
-}
-
-/** Svelte action: keeps wheel/touch gestures inside the picker popups.
-    Pops are `overflow-y:auto` scroll containers, but once the list is at
-    its edge (or the popup has nothing to scroll) the browser chains the
-    gesture into the feed behind — this blocks that. Non-passive because
-    Svelte 5 marks wheel/touchmove handlers passive by default. */
-function containPickerScroll(node: HTMLElement): { destroy: () => void } {
-	const scrollable = () => node.scrollHeight > node.clientHeight + 1;
-	const atEdge = (dy: number) => {
-		if (!scrollable()) return true;
-		const max = node.scrollHeight - node.clientHeight;
-		return dy > 0 ? node.scrollTop >= max - 1 : node.scrollTop <= 1;
-	};
-	const onWheel = (e: WheelEvent) => { if (atEdge(e.deltaY)) e.preventDefault(); };
-	let touchY = 0;
-	const onTouchStart = (e: TouchEvent) => { touchY = e.touches[0].clientY; };
-	const onTouchMove = (e: TouchEvent) => {
-		if (e.touches.length !== 1) return;
-		if (atEdge(touchY - e.touches[0].clientY)) e.preventDefault();
-		touchY = e.touches[0].clientY;
-	};
-	node.addEventListener('wheel', onWheel, { passive: false });
-	node.addEventListener('touchstart', onTouchStart, { passive: true });
-	node.addEventListener('touchmove', onTouchMove, { passive: false });
-	return {
-		destroy() {
-			node.removeEventListener('wheel', onWheel);
-			node.removeEventListener('touchstart', onTouchStart);
-			node.removeEventListener('touchmove', onTouchMove);
-		},
-	};
 }
 
 async function bulkAssignTag(tagId: number) {
@@ -699,7 +507,7 @@ async function bulkAssignTag(tagId: number) {
                 });
 if (res.ok) {
 				clearFeedCache();
-				const tag = tagList.find(t => t.id === tagId);
+				const tag = $homeTags.find(t => t.id === tagId);
                         if (tag) {
                                 feed = feed.map((item: any) => {
                                         if (posts.some((p: any) => p.item_id === item.item_id)) {
@@ -1002,117 +810,10 @@ if (res.ok) {
             </Portal>
 {/if}
 
-<!-- Filter bar -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="filter-bar" ontouchstart={(e) => { filterBarAxis = null; filterBarStartX = e.touches[0].clientX; filterBarStartY = e.touches[0].clientY; }} ontouchmove={(e) => { if (filterBarAxis === 'v') return; const el = e.currentTarget as HTMLElement; const dx = e.touches[0].clientX - filterBarStartX; const dy = e.touches[0].clientY - filterBarStartY; if (!filterBarAxis) { if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; filterBarAxis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'h' : 'v'; if (filterBarAxis === 'v') return; } const canScrollLeft = el.scrollLeft > 0; const canScrollRight = el.scrollLeft + el.clientWidth < el.scrollWidth - 1; const swipingRight = dx > 0; const swipingLeft = dx < 0; 		if ((swipingRight && canScrollLeft) || (swipingLeft && canScrollRight)) {
-				e.stopPropagation();
-			} }} ontouchend={() => { filterBarAxis = null; }}>
-    <div class="mode-pill" role="group" aria-label="{$t('hometab.filterMode')}">
-      <button
-        class="mode-btn"
-        class:active={mode === 'recommendations'}
-        onclick={() => setMode('recommendations')}
-        aria-pressed={mode === 'recommendations'}
-      >
-        <span>{$t('hometab.forYou')}</span>
-      </button>
-      <button
-        class="mode-btn"
-        class:active={mode === 'recents'}
-        onclick={() => setMode('recents')}
-        aria-pressed={mode === 'recents'}
-      >
-        <span>{$t('hometab.recent')}</span>
-      </button>
-      <button
-        class="mode-btn"
-        class:active={mode === 'saved'}
-        onclick={() => setMode('saved')}
-        aria-pressed={mode === 'saved'}
-      >
-        <Bookmark size={13} />
-        <span>{$t('hometab.saved')}</span>
-      </button>
-    </div>
-
-            <div class="picker-wrap">
-                <button
-                    bind:this={folderBtnEl}
-                    class="filter-chip"
-                    class:chip-active={!!selectedFolderId}
-                    onclick={toggleFolderPicker}
-                    aria-expanded={showFolderPicker}
-                    aria-haspopup="listbox"
-                >
-                    <FolderOpen size={13} strokeWidth={2} />
-                    <span class="chip-label">{selectedFolderName ?? $t('hometab.folder')}</span>
-                    {#if selectedFolderId}
-                        <span
-                            class="chip-clear"
-                            role="button"
-                            tabindex="0"
-                            aria-label="{$t('hometab.clearFolderFilter')}"
-                            onclick={(e) => { e.stopPropagation(); selectFolder(null, null); }}
-                            onkeydown={(e) => { if (e.key === 'Enter') selectFolder(null, null); }}
-                        ><X size={10} /></span>
-                    {:else}
-                        <span class="chevron-wrap" class:rotated={showFolderPicker}><ChevronDown size={11} /></span>
-                    {/if}
-                </button>
-            </div>
-
-            <div class="picker-wrap">
-                <button
-                    bind:this={feedBtnEl}
-                    class="filter-chip"
-                    class:chip-active={!!selectedFeedSha}
-                    onclick={toggleFeedPicker}
-                    aria-expanded={showFeedPicker}
-                    aria-haspopup="listbox"
-                >
-                    <Rss size={13} strokeWidth={2} />
-                    <span class="chip-label">{selectedFeedName ?? $t('hometab.feed')}</span>
-                    {#if selectedFeedSha}
-                        <span
-                            class="chip-clear"
-                            role="button"
-                            tabindex="0"
-                            aria-label="{$t('hometab.clearFeedFilter')}"
-                            onclick={(e) => { e.stopPropagation(); selectFeed(null, null); }}
-                            onkeydown={(e) => { if (e.key === 'Enter') selectFeed(null, null); }}
-                        ><X size={10} /></span>
-                    {:else}
-<span class="chevron-wrap" class:rotated={showFeedPicker}><ChevronDown size={11} /></span>
-            {/if}
-            </button>
-            </div>
-
-            <div class="picker-wrap">
-            <button
-            bind:this={tagBtnEl}
-            class="filter-chip"
-            class:chip-active={!!selectedTagId}
-            onclick={toggleTagPicker}
-            aria-expanded={showTagPicker}
-            aria-haspopup="listbox"
-            >
-            <Tag size={13} strokeWidth={2} />
-            <span class="chip-label">{selectedTagName ?? $t('hometab.tag')}</span>
-            {#if selectedTagId}
-            <span
-            class="chip-clear"
-            role="button"
-            tabindex="0"
-            aria-label="{$t('hometab.clearTagFilter')}"
-            onclick={(e) => { e.stopPropagation(); selectTag(null, null); }}
-            onkeydown={(e) => { if (e.key === 'Enter') selectTag(null, null); }}
-            ><X size={10} /></span>
-            {:else}
-            <span class="chevron-wrap" class:rotated={showTagPicker}><ChevronDown size={11} /></span>
-            {/if}
-            </button>
-            </div>
-            </div>
+<!-- Filter bar (shared with the top bar; hidden while the top bar hosts it) -->
+        {#if !$uiTopBar}
+            <HomeFilterBar variant="page" />
+        {/if}
 
 <!-- Feed -->
         <div class="feed-wrap">
@@ -1126,7 +827,7 @@ if (res.ok) {
                     <button class="retry-btn" onclick={() => loadFeed(true)}>{$t('hometab.tryAgain')}</button>
                 </div>
 {:else if feed.length === 0}
-      <p class="state-empty">{mode === 'saved' ? $t('hometab.noSavedYet') : $t('hometab.noPostsFound')}</p>
+      <p class="state-empty">{$homeFilters.mode === 'saved' ? $t('hometab.noSavedYet') : $t('hometab.noPostsFound')}</p>
             {:else}
                 {#each feed as item (item.item_id)}
                     <div use:trackView={item.item_id}>
@@ -1134,7 +835,7 @@ if (res.ok) {
     {item}
     server=""
     tags={item.tags || []}
-    userTags={tagList}
+    userTags={$homeTags}
     selectionMode={$selectionMode}
     selected={$selectedPosts.some((p: any) => p.item_id === item.item_id)}
     onToggleSelect={handleToggleSelect}
@@ -1161,121 +862,25 @@ if (res.ok) {
     </div> <!-- Fim do main-content -->
 
 <!-- Dropdowns e Backdrops (portaled to body to escape overflow:clip) -->
-{#if showFolderPicker || showFeedPicker || showTagPicker || bulkTagPickerOpen}
+{#if bulkTagPickerOpen}
   <Portal>
 	<div
 		class="picker-backdrop"
 		use:containPickerScroll
-		onclick={() => { showFolderPicker = false; showFeedPicker = false; showTagPicker = false; bulkTagPickerOpen = false; }}
+		onclick={() => { bulkTagPickerOpen = false; }}
 		aria-hidden="true"
 	></div>
 
-    {#if showFolderPicker}
-      <div class="picker-dropdown picker-portal" style={folderDropStyle} use:containPickerScroll role="listbox" aria-label="{$t('hometab.folder')}">
-        {#if folders.length === 0}
-          <p class="picker-empty">{$t('hometab.noFoldersYet')}</p>
-        {:else}
-          {#each folders as folder (folder.id)}
-            <button
-              class="picker-item"
-              class:picker-selected={selectedFolderId === String(folder.id)}
-              role="option"
-              aria-selected={selectedFolderId === String(folder.id)}
-              onclick={() => selectFolder(folder.id, folder.name)}
-            >
-              <FolderOpen size={13} strokeWidth={2} />
-              <span class="picker-item-text">{folder.name}</span>
-              {#if selectedFolderId === String(folder.id)}<Check size={12} class="picker-check" />{/if}
-            </button>
-          {/each}
-        {/if}
-      </div>
-    {/if}
-
-    {#if showFeedPicker}
-      <div
-        class="picker-dropdown picker-dropdown--tall picker-portal"
-        style={feedDropStyle}
-        use:containPickerScroll
-        role="listbox"
-        aria-label="{$t('hometab.feed')}"
-      >
-        {#if feedsList.length === 0}
-          <p class="picker-empty">{$t('hometab.noFeedsYet')}</p>
-        {:else}
-          {#each feedsList as f (f.sha)}
-            <button
-              class="picker-item"
-              class:picker-selected={selectedFeedSha === f.sha}
-              role="option"
-              aria-selected={selectedFeedSha === f.sha}
-              onclick={() => selectFeed(f.sha, f.title)}
-            >
-              {#if f.icon}
-                <img
-                  src={f.icon}
-                  alt=""
-                  class="picker-favicon"
-                  onerror={(e: Event) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
-              {:else}
-                <Rss size={12} strokeWidth={2} class="picker-icon-fallback" />
-              {/if}
-              <span class="picker-item-text">{f.title}</span>
-              {#if selectedFeedSha === f.sha}<Check size={12} class="picker-check" />{/if}
-            </button>
-          {/each}
-        {/if}
-      </div>
-	{/if}
-
-{#if showTagPicker}
-        <div
-        class="picker-dropdown picker-portal"
-        style={tagDropStyle}
-        use:containPickerScroll
-        role="listbox"
-        aria-label="{$t('hometab.tag')}"
-        >
-        {#if tagList.length === 0}
-        <p class="picker-empty">{$t('hometab.noTagsYet')}</p>
-        <button class="picker-item picker-item--create" onclick={() => { showTagPicker = false; goto('/settings/intelligence/tags'); }}>
-        <Tag size={13} strokeWidth={2} />
-        <span class="picker-item-text">{$t('hometab.createTag')}</span>
-        </button>
-        {:else}
-        {#each tagList as tg (tg.id)}
-        <button
-        class="picker-item"
-        class:picker-selected={selectedTagId === tg.id}
-        role="option"
-        aria-selected={selectedTagId === tg.id}
-        onclick={() => selectTag(tg.id, tg.name)}
-        >
-        <span class="picker-tag-dot" style="background: {tg.color || '#3b82f6'}"></span>
-        <span class="picker-item-text">{tg.name}</span>
-        {#if selectedTagId === tg.id}<Check size={12} class="picker-check" />{/if}
-        </button>
-        {/each}
-        <button class="picker-item picker-item--create" onclick={() => { showTagPicker = false; goto('/settings/intelligence/tags'); }}>
-        <Tag size={13} strokeWidth={2} />
-        <span class="picker-item-text">{$t('hometab.createTag')}</span>
-        </button>
-        {/if}
-        </div>
-        {/if}
-
-        {#if bulkTagPickerOpen}
         <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
         <div class="picker-dropdown picker-portal" style={bulkDropStyle} use:containPickerScroll role="listbox" aria-label="{$t('hometab.tagSelected')}">
-        {#if tagList.length === 0}
+        {#if $homeTags.length === 0}
         <p class="picker-empty">{$t('hometab.noTagsYet')}</p>
         <button class="picker-item picker-item--create" onclick={() => { bulkTagPickerOpen = false; goto('/settings/intelligence/tags'); }}>
         <Tag size={13} strokeWidth={2} />
         <span class="picker-item-text">{$t('hometab.createTag')}</span>
         </button>
         {:else}
-        {#each tagList as tg (tg.id)}
+        {#each $homeTags as tg (tg.id)}
         <button
         class="picker-item"
         onclick={() => bulkAssignTag(tg.id)}
@@ -1291,7 +896,6 @@ if (res.ok) {
         </button>
         {/if}
         </div>
-        {/if}
 	</Portal>
 	{/if}
 </div>
@@ -1504,100 +1108,7 @@ font-family: var(--font-page-title);
         color: var(--color-accent);
     }
 
-    /* ── Filter bar ──────────────────────────────────────────── */
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-top: 8px;
-  padding-bottom: 12px;
-  background: var(--color-base-100);
-  overflow-x: auto;
-  scrollbar-width: none;
-	touch-action: pan-y pan-x;
-}
-    .filter-bar::-webkit-scrollbar { display: none; }
-
-    .mode-pill {
-        display: flex;
-        border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
-        border-radius: var(--ui-radius-chip, var(--ui-radius-sm));
-        padding: 0;
-        gap: 0;
-        flex-shrink: 0;
-        background: var(--btn-fill, transparent);
-        overflow: hidden; /* clips hover/active fill to the pill's own curve */
-    }
-    .mode-btn {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        padding: 7px 14px;
-        border-radius: 0;
-        border: none;
-        background: transparent;
-        font-size: 13px;
-        font-weight: 500;
-        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
-        cursor: pointer;
-        transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
-        white-space: nowrap;
-    }
-    .mode-btn:hover {
-        color: var(--color-base-content);
-    }
-    .mode-btn.active {
-        /* Fills its parcel of the big pill edge-to-edge: no gap ring */
-        background: color-mix(in oklch, var(--color-accent) 16%, transparent);
-        color: var(--color-accent);
-        font-weight: 700;
-        /* Relief stays inside, since the outer shadow would be clipped */
-        box-shadow: inset 0 1px 0 color-mix(in oklch, white 22%, transparent);
-    }
-
-    .picker-wrap { position: relative; flex-shrink: 0; }
-    .filter-chip {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        padding: 6px 12px;
-        border-radius: var(--ui-radius-chip, var(--ui-radius-sm));
-        border: var(--ui-border-width, 1px) solid var(--btn-border-color, var(--ui-border-color));
-        background: var(--btn-fill, transparent);
-        font-size: 13px;
-        font-weight: 500;
-        color: var(--ui-text-muted, color-mix(in oklch, var(--color-base-content) 74%, transparent));
-        cursor: pointer;
-        transition: background 130ms, color 130ms, border-color 130ms;
-        white-space: nowrap;
-        max-width: 140px;
-    }
-    .filter-chip:hover {
-        background: var(--color-base-200);
-        color: var(--color-base-content);
-        border-color: var(--btn-border-strong, var(--ui-border-strong));
-    }
-    .filter-chip.chip-active {
-        background: transparent;
-        border-color: color-mix(in oklch, var(--color-accent) 60%, transparent);
-        color: var(--color-accent);
-        font-weight: 600;
-    }
-    .chip-label { overflow: hidden; text-overflow: ellipsis; max-width: 80px; }
-    .chip-clear {
-        display: flex; align-items: center; justify-content: center;
-        width: 14px; height: 14px;
-        border-radius: 50%;
-        background: color-mix(in oklch, var(--color-accent) 20%, transparent);
-        cursor: pointer;
-        flex-shrink: 0;
-    }
-    .chevron-wrap {
-        display: flex; align-items: center;
-        transition: transform 180ms ease;
-        flex-shrink: 0;
-    }
-    .chevron-wrap.rotated { transform: rotate(180deg); }
+    /* ── Filter bar ── lives in HomeFilterBar.svelte (shared with the top bar) ── */
 
     /* ── Pickers ─────────────────────────────────────────────── */
     /* Height is clamped inline by getDropdownStyle()/getDropdownStyleUp()
@@ -1643,12 +1154,7 @@ font-family: var(--font-page-title);
         transition: background 110ms; text-align: left;
     }
     .picker-item:hover { background: var(--color-base-200); }
-    .picker-item.picker-selected {
-        background: color-mix(in oklch, var(--color-accent) 10%, transparent);
-        color: var(--color-accent);
-    }
 .picker-item-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.picker-favicon { width: 14px; height: 14px; border-radius: var(--ui-radius-xs); object-fit: contain; flex-shrink: 0; }
 .picker-tag-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .picker-item--create { color: var(--color-accent); font-weight: 600; border-top: 1px solid var(--color-base-300); margin-top: 4px; border-radius: 0 0 var(--ui-radius-xs) var(--ui-radius-xs); }
 .picker-item--create:hover { background: color-mix(in oklch, var(--color-accent) 10%, transparent); }

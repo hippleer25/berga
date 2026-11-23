@@ -796,6 +796,23 @@ export function getSavedChipIcons(): boolean {
 
 export const uiChipIcons: Writable<boolean> = writable(getSavedChipIcons());
 
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+
+const TOP_BAR_KEY = 'ui-top-bar';
+
+export function applyTopBar(on: boolean, persist = false) {
+	if (!browser) return;
+	document.documentElement.setAttribute('data-top-bar', on ? 'on' : 'off');
+	if (persist) localStorage.setItem(TOP_BAR_KEY, on ? 'true' : 'false');
+}
+
+export function getSavedTopBar(): boolean {
+	if (!browser) return false;
+	return localStorage.getItem(TOP_BAR_KEY) === 'true';
+}
+
+export const uiTopBar: Writable<boolean> = writable(getSavedTopBar());
+
 /* ── Navbar background ─────────────────────────────────────────────────── */
 
 export type NavBg = 'default' | 'white' | 'berga-white' | 'berga-gray' | 'dark' | 'amoled';
@@ -996,6 +1013,7 @@ export function initUiPrefs() {
 	syncBorder();
 	applyNavIndicator(getSavedNavIndicator());
 	applyChipIcons(getSavedChipIcons());
+	applyTopBar(getSavedTopBar());
 	migrateLegacyDeck();
 	applyDeckWidthPct(getSavedDeckWidthPct());
 	applyDeckHeightVw(getSavedDeckHeightVw());
@@ -1063,6 +1081,8 @@ export function resetUiPrefs() {
 	applyNavIndicator('modern', true);
 	uiChipIcons.set(true);
 	applyChipIcons(true, true);
+	uiTopBar.set(false);
+	applyTopBar(false, true);
 	uiDeckWidthPct.set(DECK_WIDTH_PCT_DEFAULT);
 	applyDeckWidthPct(DECK_WIDTH_PCT_DEFAULT, true);
 	uiDeckHeightVw.set(DECK_HEIGHT_VW_DEFAULT);

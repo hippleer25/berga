@@ -294,7 +294,9 @@ function onTouchMove(e: TouchEvent) {
     .viewport {
         overflow: clip;
         width: 100%;
-        height: 100dvh;
+        /* Shrinks by the top bar's height while the adaptive top bar is
+           rendered (TopBar sets --topbar-h on the root element). */
+        height: calc(100dvh - var(--topbar-h, 0px));
         /* Horizontal swipe between tabs is ours (JS pins vertical scroll while
            the axis is locked 'h'); vertical scroll stays native */
         touch-action: pan-y;
