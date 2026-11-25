@@ -381,6 +381,11 @@ font-display: swap;
 --deck-height: 16vw;
 --deck-radius: calc(var(--deck-height) * 17 / 100);
 
+/* Bottom-edge gesture zone that reveals the hidden mobile NavBar.
+   The Mota chat footer pads by the same amount so the input docks
+   right above the zone (keep the two in sync via this token). */
+--nav-reveal-h: 24px;
+
 /* Border option (driven by uiPrefs via data-border + vars) */
 --ui-border-width: 1px;
 --ui-border-color: color-mix(in oklch, var(--color-base-content) 16%, transparent);

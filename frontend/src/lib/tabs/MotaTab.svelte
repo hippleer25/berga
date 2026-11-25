@@ -2206,15 +2206,15 @@
     transition: padding-bottom 320ms cubic-bezier(0.4, 0, 0.2, 1);
   }
   /* Smart navbar hidden (Mota focus mode): the input hugs the reveal
-     zone's lower edge (48px) so it reads as docked to the bottom. */
+     zone's lower edge (--nav-reveal-h) so it reads as docked to the bottom. */
   .footer-inner.nav-free {
-    padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--nav-reveal-h, 24px) + env(safe-area-inset-bottom, 0px));
   }
   :global([data-nav-style="deck"]) .footer-inner {
     padding-bottom: calc(12px + var(--deck-height, 16vw) + 20px + env(safe-area-inset-bottom, 0px));
   }
   :global([data-nav-style="deck"]) .footer-inner.nav-free {
-    padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--nav-reveal-h, 24px) + env(safe-area-inset-bottom, 0px));
   }
 }
 

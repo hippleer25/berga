@@ -120,7 +120,7 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		height: calc(48px + env(safe-area-inset-bottom, 0px));
+		height: calc(var(--nav-reveal-h, 24px) + env(safe-area-inset-bottom, 0px));
 		z-index: 49; /* just under the NavBar (50) */
 		touch-action: none;
 		background: transparent;
