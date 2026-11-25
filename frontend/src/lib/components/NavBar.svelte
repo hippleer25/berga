@@ -214,35 +214,6 @@
 				<img src="/icons/berga_64.png" alt="" class="brand-logo" draggable="false" />
 				<span class="brand-name">Berga</span>
 			</a>
-			{#if $columnsLayout.panes.length > 1}
-				<button
-					class="sidebar-collapse"
-					use:ripple
-					onclick={rotate}
-					title={$t('navbar.colRotate')}
-					aria-label={$t('navbar.colRotate')}
-				>
-					<ArrowLeftRight size={18} strokeWidth={1.8} />
-				</button>
-				<button
-					class="sidebar-collapse"
-					use:ripple
-					onclick={resetColumns}
-					title={$t('navbar.colClose')}
-					aria-label={$t('navbar.colClose')}
-				>
-					<X size={18} strokeWidth={1.8} />
-				</button>
-			{/if}
-			<button
-				class="sidebar-collapse"
-				use:ripple
-				onclick={toggleSidebar}
-				title={$t('settings.collapseSidebar')}
-				aria-label={$t('settings.collapseSidebar')}
-			>
-				<PanelLeftClose size={18} strokeWidth={1.8} />
-			</button>
 		</div>
 		<nav class="sidebar-nav">
 			{#each $orderedTabs as tab, i (tab.id)}
@@ -267,6 +238,37 @@
 			{/each}
 		</nav>
 		<nav class="sidebar-bottom">
+			<div class="sidebar-quick">
+				{#if $columnsLayout.panes.length > 1}
+					<button
+						class="sidebar-quick-btn"
+						use:ripple
+						onclick={rotate}
+						title={$t('navbar.colRotate')}
+						aria-label={$t('navbar.colRotate')}
+					>
+						<ArrowLeftRight size={18} strokeWidth={1.8} />
+					</button>
+					<button
+						class="sidebar-quick-btn"
+						use:ripple
+						onclick={resetColumns}
+						title={$t('navbar.colClose')}
+						aria-label={$t('navbar.colClose')}
+					>
+						<X size={18} strokeWidth={1.8} />
+					</button>
+				{/if}
+				<button
+					class="sidebar-quick-btn"
+					use:ripple
+					onclick={toggleSidebar}
+					title={$t('settings.collapseSidebar')}
+					aria-label={$t('settings.collapseSidebar')}
+				>
+					<PanelLeftClose size={18} strokeWidth={1.8} />
+				</button>
+			</div>
 			<button
 				class="sidebar-item"
 				class:active={$page.url.pathname.startsWith('/settings')}
@@ -548,35 +550,38 @@
 			--sidebar-item-hover-color: var(--nav-bg-content, var(--color-base-content));
 			--sidebar-item-hover-bg: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 8%, transparent);
 		}
-		.sidebar-collapse {
+		.sidebar-quick {
+			display: flex;
+			align-items: center;
+			gap: 2px;
+			margin-bottom: 6px;
+			/* sit on the same icon rail as the nav tabs (item margin + 3px border
+			   + item padding offset the tab icons deeper than this row's boxes) */
+			margin-left: 7px;
+		}
+		.sidebar-quick-btn {
 			display: inline-flex;
 			align-items: center;
 			justify-content: center;
 			width: 32px;
 			height: 32px;
-			border: 1px solid var(--ui-border-color);
+			border: none;
 			border-radius: var(--ui-radius-sm);
 			background: transparent;
 			color: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 55%, transparent);
 			cursor: pointer;
-			transition: border-color var(--ui-dur-1, 150ms) var(--ui-ease, ease),
-				transform var(--ui-dur-1, 150ms) var(--ui-ease, ease),
-				box-shadow var(--ui-dur-1, 150ms) var(--ui-ease, ease);
+			transition: color var(--ui-dur-1, 150ms) var(--ui-ease, ease),
+				background var(--ui-dur-1, 150ms) var(--ui-ease, ease);
 			-webkit-tap-highlight-color: transparent;
 		}
-		.sidebar-collapse:hover {
-			border-color: color-mix(in oklch, var(--nav-bg-content, var(--color-base-content)) 45%, transparent);
-			transform: translateY(-1px);
-			box-shadow: var(--ui-shadow-1);
-		}
-		.sidebar-collapse:active {
-			transform: translateY(0);
+		.sidebar-quick-btn:hover {
+			color: var(--nav-bg-content, var(--color-base-content));
+			background: var(--sidebar-item-hover-bg, color-mix(in oklch, var(--color-base-content) 8%, transparent));
 		}
 	}
 	.sidebar-top {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
 	}
 	.sidebar-expand {
 		display: none;
@@ -587,7 +592,7 @@
 			align-items: center;
 			justify-content: center;
 			position: fixed;
-			top: 14px;
+			bottom: 54px;
 			left: 14px;
 			z-index: 60;
 			width: 38px;
@@ -666,7 +671,7 @@
 		border-top: 1px solid var(--glass-border, var(--color-base-200));
 		padding-top: 8px;
 	}
-	:global([data-settings-icon="top"]) .sidebar-bottom { display: none; }
+	:global([data-settings-icon="top"]) .sidebar-bottom .sidebar-item { display: none; }
 	.sidebar-bottom .sidebar-item {
 		width: 100%;
 		background: none;
