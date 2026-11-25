@@ -11,6 +11,12 @@ Boost model: each term+direction carries a RELATIVE weight in [0, 1]
 AFFINITY_CLICK_STEP; the direction vector is the normalised weighted
 mean of the boosted term vectors.
 
+Publisher boosts work the same way (one row per publisher+direction in
+publisher_boosts, weight in [0, 1]) but are IDENTITY-based, not
+semantic: the ranking engine applies them as a per-article score
+multiplier (1 + pos − neg) instead of blending them into the query
+vectors.
+
 Displayed affinity scores are a calibrated logistic remap of the raw
 contrast (see calibrated_affinity) so typical interests don't all read
 "very low"; ranking always uses the raw, unbounded contrast.
@@ -474,6 +480,7 @@ def reset_user_affinity(user_id: int) -> dict:
     removed (0 is a valid result — a clean no-op reset).
     """
     removed = 0
+    removed_publisher = 0
     try:
         with get_db() as conn:
             cursor = conn.cursor(dictionary=True)
@@ -483,6 +490,12 @@ def reset_user_affinity(user_id: int) -> dict:
                     (user_id,),
                 )
                 removed = cursor.rowcount
+
+                cursor.execute(
+                    "DELETE FROM publisher_boosts WHERE user_id = %s",
+                    (user_id,),
+                )
+                removed_publisher = cursor.rowcount
 
                 cursor.execute(
                     "UPDATE user_vectors SET "
@@ -498,8 +511,11 @@ def reset_user_affinity(user_id: int) -> dict:
         raise
 
     invalidate_cache(user_id)
-    logger.info("Affinity reset: user=%s removed=%s", user_id, removed)
-    return {"success": True, "removed_boosts": removed}
+    logger.info(
+        "Affinity reset: user=%s removed=%s removed_publisher=%s",
+        user_id, removed, removed_publisher,
+    )
+    return {"success": True, "removed_boosts": removed + removed_publisher}
 
 
 def reset_user_algorithm(
@@ -510,6 +526,7 @@ def reset_user_algorithm(
     publisher_counters: bool = False,
     interaction_history: bool = False,
     publisher_freq: bool = False,
+    publisher_boosts: bool = False,
 ) -> dict:
     """
     Full algorithm wipe: clears whatever parts of the user's preference
@@ -522,7 +539,7 @@ def reset_user_algorithm(
     Returns the number of boosts and interactions removed.
     """
     if not any((learned, boosts, publisher_counters,
-                interaction_history, publisher_freq)):
+                interaction_history, publisher_freq, publisher_boosts)):
         return {"success": True, "removed_boosts": 0,
                 "removed_interactions": 0}
 
@@ -557,7 +574,14 @@ def reset_user_algorithm(
                         "DELETE FROM affinity_boosts WHERE user_id = %s",
                         (user_id,),
                     )
-                    removed_boosts = cursor.rowcount
+                    removed_boosts += cursor.rowcount
+
+                if publisher_boosts:
+                    cursor.execute(
+                        "DELETE FROM publisher_boosts WHERE user_id = %s",
+                        (user_id,),
+                    )
+                    removed_boosts += cursor.rowcount
 
                 if interaction_history:
                     cursor.execute(
@@ -576,16 +600,266 @@ def reset_user_algorithm(
     invalidate_cache(user_id)
     logger.info(
         "Algorithm reset: user=%s learned=%s boosts=%s publisher_counters=%s "
-        "interaction_history=%s publisher_freq=%s removed_boosts=%s "
-        "removed_interactions=%s",
+        "interaction_history=%s publisher_freq=%s publisher_boosts=%s "
+        "removed_boosts=%s removed_interactions=%s",
         user_id, learned, boosts, publisher_counters, interaction_history,
-        publisher_freq, removed_boosts, removed_interactions,
+        publisher_freq, publisher_boosts, removed_boosts,
+        removed_interactions,
     )
     return {
         "success": True,
         "removed_boosts": removed_boosts,
         "removed_interactions": removed_interactions,
     }
+
+
+# ── Manual publisher boosts ────────────────────────────────────────────────────
+
+def get_publisher_boosts(user_id: int) -> dict[str, dict[str, float]]:
+    """
+    Manual per-publisher boost weights:
+        {feed_sha256: {"positive": w_pos, "negative": w_neg}}
+    Only publishers carrying at least one boost row appear.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT feed_sha256, direction, strength FROM publisher_boosts "
+                "WHERE user_id = %s",
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+        finally:
+            cursor.close()
+
+    boosts: dict[str, dict[str, float]] = {}
+    for r in rows:
+        entry = boosts.setdefault(
+            r["feed_sha256"], {"positive": 0.0, "negative": 0.0}
+        )
+        entry[r["direction"]] = round(float(r["strength"]), 4)
+    return boosts
+
+
+def boost_publisher(user_id: int, feed_sha256: str, direction: str, strength: float) -> dict:
+    """
+    Adjust the manual boost weight of a publisher by a signed delta.
+
+    Same model as term boosts: one row per (user, feed_sha256, direction),
+    relative weight in [0, 1], each UI click adds/removes AFFINITY_CLICK_STEP.
+    Dropping to 0 removes the boost entirely. The ranking engine applies both
+    directions as a per-article score multiplier (1 + pos − neg, see
+    recommendations._compute_personalised_list).
+    """
+    feed_sha256 = (feed_sha256 or "").strip()
+    if not feed_sha256:
+        return {"success": False, "message": "feed_sha256 is required"}
+
+    delta = max(-1.0, min(1.0, float(strength)))
+    if delta == 0.0:
+        return {"success": False, "message": "Empty adjustment"}
+
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor(dictionary=True)
+            try:
+                # Atomic relative-weight step. The UNIQUE key (user_id,
+                # feed_sha256, direction) makes concurrent clicks merge into a
+                # single row inside the DB instead of racing SELECT-then-INSERT
+                # duplicates. A fresh insert of a negative delta lands at
+                # strength 0 and is cleaned up right after (weight 0 ⇒ deleted).
+                cursor.execute(
+                    """
+                    INSERT INTO publisher_boosts (user_id, feed_sha256, direction, strength)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        strength = LEAST(1.0, GREATEST(0.0, strength + %s))
+                    """,
+                    (user_id, feed_sha256, direction, max(0.0, min(1.0, delta)), delta),
+                )
+
+                # Read the final weight through this same transaction so the
+                # row lock taken by the upsert is still held (no race window).
+                cursor.execute(
+                    "SELECT strength FROM publisher_boosts "
+                    "WHERE user_id = %s AND feed_sha256 = %s AND direction = %s "
+                    "LIMIT 1",
+                    (user_id, feed_sha256, direction),
+                )
+                final_row = cursor.fetchone()
+                new_weight = float(final_row["strength"]) if final_row else 0.0
+
+                if new_weight <= 0.0:
+                    cursor.execute(
+                        "DELETE FROM publisher_boosts "
+                        "WHERE user_id = %s AND feed_sha256 = %s AND direction = %s",
+                        (user_id, feed_sha256, direction),
+                    )
+
+                conn.commit()
+            finally:
+                cursor.close()
+
+    except Exception:
+        logger.exception(
+            "Error applying publisher boost feed=%s direction=%s user=%s",
+            feed_sha256, direction, user_id,
+        )
+        raise
+
+    invalidate_cache(user_id)
+    logger.info(
+        "Publisher boost: user=%s feed=%s direction=%s delta=%+.2f weight=%.2f",
+        user_id, feed_sha256, direction, delta, new_weight,
+    )
+    return {
+        "success": True,
+        "direction": direction,
+        "feed_sha256": feed_sha256,
+        "weight": round(new_weight, 4),
+    }
+
+
+def remove_publisher_boost(user_id: int, feed_sha256: str, direction: str) -> dict:
+    """Remove a specific manual publisher boost row."""
+    feed_sha256 = (feed_sha256 or "").strip()
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "DELETE FROM publisher_boosts "
+                "WHERE user_id = %s AND feed_sha256 = %s AND direction = %s",
+                (user_id, feed_sha256, direction),
+            )
+            deleted = cursor.rowcount > 0
+            conn.commit()
+        finally:
+            cursor.close()
+
+    if not deleted:
+        return {"success": False, "message": "Boost not found"}
+
+    invalidate_cache(user_id)
+    logger.info(
+        "Publisher boost removed: user=%s feed=%s direction=%s",
+        user_id, feed_sha256, direction,
+    )
+    return {"success": True, "direction": direction, "feed_sha256": feed_sha256}
+
+
+def list_user_publishers(user_id: int, limit: int = 100) -> dict:
+    """
+    Publishers the user follows, annotated with the manual boost weights and
+    the interaction-learned like/dislike counters. Publishers carrying a
+    manual boost always come first (explicit user intent must never be
+    truncated away), then the rest alphabetically up to ``limit``. Boosted
+    publishers without an active subscription are still listed — unfollowing
+    must not silently drop a manual boost the user set.
+    """
+    limit = max(1, min(int(limit), 500))
+
+    entries_by_sha: dict[str, dict] = {}
+
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            # Subscribed publishers (custom titles respected).
+            cursor.execute(
+                """
+                SELECT f.feed_sha256,
+                       COALESCE(ufo.custom_title, f.feed_title) AS title,
+                       f.feed_icon
+                FROM user_subscriptions us
+                JOIN feeds f ON f.feed_sha256 = us.feed_sha256
+                LEFT JOIN user_feed_overrides ufo
+                  ON ufo.user_id = %s AND ufo.feed_sha256 = f.feed_sha256
+                WHERE us.user_id = %s
+                ORDER BY title
+                """,
+                (user_id, user_id),
+            )
+            for p in cursor.fetchall():
+                sha = p["feed_sha256"]
+                entries_by_sha[sha] = {
+                    "feed_sha256": sha,
+                    "title": p.get("title") or sha,
+                    "icon": p.get("feed_icon"),
+                    "likes": 0.0,
+                    "dislikes": 0.0,
+                    "boost_pos": 0.0,
+                    "boost_neg": 0.0,
+                }
+
+            # Boosted publishers without an active subscription (orphans).
+            cursor.execute(
+                """
+                SELECT pb.feed_sha256,
+                       COALESCE(ufo.custom_title, f.feed_title) AS title,
+                       f.feed_icon
+                FROM publisher_boosts pb
+                JOIN feeds f ON f.feed_sha256 = pb.feed_sha256
+                LEFT JOIN user_feed_overrides ufo
+                  ON ufo.user_id = %s AND ufo.feed_sha256 = pb.feed_sha256
+                WHERE pb.user_id = %s
+                """,
+                (user_id, user_id),
+            )
+            for p in cursor.fetchall():
+                sha = p["feed_sha256"]
+                if sha not in entries_by_sha:
+                    entries_by_sha[sha] = {
+                        "feed_sha256": sha,
+                        "title": p.get("title") or sha,
+                        "icon": p.get("feed_icon"),
+                        "likes": 0.0,
+                        "dislikes": 0.0,
+                        "boost_pos": 0.0,
+                        "boost_neg": 0.0,
+                    }
+        finally:
+            cursor.close()
+
+    boosts = get_publisher_boosts(user_id)
+
+    # Learned engagement counters live in user_vectors as JSON maps.
+    likes_map: dict[str, float] = {}
+    dislikes_map: dict[str, float] = {}
+    with get_db() as conn:
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT publisher_likes, publisher_dislikes FROM user_vectors "
+                "WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+        finally:
+            cursor.close()
+    if row:
+        try:
+            likes_map = json.loads(row["publisher_likes"]) if row.get("publisher_likes") else {}
+        except (json.JSONDecodeError, ValueError):
+            likes_map = {}
+        try:
+            dislikes_map = json.loads(row["publisher_dislikes"]) if row.get("publisher_dislikes") else {}
+        except (json.JSONDecodeError, ValueError):
+            dislikes_map = {}
+
+    for sha, entry in entries_by_sha.items():
+        boost = boosts.get(sha)
+        if boost:
+            entry["boost_pos"] = boost["positive"]
+            entry["boost_neg"] = boost["negative"]
+        # Learned engagement weights accumulate fractional action weights
+        # (like 1.0 / saved 0.5 / read 0.33) — round for a clean API payload.
+        entry["likes"] = round(float(likes_map.get(sha, 0)), 2)
+        entry["dislikes"] = round(float(dislikes_map.get(sha, 0)), 2)
+
+    entries = list(entries_by_sha.values())
+    boosted = [e for e in entries if e["boost_pos"] > 0 or e["boost_neg"] > 0]
+    plain = [e for e in entries if not (e["boost_pos"] > 0 or e["boost_neg"] > 0)]
+    return {"publishers": (boosted + plain)[:limit]}
 
 # ── Cluster affinity attachment (weekly events enrichment) ────────────────────
 

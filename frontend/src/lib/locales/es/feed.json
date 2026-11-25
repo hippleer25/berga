@@ -13,5 +13,6 @@
   "noPosts": "No se encontraron publicaciones para este feed.",
   "upToDate": "Estás al día ✓",
   "back": "Volver",
-  "filterMode": "Modo del feed"
+  "filterMode": "Modo del feed",
+  "openIntelligence": "Abrir ajustes de inteligencia"
 }

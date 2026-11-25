@@ -21,6 +21,14 @@ def get_all(feed_sha256, user):
                 return None
 
             subscription = check_subscription.user(user, feed_sha256)
-            return {**feed, **subscription}
+            result = {**feed, **subscription}
+
+            # Current manual publisher boost for this user (weights in [0, 1]
+            # per direction; absent map means "no manual boost").
+            from intelligence.affinity import get_publisher_boosts
+
+            boost = get_publisher_boosts(user["id"]).get(feed_sha256)
+            result["publisher_boost"] = boost or {"positive": 0.0, "negative": 0.0}
+            return result
         finally:
             cursor.close()

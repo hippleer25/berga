@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { page } from '$app/stores';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Search from '@lucide/svelte/icons/search';
 	import ThumbsUp from '@lucide/svelte/icons/thumbs-up';
@@ -10,6 +11,10 @@
 	import X from '@lucide/svelte/icons/x';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Rss from '@lucide/svelte/icons/rss';
+	import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Check from '@lucide/svelte/icons/check';
 	import { t } from 'svelte-i18n';
 	import { get } from 'svelte/store';
   import { ripple } from '$lib/actions/ripple';
@@ -24,6 +29,15 @@
 	let analyzeError = $state('');
 	let boostStatus = $state<BoostStatus>('idle');
 	let boostError = $state('');
+
+	// ── Section switch: manual term boosts vs manual publisher boosts ──────
+	type Section = 'terms' | 'publishers';
+	let section = $state<Section>('terms');
+
+	function switchSection(next: Section) {
+		section = next;
+		if (next === 'publishers' && pubStatus === 'idle') loadPublishers();
+	}
 
 	interface AffinityResult {
 		term: string;
@@ -50,13 +64,197 @@
 	let ranked = $state<RankedTerm[]>([]);
 	let rankedStatus = $state<'idle' | 'loading' | 'done'>('idle');
 
+	// ── Publisher boosts ───────────────────────────────────────────────────
+	interface PubEntry {
+		feed_sha256: string;
+		title: string;
+		icon: string | null;
+		likes: number;
+		dislikes: number;
+		boost_pos: number;
+		boost_neg: number;
+	}
+	let publishers = $state<PubEntry[]>([]);
+	let pubStatus = $state<'idle' | 'loading' | 'done'>('idle');
+	let pubQuery = $state('');
+	let pubSort = $state<'alpha' | 'best' | 'worst' | 'zalpha'>('alpha');
+	let sortOpen = $state(false);
+	let sortRoot: HTMLElement | null = $state(null);
+	let selectedSha = $state<string | null>(null);
+	let pubBoostStatus = $state<BoostStatus>('idle');
+	let pubBoostError = $state('');
+	let brokenPubIcons = $state<Record<string, boolean>>({});
+
+	// Sort score: net manual boost (pos − neg, up to ±100) is the primary key,
+	// learned interest (likes − dislikes) breaks ties. The ×1000 factor keeps
+	// the manual tuning dominant while learned weights stay fractional.
+	function pubScore(p: PubEntry): number {
+		return (p.boost_pos - p.boost_neg) * 1000 + (p.likes - p.dislikes);
+	}
+
+	function persistPubSort() {
+		localStorage.setItem('affinity-pub-sort', pubSort);
+	}
+
+	// ── Sort dropdown (custom, quiet — no native select popup) ─────────────
+	const SORT_OPTIONS = [
+		{ value: 'alpha', key: 'affinity.pubSortAlpha' },
+		{ value: 'best', key: 'affinity.pubSortBest' },
+		{ value: 'worst', key: 'affinity.pubSortWorst' },
+		{ value: 'zalpha', key: 'affinity.pubSortZAlpha' },
+	] as const;
+
+	const sortLabelKey = $derived(
+		SORT_OPTIONS.find(o => o.value === pubSort)?.key ?? 'affinity.pubSortAlpha'
+	);
+
+	function pickSort(value: 'alpha' | 'best' | 'worst' | 'zalpha') {
+		pubSort = value;
+		persistPubSort();
+		sortOpen = false;
+	}
+
+	function handleGlobalPointer(e: PointerEvent) {
+		if (!sortOpen) return;
+		if (sortRoot && !sortRoot.contains(e.target as Node)) sortOpen = false;
+	}
+
+	function handleGlobalKey(e: KeyboardEvent) {
+		if (e.key === 'Escape' && sortOpen) sortOpen = false;
+	}
+
+	const filteredPublishers = $derived.by(() => {
+		const q = pubQuery.trim().toLowerCase();
+		const list = q
+			? publishers.filter(p => p.title.toLowerCase().includes(q))
+			: [...publishers];
+		switch (pubSort) {
+			case 'best':
+				return list.sort((a, b) => pubScore(b) - pubScore(a));
+			case 'worst':
+				return list.sort((a, b) => pubScore(a) - pubScore(b));
+			case 'zalpha':
+				return list.sort((a, b) => b.title.localeCompare(a.title));
+			default:
+				// 'alpha' — keep the backend order (boosted first, then A→Z)
+				return list;
+		}
+	});
+
+	const selectedPub = $derived(
+		publishers.find(p => p.feed_sha256 === selectedSha) ?? null
+	);
+
+	async function loadPublishers() {
+		pubStatus = 'loading';
+		try {
+			const res = await apiFetch('/api/affinity/publishers?limit=200', { credentials: 'include' });
+			if (!res.ok) throw new Error(`${get(t)('affinity.errorStatus')} ${res.status}`);
+			const data = await res.json();
+			publishers = (data.publishers ?? []) as PubEntry[];
+			pubStatus = 'done';
+		} catch {
+			publishers = [];
+			pubStatus = 'done';
+		}
+	}
+
+	function selectPublisher(sha: string) {
+		selectedSha = selectedSha === sha ? null : sha;
+		pubBoostStatus = 'idle';
+		pubBoostError = '';
+	}
+
+	async function adjustPubBoost(direction: 'positive' | 'negative', delta: number) {
+		if (!selectedPub) return;
+		pubBoostStatus = 'loading';
+		pubBoostError = '';
+		try {
+			const res = await apiFetch('/api/affinity/publisher-boost', {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ feed_sha256: selectedPub.feed_sha256, direction, strength: delta }),
+			});
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.error || `${get(t)('affinity.errorStatus')} ${res.status}`);
+			const weight = data.weight ?? 0;
+			publishers = publishers.map(p =>
+				p.feed_sha256 === selectedPub.feed_sha256
+					? {
+						...p,
+						boost_pos: direction === 'positive' ? weight : p.boost_pos,
+						boost_neg: direction === 'negative' ? weight : p.boost_neg,
+					}
+					: p
+			);
+			pubBoostStatus = 'idle';
+		} catch (err: any) {
+			pubBoostError = err.message;
+			pubBoostStatus = 'error';
+			setTimeout(() => (pubBoostStatus = 'idle'), 4000);
+		}
+	}
+
+	function resetPublisherBoostState() {
+		publishers = publishers.map(p => ({ ...p, boost_pos: 0, boost_neg: 0 }));
+	}
+
 	onMount(() => {
 		const stored = localStorage.getItem('affinity-history');
 		if (stored) {
 			try { history = JSON.parse(stored); } catch { history = []; }
 		}
+		const storedSort = localStorage.getItem('affinity-pub-sort');
+		if (storedSort === 'best' || storedSort === 'worst' || storedSort === 'zalpha' || storedSort === 'alpha') {
+			pubSort = storedSort;
+		}
 		loadRanking();
+
+		// Deep link from a publisher feed: /settings/intelligence/affinity?tab=publishers&feed={sha}
+		const params = get(page).url.searchParams;
+		const feedParam = params.get('feed');
+		if (feedParam || params.get('tab') === 'publishers') {
+			section = 'publishers';
+			loadPublishers().then(() => {
+				if (!feedParam) return;
+				if (!publishers.some(p => p.feed_sha256 === feedParam)) {
+					// Publisher not followed/boosted yet: resolve its metadata so it
+					// can still be selected and boosted from the deep link.
+					fetchMissingPublisher(feedParam);
+					return;
+				}
+				highlightDeepLinkedPublisher(feedParam);
+			});
+		}
 	});
+
+	async function fetchMissingPublisher(sha: string) {
+		try {
+			const res = await apiFetch(`/api/feed-info/${sha}`, { credentials: 'include' });
+			if (!res.ok) return;
+			const data = await res.json();
+			const entry: PubEntry = {
+				feed_sha256: sha,
+				title: data.feed_title || sha,
+				icon: data.feed_icon ?? null,
+				likes: 0,
+				dislikes: 0,
+				boost_pos: 0,
+				boost_neg: 0,
+			};
+			if (!publishers.some(p => p.feed_sha256 === sha)) {
+				publishers = [...publishers, entry];
+			}
+			highlightDeepLinkedPublisher(sha);
+		} catch { /* deep link degrades gracefully */ }
+	}
+
+	async function highlightDeepLinkedPublisher(sha: string) {
+		selectedSha = sha;
+		await tick();
+		document.getElementById(`pub-row-${sha}`)?.scrollIntoView({ block: 'center' });
+	}
 
 	function persistHistory() {
 		const capped = history.slice(0, 50);
@@ -193,6 +391,7 @@
 			if (result) {
 				result = { ...result, boost_pos: 0, boost_neg: 0 };
 			}
+			resetPublisherBoostState();
 			await loadRanking();
 			resetStatus = 'idle';
 		} catch (err: any) {
@@ -213,6 +412,7 @@
 	let algoOptPublisherCounters = $state(true);
 	let algoOptInteractionHistory = $state(false);
 	let algoOptPublisherFreq = $state(false);
+	let algoOptPublisherBoosts = $state(true);
 
 	async function resetAlgorithm() {
 		algoResetStatus = 'busy';
@@ -228,6 +428,7 @@
 					publisher_counters: algoOptPublisherCounters,
 					interaction_history: algoOptInteractionHistory,
 					publisher_freq: algoOptPublisherFreq,
+					publisher_boosts: algoOptPublisherBoosts,
 				}),
 			});
 			const data = await res.json();
@@ -237,6 +438,7 @@
 			localStorage.removeItem('affinity-history');
 			result = null;
 			term = '';
+			if (algoOptPublisherBoosts) resetPublisherBoostState();
 			await loadRanking();
 			algoResetStatus = 'idle';
 		} catch (err: any) {
@@ -247,6 +449,8 @@
 	}
 </script>
 
+<svelte:window onpointerdown={handleGlobalPointer} onkeydown={handleGlobalKey} />
+
 <div class="tab-panel">
 	<div class="affinity-header">
 		<Sparkles size={18} class="affinity-icon" />
@@ -256,6 +460,24 @@
 		</div>
 	</div>
 
+	<div class="affinity-tabs" role="tablist">
+		<button
+			class="affinity-tab"
+			class:active={section === 'terms'}
+			role="tab"
+			aria-selected={section === 'terms'}
+			onclick={() => switchSection('terms')}
+		>{$t('affinity.tabTerms')}</button>
+		<button
+			class="affinity-tab"
+			class:active={section === 'publishers'}
+			role="tab"
+			aria-selected={section === 'publishers'}
+			onclick={() => switchSection('publishers')}
+		>{$t('affinity.tabPublishers')}</button>
+	</div>
+
+	{#if section === 'terms'}
 	<div class="affinity-search-row">
 		<div class="search-wrap-sm">
 			<input
@@ -425,8 +647,162 @@
 			</div>
 		</div>
 	{/if}
+	{:else}
+		<!-- Publishers: manual per-publisher interest boosts -->
+		<div class="affinity-search-row">
+			<div class="search-wrap-sm">
+				<input
+					type="text"
+					class="affinity-input"
+					placeholder="{$t('affinity.pubSearchPlaceholder')}"
+					bind:value={pubQuery}
+				/>
+				<Search size={16} class="search-icon-sm" />
+			</div>
+			<div class="sort-dd" bind:this={sortRoot}>
+				<button
+					type="button"
+					class="sort-btn"
+					onclick={() => (sortOpen = !sortOpen)}
+					aria-haspopup="listbox"
+					aria-expanded={sortOpen}
+					aria-label={$t('affinity.pubSortLabel')}
+					title={$t('affinity.pubSortLabel')}
+				>
+					<ArrowUpDown size={13} class="sort-icon" />
+					<span class="sort-label">{$t(sortLabelKey)}</span>
+					<ChevronDown size={12} class="sort-chevron{sortOpen ? ' open' : ''}" />
+				</button>
+				{#if sortOpen}
+					<div class="sort-menu" role="listbox">
+						{#each SORT_OPTIONS as opt (opt.value)}
+							<button
+								type="button"
+								class="sort-option"
+								class:active={pubSort === opt.value}
+								role="option"
+								aria-selected={pubSort === opt.value}
+								onclick={() => pickSort(opt.value)}
+							>
+								<span>{$t(opt.key)}</span>
+								{#if pubSort === opt.value}<span class="sort-check"><Check size={12} /></span>{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		</div>
 
-	{#if history.length > 0 || ranked.length > 0}
+		{#if pubStatus === 'loading'}
+			<div class="pub-loading"><span class="spinner"></span></div>
+		{:else if filteredPublishers.length === 0}
+			<p class="ranking-empty">{$t('affinity.pubEmpty')}</p>
+		{:else}
+			<div class="pub-list">
+				{#each filteredPublishers as p (p.feed_sha256)}
+					<button
+						id="pub-row-{p.feed_sha256}"
+						class="pub-row"
+						class:selected={selectedSha === p.feed_sha256}
+						onclick={() => selectPublisher(p.feed_sha256)}
+					>
+						{#if p.icon && !brokenPubIcons[p.feed_sha256]}
+							<img src={p.icon} alt="" class="pub-icon" onerror={() => (brokenPubIcons[p.feed_sha256] = true)} />
+						{:else}
+							<Rss size={14} class="pub-icon-fallback" />
+						{/if}
+						<span class="pub-title">{p.title}</span>
+						{#if p.boost_pos > 0}
+							<span class="mini-badge positive"><ThumbsUp size={8} /> +</span>
+						{/if}
+						{#if p.boost_neg > 0}
+							<span class="mini-badge negative"><ThumbsDown size={8} /> &minus;</span>
+						{/if}
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+		{#if selectedPub}
+			<div class="result-card">
+				<div class="result-header">
+					<div class="pub-selected">
+						{#if selectedPub.icon && !brokenPubIcons[selectedPub.feed_sha256]}
+							<img src={selectedPub.icon} alt="" class="pub-icon lg" onerror={() => (brokenPubIcons[selectedPub.feed_sha256] = true)} />
+						{:else}
+							<Rss size={15} class="pub-icon-fallback" />
+						{/if}
+						<div>
+							<p class="result-label">{$t('affinity.pubLabel')}</p>
+							<p class="result-term pub-term">{selectedPub.title}</p>
+						</div>
+					</div>
+					<button class="pub-clear" onclick={() => (selectedSha = null)} aria-label="{$t('affinity.resetCancel')}">
+						<X size={14} />
+					</button>
+				</div>
+
+				<div class="score-grid">
+					<div class="score-box">
+						<p class="result-label">{$t('affinity.pubLearnedLikes')}</p>
+						<p class="score-val positive">{selectedPub.likes.toFixed(1)}</p>
+					</div>
+					<div class="score-box">
+						<p class="result-label">{$t('affinity.pubLearnedDislikes')}</p>
+						<p class="score-val negative">{selectedPub.dislikes.toFixed(1)}</p>
+					</div>
+				</div>
+
+				<div class="section-divider"></div>
+				<p class="divider-label">{$t('affinity.adjustProfile')}</p>
+
+				<div class="boost-row positive">
+					<div class="boost-info">
+						<span class="boost-label"><ThumbsUp size={13} /> {$t('affinity.moreInterest')}</span>
+						<span class="boost-weight">{pct(selectedPub.boost_pos)}%</span>
+					</div>
+					<div class="boost-actions">
+						<button
+							class="step-btn"
+							onclick={() => adjustPubBoost('positive', -0.10)}
+							aria-label="{$t('affinity.decreaseWeight')}"
+							disabled={pubBoostStatus === 'loading'}
+						><Minus size={13} /></button>
+						<button
+							class="step-btn accent"
+							onclick={() => adjustPubBoost('positive', 0.10)}
+							aria-label="{$t('affinity.increaseWeight')}"
+							disabled={pubBoostStatus === 'loading'}
+						><Plus size={13} /></button>
+					</div>
+				</div>
+
+				<div class="boost-row negative">
+					<div class="boost-info">
+						<span class="boost-label"><ThumbsDown size={13} /> {$t('affinity.lessInterest')}</span>
+						<span class="boost-weight">{pct(selectedPub.boost_neg)}%</span>
+					</div>
+					<div class="boost-actions">
+						<button
+							class="step-btn"
+							onclick={() => adjustPubBoost('negative', -0.10)}
+							aria-label="{$t('affinity.decreaseWeight')}"
+							disabled={pubBoostStatus === 'loading'}
+						><Minus size={13} /></button>
+						<button
+							class="step-btn danger"
+							onclick={() => adjustPubBoost('negative', 0.10)}
+							aria-label="{$t('affinity.increaseWeight')}"
+							disabled={pubBoostStatus === 'loading'}
+						><Plus size={13} /></button>
+					</div>
+				</div>
+				{#if pubBoostStatus === 'error'}<p class="error-text">{pubBoostError}</p>{/if}
+			</div>
+		{/if}
+	{/if}
+
+	{#if history.length > 0 || ranked.length > 0 || publishers.some(p => p.boost_pos > 0 || p.boost_neg > 0)}
 		<div class="reset-section">
 			<button class="action-btn danger" use:ripple onclick={() => (resetConfirm = true)} disabled={resetStatus === 'busy'}>
 				<RotateCcw size={14} />
@@ -472,6 +848,13 @@
 						<span class="algo-option-text">
 							<span class="algo-option-label">{$t('affinity.algoOptBoosts')}</span>
 							<span class="algo-option-desc">{$t('affinity.algoOptBoostsDesc')}</span>
+						</span>
+					</label>
+					<label class="algo-option">
+						<input type="checkbox" bind:checked={algoOptPublisherBoosts} />
+						<span class="algo-option-text">
+							<span class="algo-option-label">{$t('affinity.algoOptPubBoosts')}</span>
+							<span class="algo-option-desc">{$t('affinity.algoOptPubBoostsDesc')}</span>
 						</span>
 					</label>
 					<label class="algo-option">
@@ -521,6 +904,150 @@
 
 	.affinity-header { display: flex; align-items: flex-start; gap: 12px; }
 	.affinity-icon { color: var(--color-accent); margin-top: 2px; flex-shrink: 0; }
+
+	.affinity-tabs {
+		display: flex;
+		border: 1px solid var(--ui-border-color, var(--color-base-300));
+		border-radius: var(--ui-radius-sm);
+		overflow: hidden;
+		background: var(--btn-fill, transparent);
+	}
+	.affinity-tab {
+		flex: 1;
+		padding: 9px 12px;
+		font-size: 13px;
+		font-weight: 600;
+		background: transparent;
+		color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+		border: none;
+		cursor: pointer;
+		transition: background var(--ui-dur-1, 130ms) var(--ui-ease, ease), color var(--ui-dur-1, 130ms) var(--ui-ease, ease);
+	}
+	.affinity-tab:hover { background: var(--color-base-200); color: var(--color-base-content); }
+	.affinity-tab.active {
+		background: color-mix(in oklch, var(--color-accent) 12%, transparent);
+		color: var(--color-accent);
+	}
+
+	.pub-list {
+		display: flex;
+		flex-direction: column;
+		border: 1px solid var(--color-base-300);
+		border-radius: var(--ui-radius-lg);
+		overflow: hidden;
+		max-height: 320px;
+		overflow-y: auto;
+	}
+	.pub-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 10px 14px;
+		border: none;
+		border-bottom: 1px solid var(--color-base-300);
+		background: transparent;
+		cursor: pointer;
+		text-align: left;
+		transition: background 120ms ease;
+	}
+	.pub-row:last-child { border-bottom: none; }
+	.pub-row:hover { background: color-mix(in oklch, var(--color-base-content) 4%, transparent); }
+	.pub-row:active { background: color-mix(in oklch, var(--color-base-content) 8%, transparent); }
+	.pub-row:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+	.pub-row.selected { background: color-mix(in oklch, var(--color-accent) 10%, transparent); }
+	.pub-icon {
+		width: 18px;
+		height: 18px;
+		border-radius: 4px;
+		object-fit: cover;
+		flex-shrink: 0;
+	}
+	.pub-icon.lg { width: 22px; height: 22px; }
+	.pub-icon-fallback { color: color-mix(in oklch, var(--color-base-content) 40%, transparent); flex-shrink: 0; }
+	.pub-title {
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--color-base-content);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		flex: 1;
+		min-width: 0;
+	}
+	.pub-row .mini-badge { flex-shrink: 0; }
+	.pub-selected { display: flex; align-items: center; gap: 10px; min-width: 0; }
+	.pub-term { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.pub-clear {
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		color: color-mix(in oklch, var(--color-base-content) 30%, transparent);
+		transition: color 150ms;
+		padding: 4px;
+		flex-shrink: 0;
+	}
+	.pub-clear:hover { color: var(--color-error); }
+	.pub-loading { display: flex; justify-content: center; padding: 24px 0; }
+
+	.sort-dd { position: relative; flex-shrink: 0; }
+	.sort-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		height: 40px;
+		padding: 0 10px;
+		background: color-mix(in oklch, var(--color-base-200) 50%, transparent);
+		border: 1px solid var(--color-base-300);
+		border-radius: var(--ui-radius-sm);
+		font-size: 12.5px;
+		font-weight: 500;
+		color: color-mix(in oklch, var(--color-base-content) 80%, transparent);
+		cursor: pointer;
+		transition: background var(--ui-dur-1, 130ms) var(--ui-ease, ease), border-color var(--ui-dur-1, 130ms) var(--ui-ease, ease);
+	}
+	.sort-btn:hover { background: var(--color-base-200); border-color: var(--color-base-content); }
+	.sort-icon { flex-shrink: 0; color: color-mix(in oklch, var(--color-base-content) 40%, transparent); }
+	.sort-label { white-space: nowrap; }
+	.sort-chevron {
+		flex-shrink: 0;
+		color: color-mix(in oklch, var(--color-base-content) 40%, transparent);
+		transition: transform var(--ui-dur-1, 130ms) var(--ui-ease, ease);
+	}
+	.sort-chevron.open { transform: rotate(180deg); }
+	.sort-menu {
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		z-index: 30;
+		min-width: 176px;
+		display: flex;
+		flex-direction: column;
+		padding: 4px;
+		background: var(--color-base-100);
+		border: 1px solid var(--ui-border-color, var(--color-base-300));
+		border-radius: var(--ui-radius-sm);
+		box-shadow: var(--ui-shadow-2, 0 4px 12px rgb(0 0 0 / 0.12));
+	}
+	.sort-option {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		width: 100%;
+		padding: 8px 10px;
+		background: transparent;
+		border: none;
+		border-radius: var(--ui-radius-sm);
+		font-size: 12.5px;
+		color: var(--ui-text-subtle, color-mix(in oklch, var(--color-base-content) 62%, transparent));
+		cursor: pointer;
+		text-align: left;
+		transition: background 120ms ease, color 120ms ease;
+	}
+	.sort-option:hover { background: var(--color-base-200); color: var(--color-base-content); }
+	.sort-option.active { color: var(--color-base-content); font-weight: 600; }
+	.sort-option .sort-check { color: var(--color-accent); display: inline-flex; flex-shrink: 0; }
 
 	.affinity-search-row { display: flex; gap: 8px; align-items: center; }
 .search-wrap-sm {

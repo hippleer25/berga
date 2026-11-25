@@ -43,5 +43,19 @@
   "algoOptHistoryDesc": "Elimina permanentemente el registro de tus me gusta, no me gusta, guardados y lecturas.",
   "algoOptFreq": "Estadísticas de frecuencia de publishers",
   "algoOptFreqDesc": "Estadísticas de frecuencia de publicación por feed (se recalculan automáticamente).",
-  "algoResetHint": "Con el perfil vacío, las recomendaciones vuelven a priorizar artículos populares y recientes hasta que el algoritmo reaprenda con nuevas interacciones."
+  "algoResetHint": "Con el perfil vacío, las recomendaciones vuelven a priorizar artículos populares y recientes hasta que el algoritmo reaprenda con nuevas interacciones.",
+  "tabTerms": "Términos",
+  "tabPublishers": "Publishers",
+  "pubSearchPlaceholder": "Buscar tus publishers…",
+  "pubEmpty": "No se encontraron publishers. Sigue feeds para ajustarlos aquí.",
+  "pubLabel": "Publisher",
+  "pubSortLabel": "Ordenar publishers",
+  "pubSortAlpha": "Alfabético",
+  "pubSortBest": "Mejor score",
+  "pubSortWorst": "Peor score",
+  "pubSortZAlpha": "Z–A",
+  "pubLearnedLikes": "Interés aprendido",
+  "pubLearnedDislikes": "Desagrado aprendido",
+  "algoOptPubBoosts": "Refuerzos manuales de publishers",
+  "algoOptPubBoostsDesc": "Los pesos de interés que definiste por publisher (más/menos)."
 }

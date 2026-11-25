@@ -39,6 +39,9 @@ from intelligence.affinity import (
     reset_user_algorithm,
     rank_user_terms,
     attach_cluster_affinity,
+    boost_publisher,
+    remove_publisher_boost,
+    list_user_publishers,
 )
 from search.item.search_item import search_articles_by_text
 from search.feed.search_feed_urls import feeds
@@ -203,12 +206,25 @@ class RemoveBoostRequest(BaseModel):
     direction: Literal["positive", "negative"]
 
 
+class PublisherBoostRequest(BaseModel):
+    feed_sha256: str
+    direction: Literal["positive", "negative"]
+    # Signed click delta on the publisher's boost weight (e.g. +0.10 / −0.10).
+    strength: float = 0.10
+
+
+class RemovePublisherBoostRequest(BaseModel):
+    feed_sha256: str
+    direction: Literal["positive", "negative"]
+
+
 class ResetAlgorithmRequest(BaseModel):
     learned: bool = True
     boosts: bool = False
     publisher_counters: bool = False
     interaction_history: bool = False
     publisher_freq: bool = False
+    publisher_boosts: bool = False
 
 
 class ViewBatch(BaseModel):
@@ -1144,12 +1160,29 @@ def api_reset_algorithm(body: ResetAlgorithmRequest, user: dict = Depends(get_cu
         publisher_counters=body.publisher_counters,
         interaction_history=body.interaction_history,
         publisher_freq=body.publisher_freq,
+        publisher_boosts=body.publisher_boosts,
     )
 
 
 @app.get("/api/affinity/terms")
 def api_rank_affinity_terms(limit: int = 15, user: dict = Depends(get_current_user)):
     return rank_user_terms(user["id"], limit)
+
+
+@app.get("/api/affinity/publishers")
+def api_list_publisher_boosts(limit: int = 100, user: dict = Depends(get_current_user)):
+    """Followed publishers annotated with manual boost weights + learned counters."""
+    return list_user_publishers(user["id"], limit)
+
+
+@app.post("/api/affinity/publisher-boost")
+def api_boost_publisher(body: PublisherBoostRequest, user: dict = Depends(get_current_user)):
+    return boost_publisher(user["id"], body.feed_sha256, body.direction, body.strength)
+
+
+@app.delete("/api/affinity/publisher-boost")
+def api_remove_publisher_boost(body: RemovePublisherBoostRequest, user: dict = Depends(get_current_user)):
+    return remove_publisher_boost(user["id"], body.feed_sha256, body.direction)
 
 
 # ── Smart Tags ────────────────────────────────────────────────────────────────

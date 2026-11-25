@@ -43,5 +43,19 @@
   "algoOptHistoryDesc": "Permanently deletes the record of your likes, dislikes, saves and reads.",
   "algoOptFreq": "Publisher frequency stats",
   "algoOptFreqDesc": "Posting-frequency statistics per feed (recomputed automatically).",
-  "algoResetHint": "With an empty profile, recommendations fall back to popular and recent articles until the algorithm relearns from new interactions."
+  "algoResetHint": "With an empty profile, recommendations fall back to popular and recent articles until the algorithm relearns from new interactions.",
+  "tabTerms": "Terms",
+  "tabPublishers": "Publishers",
+  "pubSearchPlaceholder": "Search your publishers…",
+  "pubEmpty": "No publishers found. Follow feeds to tune them here.",
+  "pubLabel": "Publisher",
+  "pubSortLabel": "Sort publishers",
+  "pubSortAlpha": "Alphabetical",
+  "pubSortBest": "Best score",
+  "pubSortWorst": "Worst score",
+  "pubSortZAlpha": "Z–A",
+  "pubLearnedLikes": "Learned interest",
+  "pubLearnedDislikes": "Learned dislike",
+  "algoOptPubBoosts": "Manual publisher boosts",
+  "algoOptPubBoostsDesc": "The interest weights you set per publisher (more/less)."
 }

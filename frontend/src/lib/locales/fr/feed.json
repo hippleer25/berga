@@ -13,5 +13,6 @@
   "noPosts": "Aucune publication trouvée pour ce flux.",
   "upToDate": "Vous êtes à jour ✓",
   "back": "Retour",
-  "filterMode": "Mode du flux"
+  "filterMode": "Mode du flux",
+  "openIntelligence": "Ouvrir les réglages d'intelligence"
 }

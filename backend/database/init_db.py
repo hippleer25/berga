@@ -602,6 +602,20 @@ def init_db():
             ) {_TABLE_OPTIONS}
         """)
             cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS publisher_boosts (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                feed_sha256 VARCHAR(64) NOT NULL,
+                direction ENUM('positive', 'negative') NOT NULL,
+                strength FLOAT NOT NULL DEFAULT 0.25,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (feed_sha256) REFERENCES feeds(feed_sha256) ON DELETE CASCADE,
+                INDEX idx_pubboost_user_feed (user_id, feed_sha256),
+                UNIQUE KEY uq_pubboost_user_feed_dir (user_id, feed_sha256, direction)
+            ) {_TABLE_OPTIONS}
+        """)
+            cursor.execute(f"""
                 CREATE TABLE IF NOT EXISTS smart_tags (
                     id BIGINT AUTO_INCREMENT PRIMARY KEY,
                     user_id INT NOT NULL,

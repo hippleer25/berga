@@ -3,7 +3,7 @@
     import { page } from '$app/stores';
     import { beforeNavigate, goto } from '$app/navigation';
     import PostCard from '$lib/components/PostCard.svelte';
-    import { Rss, Users, ExternalLink, Check, Plus, ArrowLeft } from '@lucide/svelte';
+    import { Rss, Users, ExternalLink, Check, Plus, ArrowLeft, Sparkles } from '@lucide/svelte';
 import LoaderCircle from '@lucide/svelte/icons/loader-circle';
     import { t, locale } from 'svelte-i18n';
     import { get } from 'svelte/store';
@@ -461,10 +461,18 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
 
     <div class="main-content">
 
-        <!-- Back navigation -->
+        <!-- Back navigation + intelligence shortcut -->
         <header class="top-header">
             <button class="back-btn" onclick={() => closeScreen()} aria-label="{$t('feed.back', { default: 'Back' })}">
                 <ArrowLeft size={20} />
+            </button>
+            <button
+                class="intel-btn"
+                onclick={() => goto(`/settings/intelligence/affinity?tab=publishers&feed=${feedSha}`)}
+                aria-label={$t('feed.openIntelligence')}
+                title={$t('feed.openIntelligence')}
+            >
+                <Sparkles size={20} />
             </button>
         </header>
 
@@ -696,6 +704,25 @@ const res = await apiFetch(buildUrl(0), fetchOpt);
     .back-btn:hover {
         background: color-mix(in oklch, var(--color-base-content) 10%, transparent);
         color: var(--color-base-content);
+    }
+
+    .intel-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: auto;
+        background: transparent;
+        border: none;
+        border-radius: var(--ui-radius-full);
+        padding: 8px;
+        cursor: pointer;
+        color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+        transition: all 0.2s ease;
+    }
+
+    .intel-btn:hover {
+        background: color-mix(in oklch, var(--color-accent) 10%, transparent);
+        color: var(--color-accent);
     }
 
     /* ── Feed Header ─────────────────────────────────────────── */

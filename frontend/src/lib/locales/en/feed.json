@@ -13,5 +13,6 @@
   "noPosts": "No posts found for this feed.",
   "upToDate": "You're all up to date ✓",
   "back": "Back",
-  "filterMode": "Feed mode"
+  "filterMode": "Feed mode",
+  "openIntelligence": "Open intelligence settings"
 }

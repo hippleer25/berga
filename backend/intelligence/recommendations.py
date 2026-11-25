@@ -356,6 +356,34 @@ def _get_user_profile(user_id: int) -> Optional[dict]:
         return cursor.fetchone()
 
 
+def _get_publisher_boosts(user_id: int) -> dict[str, dict[str, float]]:
+    """
+    Manual per-publisher score multipliers:
+        {feed_sha256: {"positive": w_pos, "negative": w_neg}}
+    Weights are relative in [0, 1] (see affinity.boost_publisher). Applied
+    downstream as (1 + pos − neg) — identity-based, never blended into the
+    query vectors. Failures degrade to "no manual boosts".
+    """
+    try:
+        with _get_cursor() as cursor:
+            cursor.execute(
+                "SELECT feed_sha256, direction, strength "
+                "FROM publisher_boosts WHERE user_id = %s",
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+    except Exception:
+        logger.warning("Could not load publisher boosts user=%s", user_id, exc_info=True)
+        return {}
+
+    boosts: dict[str, dict[str, float]] = {}
+    for r in rows:
+        boosts.setdefault(r["feed_sha256"], {"positive": 0.0, "negative": 0.0})[
+            r["direction"]
+        ] = float(r["strength"])
+    return boosts
+
+
 # ── Tier 1: Personalised scoring ───────────────────────────────────────────────
 
 def _compute_personalised_list(
@@ -409,6 +437,7 @@ def _compute_personalised_list(
     pub_likes:    dict[str, int]   = json.loads(row["publisher_likes"])    if row.get("publisher_likes")    else {}
     pub_dislikes: dict[str, int]   = json.loads(row["publisher_dislikes"]) if row.get("publisher_dislikes") else {}
     pub_freq:     dict[str, float] = json.loads(row["publisher_freq"])     if row.get("publisher_freq")     else {}
+    pub_boosts    = _get_publisher_boosts(user_id)
 
     client           = get_qdrant_client()
     filter_condition = _build_qdrant_filter(max_days, feed_filter)
@@ -472,8 +501,18 @@ def _compute_personalised_list(
             reads=stats.get("reads_count", 0),
         )
 
+        # Manual publisher boost (identity-based multiplier): each direction
+        # contributes up to ±100%; the two cancel each other at full strength.
+        pub_boost = pub_boosts.get(feed_hash) if feed_hash else None
+        manual_mult = max(
+            0.0,
+            1.0
+            + (pub_boost["positive"] if pub_boost else 0.0)
+            - (pub_boost["negative"] if pub_boost else 0.0),
+        )
+
         td        = time_decay_multiplier(payload.get("pub_timestamp"), now_ts, TIME_CONSTANT, TIME_GRAVITY)
-        raw_score = c_score * eng * pop * fbon * td
+        raw_score = c_score * eng * pop * fbon * td * manual_mult
 
         candidates.append((item_id, raw_score))
 

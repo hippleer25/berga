@@ -43,5 +43,19 @@
   "algoOptHistoryDesc": "Löscht dauerhaft die Aufzeichnung Ihrer Gefallen, Nichtgefallen, Speicherungen und Lesungen.",
   "algoOptFreq": "Veröffentlichungsfrequenz-Statistiken",
   "algoOptFreqDesc": "Statistiken zur Veröffentlichungsfrequenz pro Feed (werden automatisch neu berechnet).",
-  "algoResetHint": "Mit leerem Profil priorisieren die Empfehlungen wieder beliebte und aktuelle Artikel, bis der Algorithmus aus neuen Interaktionen neu lernt."
+  "algoResetHint": "Mit leerem Profil priorisieren die Empfehlungen wieder beliebte und aktuelle Artikel, bis der Algorithmus aus neuen Interaktionen neu lernt.",
+  "tabTerms": "Begriffe",
+  "tabPublishers": "Publisher",
+  "pubSearchPlaceholder": "Publisher durchsuchen…",
+  "pubEmpty": "Keine Publisher gefunden. Folge Feeds, um sie hier anzupassen.",
+  "pubLabel": "Publisher",
+  "pubSortLabel": "Publisher sortieren",
+  "pubSortAlpha": "Alphabetisch",
+  "pubSortBest": "Bester Score",
+  "pubSortWorst": "Schlechtester Score",
+  "pubSortZAlpha": "Z–A",
+  "pubLearnedLikes": "Gelerntes Interesse",
+  "pubLearnedDislikes": "Gelernte Abneigung",
+  "algoOptPubBoosts": "Manuelle Publisher-Boosts",
+  "algoOptPubBoostsDesc": "Die pro Publisher festgelegten Interessensgewichte (mehr/weniger)."
 }

@@ -43,5 +43,19 @@
   "algoOptHistoryDesc": "Supprime définitivement l'enregistrement de vos j'aime, je n'aime pas, enregistrements et lectures.",
   "algoOptFreq": "Statistiques de fréquence des éditeurs",
   "algoOptFreqDesc": "Statistiques de fréquence de publication par flux (recalculées automatiquement).",
-  "algoResetHint": "Avec un profil vide, les recommandations reviennent aux articles populaires et récents jusqu'à ce que l'algorithme réapprenne de nouvelles interactions."
+  "algoResetHint": "Avec un profil vide, les recommandations reviennent aux articles populaires et récents jusqu'à ce que l'algorithme réapprenne de nouvelles interactions.",
+  "tabTerms": "Termes",
+  "tabPublishers": "Publishers",
+  "pubSearchPlaceholder": "Rechercher vos publishers…",
+  "pubEmpty": "Aucun publisher trouvé. Suivez des flux pour les ajuster ici.",
+  "pubLabel": "Publisher",
+  "pubSortLabel": "Trier les publishers",
+  "pubSortAlpha": "Alphabétique",
+  "pubSortBest": "Meilleur score",
+  "pubSortWorst": "Pire score",
+  "pubSortZAlpha": "Z–A",
+  "pubLearnedLikes": "Intérêt appris",
+  "pubLearnedDislikes": "Désintérêt appris",
+  "algoOptPubBoosts": "Boosts manuels de publishers",
+  "algoOptPubBoostsDesc": "Les pondérations d'intérêt définies par publisher (plus/moins)."
 }
