@@ -10,20 +10,28 @@
 	import PageTrack from '$lib/components/PageTrack.svelte';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import LeftPanel from '$lib/components/LeftPanel.svelte';
-	import SplitView from '$lib/components/SplitView.svelte';
-	import SplitDropZones from '$lib/components/SplitDropZones.svelte';
+	import ColumnPane from '$lib/components/ColumnPane.svelte';
+	import ColumnGutter from '$lib/components/ColumnGutter.svelte';
+	import ColumnDropZones from '$lib/components/ColumnDropZones.svelte';
 	import { drawerOpen } from '$lib/stores/drawer';
 	import { initAppearance } from '$lib/utils/appearance';
 	import { initUiPrefs } from '$lib/stores/uiPrefs';
 	import { initDesignMode } from '$lib/stores/designMode';
 	import { sessionChecked, sessionLoggedIn } from '$lib/stores/session';
 	import { stackedScreenOpen } from '$lib/stores/swipe';
-	import { splitTab, splitSide } from '$lib/stores/splitView';
+	import { columnsLayout, gridTemplate, type TabId } from '$lib/stores/columns';
 	import { resetScreenStack, consumePendingReconcile } from '$lib/utils/screenStack';
 	import { orderedTabs } from '$lib/config/tabs';
 	import "../app.css";
 
 	const { children } = $props();
+
+	// Dynamic desktop columns (1–3). The main column follows the URL-active
+	// tab via PageTrack; the rest pin a tab screen each.
+	const multiPane = $derived($columnsLayout.panes.length > 1);
+	const colTemplate = $derived(
+		multiPane ? gridTemplate($columnsLayout.panes, $columnsLayout.widths) : '1fr'
+	);
 
 	const AUTH_ROUTES = ['/', '/login', '/signup'];
 	const isAuthRoute = $derived(AUTH_ROUTES.includes($page.url.pathname));
@@ -102,22 +110,31 @@
     <!-- Tab layer: always mounted beneath stacked screens so swipe-to-close
          reveals the live tab. Drawer outside PageTrack to avoid its
          transform stacking context. -->
-    <div class="tabs-layer" class:stacked={$stackedScreenOpen} class:split={$splitTab !== null}>
+    <div class="tabs-layer" class:stacked={$stackedScreenOpen} class:columns={multiPane}>
         <LeftPanel bind:open={$drawerOpen} />
         <NavBar />
-        <div class="page-panes">
-            {#if $splitTab && $splitSide === 'left'}
-                <div class="pane pane-split"><SplitView /></div>
-            {/if}
-            <div class="pane pane-main">
-                <TopBar />
-                <PageTrack />
-            </div>
-            {#if $splitTab && $splitSide === 'right'}
-                <div class="pane pane-split"><SplitView /></div>
+        <div class="page-panes" style:--col-template={multiPane ? colTemplate : undefined}>
+            {#if multiPane}
+                {#each $columnsLayout.panes as pane, i (pane.id)}
+                    {#if i > 0}<div class="pane-gap" aria-hidden="true"></div>{/if}
+                    <div class="pane" class:pane-main={pane.content === 'main'}>
+                        {#if pane.content === 'main'}
+                            <TopBar />
+                            <PageTrack />
+                        {:else}
+                            <ColumnPane tab={pane.content as TabId} paneKey={`col-${pane.id}`} />
+                        {/if}
+                    </div>
+                {/each}
+            {:else}
+                <div class="pane pane-main">
+                    <TopBar />
+                    <PageTrack />
+                </div>
             {/if}
         </div>
-        <SplitDropZones />
+        <ColumnGutter />
+        <ColumnDropZones />
     </div>
 {/if}
 {@render children()}
@@ -127,21 +144,22 @@
 		pointer-events: none;
 	}
 
-	/* Split viewer (desktop only): main pane + pinned pane side by side.
+	/* Dynamic columns (desktop only): a grid of 1–3 panes side by side.
 	   Panes get their own scroll; the stacked-screen rules below still
-	   hide the whole layer while a screen is open. */
+	   hide the whole layer while a screen is open. Single-column keeps the
+	   legacy block flow. */
 	.page-panes {
 		display: block;
 	}
 	@media (min-width: 768px) {
-		.tabs-layer.split .page-panes {
-			display: flex;
+		.tabs-layer.columns .page-panes {
+			display: grid;
 			position: fixed;
 			inset: 0;
 			left: var(--sidebar-w, 240px);
+			grid-template-columns: var(--col-template, 1fr);
 		}
-		.tabs-layer.split .pane {
-			flex: 1 1 50%;
+		.tabs-layer.columns .pane {
 			min-width: 0;
 			height: 100%;
 			overflow-y: auto;
@@ -149,18 +167,28 @@
 			scrollbar-width: none;
 			background: var(--color-base-100);
 		}
-		.tabs-layer.split .pane::-webkit-scrollbar {
+		.tabs-layer.columns .pane::-webkit-scrollbar {
 			width: 0;
 			height: 0;
 			display: none;
 		}
+		/* Fixed track between panes (mirrors GUTTER_PX in the template). */
+		.tabs-layer.columns .pane-gap {
+			pointer-events: none;
+		}
 		/* Tab content assumes full-viewport width (sidebar-aware centering);
-		   inside a 50% pane, re-center within the pane instead. */
-		.tabs-layer.split :global(.main-content) {
+		   inside a column, re-center within the pane instead. */
+		.tabs-layer.columns :global(.main-content) {
 			padding-left: 16px !important;
 			padding-right: 16px !important;
 			margin-left: auto !important;
 			margin-right: auto !important;
+		}
+	}
+	/* Mobile ignores the column layout: only the main (route-driven) pane shows. */
+	@media (max-width: 767px) {
+		.tabs-layer.columns .pane:not(.pane-main) {
+			display: none;
 		}
 	}
 

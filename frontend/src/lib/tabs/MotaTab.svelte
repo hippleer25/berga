@@ -21,13 +21,9 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import History from '@lucide/svelte/icons/history';
   import { activeTabId } from '$lib/config/tabs';
-  import { pendingMotaPosts, navVisible } from '$lib/stores/swipe';
-  import {
-    chatSessions,
-    currentSessionId,
-    sessionsOpen,
-    type ChatSession,
-  } from '$lib/stores/chatSessions';
+  import { pendingMotaPosts, navVisible, stackedScreenOpen } from '$lib/stores/swipe';
+  import { chatSessions, type ChatSession } from '$lib/stores/chatSessions';
+  import { columnsLayout } from '$lib/stores/columns';
   import { t, locale } from 'svelte-i18n';
   import { get } from 'svelte/store';
   import { apiFetch } from '$lib/api';
@@ -58,6 +54,13 @@
   type SourcesPreset = 'feeds' | 'web' | 'both';
   type WaitingPhase = 'thinking' | 'planning' | 'searching' | 'reading' | 'synthesizing' | 'refining' | null;
 
+  // ── Pane identity ────────────────────────────────────────────────────────
+  // Mota can appear in several columns at once. Every instance owns its
+  // chat/session state locally; paneKey ('main' for the PageTrack instance,
+  // 'col-<paneId>' for pinned columns) decides whether the instance is the
+  // visible one for queued feed posts and the auto-reset timer.
+  let { paneKey = 'main' }: { paneKey?: string } = $props();
+
   let messages = $state<Message[]>([]);
   let input = $state('');
   let loading = $state(false);
@@ -65,6 +68,10 @@
   let error = $state('');
   let idCounter = 0;
   let waitingPhase = $state<WaitingPhase>(null);
+
+  // Per-instance chat session (was a shared store when Mota was singleton).
+  let sessionId = $state<number | null>(null);
+  let sessionsOpen = $state(false);
 
   let sourcesPreset = $state<SourcesPreset>('both');
   let dropdownOpen = $state(false);
@@ -79,6 +86,7 @@
   let scrollContainer: HTMLElement;
   let messagesEnd: HTMLDivElement;
   let dropdownRef = $state<HTMLElement>();
+  let rootEl: HTMLElement;
 
   let chatAbort: AbortController | null = null;
   let activeAssistantId: number | null = null;
@@ -137,13 +145,13 @@
     if (recovering || !loading) return;
     recovering = true;
     try {
-      const sessionId = get(currentSessionId);
+      const sid = sessionId;
       lastChunkAt = Date.now(); // hold the watchdog while we resync
       let serverContent = '';
       let serverSources: Source[] | undefined = undefined;
-      if (sessionId != null) {
+      if (sid != null) {
         try {
-          const res = await apiFetch(`/api/chat/sessions/${sessionId}/messages`);
+          const res = await apiFetch(`/api/chat/sessions/${sid}/messages`);
           if (res.ok) {
             const data = await res.json();
             const list: any[] = Array.isArray(data.messages) ? data.messages : [];
@@ -257,8 +265,21 @@
     }
   }
 
+  // ── Pane visibility ─────────────────────────────────────────────────────
+  // With Mota hostable in several columns, "active" is per instance: the
+  // PageTrack instance is visible when the route is on Mota; a pinned
+  // column instance when its column shows mota. Stacked screens cover
+  // everything. Drives the queued-posts drain and the auto-reset timer.
+  let paneVisible = $derived.by(() => {
+    if ($stackedScreenOpen) return false;
+    if (paneKey === 'main') return $activeTabId === 'mota';
+    const paneId = Number(paneKey.slice(4));
+    const pane = $columnsLayout.panes.find(p => p.id === paneId);
+    return pane?.content === 'mota';
+  });
+
   $effect(() => {
-    const active = $activeTabId === 'mota';
+    const active = paneVisible;
     if (wasActive && !active) scheduleReset();
     else if (active) cancelReset();
     wasActive = active;
@@ -267,22 +288,26 @@
   function resetChat() {
     cancelReset();
     newChat();
-    sessionsOpen.set(false);
+    sessionsOpen = false;
   }
 
   onMount(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
+      if (!dropdownOpen) return;
+      const target = e.target as Node;
+      // Clicks inside another column's pane must not close this dropdown.
+      if (rootEl && !rootEl.contains(target)) return;
+      if (dropdownRef && !dropdownRef.contains(target)) {
         dropdownOpen = false;
       }
     }
     document.addEventListener('click', handleClickOutside);
 
-    // Escape closes the sessions overlay
+    // Escape closes this instance's sessions overlay
     function handleKeydown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && $sessionsOpen) {
+      if (e.key === 'Escape' && sessionsOpen) {
         e.stopPropagation();
-        sessionsOpen.set(false);
+        sessionsOpen = false;
       }
     }
     document.addEventListener('keydown', handleKeydown);
@@ -313,11 +338,12 @@
 
   $effect(() => {
     const posts = $pendingMotaPosts;
-    if (posts.length > 0) {
-      const snapshot = [...posts];
-      pendingMotaPosts.set([]);
-      handleIncomingFeedPosts(snapshot);
-    }
+    // Only the visible instance drains the queue, so a hidden PageTrack
+    // copy never steals posts meant for a pinned Mota column.
+    if (posts.length === 0 || !paneVisible) return;
+    const snapshot = [...posts];
+    pendingMotaPosts.set([]);
+    handleIncomingFeedPosts(snapshot);
   });
 
   async function handleIncomingFeedPosts(posts: any[]) {
@@ -414,15 +440,15 @@
   async function submitEdit(text: string) {
     const originalId = editingId;
     const original = editingOriginal;
-    const sessionId = get(currentSessionId);
+    const sid = sessionId;
 
-    if (sessionId != null) {
+    if (sid != null) {
       truncating = true;
       try {
         const res = await apiFetch('/api/chat/truncate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, mode: 'edit', content: original }),
+          body: JSON.stringify({ session_id: sid, mode: 'edit', content: original }),
         });
         if (!res.ok) {
           error = `Error ${res.status}`;
@@ -460,15 +486,15 @@
     if (userIdx < 0) return;
 
     const userMsg = messages[userIdx];
-    const sessionId = get(currentSessionId);
-    if (sessionId == null) return;
+    const sid = sessionId;
+    if (sid == null) return;
 
     truncating = true;
     try {
       const res = await apiFetch('/api/chat/truncate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, mode: 'regenerate' }),
+        body: JSON.stringify({ session_id: sid, mode: 'regenerate' }),
       });
       if (!res.ok) {
         error = `Error ${res.status}`;
@@ -497,7 +523,7 @@
     error = '';
     idCounter = 0;
     waitingPhase = null;
-    currentSessionId.set(null);
+    sessionId = null;
   }
 
   // ── Sessions manager ─────────────────────────────────────
@@ -526,12 +552,12 @@
   }
 
   async function openSessions() {
-    sessionsOpen.set(true);
+    sessionsOpen = true;
     await refreshSessions();
   }
 
   function closeSessions() {
-    sessionsOpen.set(false);
+    sessionsOpen = false;
     renamingSessionId = null;
     confirmDeleteId = null;
   }
@@ -569,7 +595,7 @@
         });
       messages = loaded;
       error = '';
-      currentSessionId.set(s.id);
+      sessionId = s.id;
       await scrollToBottom(false);
     } catch (e: any) {
       error = e?.message || String(e);
@@ -612,7 +638,7 @@
       const res = await apiFetch(`/api/chat/sessions/${id}`, { method: 'DELETE' });
       if (res.ok) {
         chatSessions.update(list => list.filter(s => s.id !== id));
-        if (id === $currentSessionId) newChat();
+        if (id === sessionId) newChat();
       }
     } catch {}
   }
@@ -654,7 +680,7 @@
           message: text,
           source_mode: preset.mode,
           scope: preset.scope,
-          session_id: $currentSessionId,
+          session_id: sessionId,
           regenerate,
           articles,
         }),
@@ -693,7 +719,7 @@
 
           if (parsed.session?.id != null) {
             // Brand-new session created server-side on the first message
-            currentSessionId.set(parsed.session.id);
+            sessionId = parsed.session.id;
           }
           if (parsed.status) {
             waitingPhase = parsed.status;
@@ -915,7 +941,7 @@
 </script>
 
 
-<div class="page-root mota-page">
+<div class="page-root mota-page" bind:this={rootEl}>
 
   <!-- ── Top Header (persistent) ──────────────────────────── -->
   <header class="top-header">
@@ -929,7 +955,7 @@
   </header>
 
   <!-- ── Sessions screen (full-tab, Following-tab pattern) ── -->
-  {#if $sessionsOpen}
+  {#if sessionsOpen}
     <section class="sessions-screen" aria-label="{$t('motatab.sessionsTitle')}">
       <div class="main-content sessions-inner">
         <header class="sessions-header">
@@ -964,7 +990,7 @@
         {:else}
           <ul class="sessions-list">
             {#each $chatSessions as s (s.id)}
-              <li class="session-row" class:session-row--active={s.id === $currentSessionId}>
+              <li class="session-row" class:session-row--active={s.id === sessionId}>
                 {#if renamingSessionId === s.id}
                   <input
                     class="session-rename-input"

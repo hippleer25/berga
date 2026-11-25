@@ -9,7 +9,15 @@
   import PreviewFrame from '$lib/components/settings/preview/PreviewFrame.svelte';
   import { ripple } from '$lib/actions/ripple';
   import { ChevronUp, ChevronDown } from '@lucide/svelte';
-  import { tabOrder, setTabOrder, TAB_DEFS, type TabId } from '$lib/config/tabs';
+  import { tabOrder, setTabOrder, TAB_DEFS, DEFAULT_TAB_ORDER, type TabId } from '$lib/config/tabs';
+  import {
+    columnsLayout,
+    setColumnCount,
+    assignTabToPane,
+    applyPreset,
+    equalizeWidths,
+    type Pane
+  } from '$lib/stores/columns';
   import {
     uiNavStyle,
     uiDesktopNav,
@@ -277,6 +285,22 @@
     setTabOrder(arr);
   }
 
+  // ── Desktop columns editor ────────────────────────────────────────────
+  const COLUMN_COUNTS = [1, 2, 3];
+  const tabOptions = DEFAULT_TAB_ORDER.map(id => ({ value: id, labelKey: `navbar.${id}` }));
+
+  function setCount(n: number) {
+    setColumnCount(n);
+  }
+
+  function assignPane(pane: Pane, value: string) {
+    assignTabToPane(pane.id, value as TabId);
+  }
+
+  function paneTrigger(content: string): string {
+    return $t(`navbar.${content}`);
+  }
+
   function formatVmin(v: number): string {
     return `${v.toFixed(1)}vmin`;
   }
@@ -498,6 +522,70 @@
         </div>
       </div>
     {/if}
+
+    <div class="settings-group">
+      <div class="group-label">{$t('settings.columnsGroup')}</div>
+      <div class="group-card">
+        <div class="setting-row">
+          <span class="setting-label">{$t('settings.columnsCount')}</span>
+          <div class="navstyle-picker">
+            {#each COLUMN_COUNTS as n (n)}
+              <button
+                class="density-btn"
+                class:active={$columnsLayout.panes.length === n}
+                use:ripple
+                onclick={() => setCount(n)}
+                aria-pressed={$columnsLayout.panes.length === n}
+              >
+                {n}
+              </button>
+            {/each}
+          </div>
+        </div>
+        {#if $columnsLayout.panes.length > 1}
+          {#each $columnsLayout.panes as pane, i (pane.id)}
+            <div class="setting-row">
+              <span class="setting-label">
+                {pane.content === 'main'
+                  ? $t('settings.colMainLabel')
+                  : $t('settings.colPaneLabel', { values: { n: i + 1 } })}
+              </span>
+              {#if pane.content === 'main'}
+                <span class="row-hint">{$t('settings.colMainHint')}</span>
+              {:else}
+                <SettingsPicker
+                  value={pane.content}
+                  options={tabOptions}
+                  onSelect={(v) => assignPane(pane, v)}
+                  trigger={paneTrigger(pane.content)}
+                />
+              {/if}
+            </div>
+          {/each}
+          <div class="setting-row">
+            <span class="setting-label">{$t('settings.colPresets')}</span>
+            <div class="navstyle-picker">
+              <button class="density-btn" use:ripple onclick={() => applyPreset('single')}>
+                {$t('settings.presetSingle')}
+              </button>
+              <button class="density-btn" use:ripple onclick={() => applyPreset('feedMota')}>
+                {$t('settings.presetFeedMota')}
+              </button>
+              <button class="density-btn" use:ripple onclick={() => applyPreset('triple')}>
+                {$t('settings.presetTriple')}
+              </button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">{$t('settings.colWidths')}</span>
+            <button class="density-btn" use:ripple onclick={equalizeWidths}>
+              {$t('settings.colWidthsReset')}
+            </button>
+          </div>
+        {/if}
+        <p class="row-hint">{$t('settings.columnsHint')}</p>
+      </div>
+    </div>
   {:else}
     {#if navStyleVal === 'deck'}
       <div class="settings-group">

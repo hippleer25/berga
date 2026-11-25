@@ -1,27 +1,42 @@
 <script lang="ts">
 	import { t } from 'svelte-i18n';
-	import { navTabDragging, pinToSide, type SplitSide } from '$lib/stores/splitView';
+	import {
+		navTabDragging,
+		columnsLayout,
+		assignTabToPane,
+		navigateMainTo,
+		gridTemplate
+	} from '$lib/stores/columns';
 	import { TAB_DEFS, type TabId } from '$lib/config/tabs';
 	import PanelLeft from '@lucide/svelte/icons/panel-left';
-	import PanelRight from '@lucide/svelte/icons/panel-right';
+	import Columns2 from '@lucide/svelte/icons/columns-2';
 
-	let hovered = $state<SplitSide | null>(null);
+	let hovered = $state<number | null>(null);
 
-	function onDragOver(e: DragEvent, side: SplitSide) {
+	const multi = $derived($columnsLayout.panes.length > 1);
+	const template = $derived(
+		multi ? gridTemplate($columnsLayout.panes, $columnsLayout.widths) : '1fr'
+	);
+
+	function onDragOver(e: DragEvent, i: number) {
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-		hovered = side;
+		hovered = i;
 	}
 
-	function onDragLeave(side: SplitSide) {
-		if (hovered === side) hovered = null;
+	function onDragLeave(i: number) {
+		if (hovered === i) hovered = null;
 	}
 
-	function onDrop(e: DragEvent, side: SplitSide) {
+	function onDrop(e: DragEvent, i: number) {
 		e.preventDefault();
 		const id = e.dataTransfer?.getData('berga/tab');
 		hovered = null;
-		if (id && id in TAB_DEFS) pinToSide(id as TabId, side);
+		if (!id || !(id in TAB_DEFS)) return;
+		const pane = $columnsLayout.panes[i];
+		if (!pane) return;
+		if (pane.content === 'main') navigateMainTo(id as TabId);
+		else assignTabToPane(pane.id, id as TabId);
 	}
 
 	function onDragEnd() {
@@ -32,33 +47,29 @@
 
 <svelte:window ondragend={onDragEnd} />
 
-{#if $navTabDragging}
+{#if $navTabDragging && multi}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="drop-frost" aria-hidden="true">
-		<div
-			class="zone"
-			class:hover={hovered === 'left'}
-			ondragover={e => onDragOver(e, 'left')}
-			ondragleave={() => onDragLeave('left')}
-			ondrop={e => onDrop(e, 'left')}
-		>
-			<div class="zone-card">
-				<PanelLeft size={30} strokeWidth={1.6} />
-				<span class="zone-label">{$t('navbar.splitPaneLeft')}</span>
+	<div class="drop-frost" style:--col-template={template} aria-hidden="true">
+		{#each $columnsLayout.panes as pane, i (pane.id)}
+			{#if i > 0}<div class="zone-spacer"></div>{/if}
+			<div
+				class="zone"
+				class:hover={hovered === i}
+				ondragover={e => onDragOver(e, i)}
+				ondragleave={() => onDragLeave(i)}
+				ondrop={e => onDrop(e, i)}
+			>
+				<div class="zone-card">
+					{#if pane.content === 'main'}
+						<PanelLeft size={30} strokeWidth={1.6} />
+						<span class="zone-label">{$t('navbar.colMain')}</span>
+					{:else}
+						<Columns2 size={30} strokeWidth={1.6} />
+						<span class="zone-label">{$t('navbar.colN', { values: { n: i + 1 } })}</span>
+					{/if}
+				</div>
 			</div>
-		</div>
-		<div
-			class="zone"
-			class:hover={hovered === 'right'}
-			ondragover={e => onDragOver(e, 'right')}
-			ondragleave={() => onDragLeave('right')}
-			ondrop={e => onDrop(e, 'right')}
-		>
-			<div class="zone-card">
-				<PanelRight size={30} strokeWidth={1.6} />
-				<span class="zone-label">{$t('navbar.splitPaneRight')}</span>
-			</div>
-		</div>
+		{/each}
 	</div>
 {/if}
 
@@ -67,13 +78,14 @@
 		display: none;
 	}
 	@media (min-width: 768px) {
-		/* Frozen scrim: covers the content area only — sidebar and nav stay
-		   visible (theme-aware frosted glass). */
+		/* Frozen scrim mirroring the column grid: sidebar and nav stay visible
+		   (theme-aware frosted glass). */
 		.drop-frost {
-			display: flex;
+			display: grid;
 			position: fixed;
 			inset: 0;
 			left: var(--sidebar-w, 240px);
+			grid-template-columns: var(--col-template, 1fr);
 			z-index: 60;
 			pointer-events: none;
 			background: color-mix(in oklch, var(--color-base-100) 80%, transparent);
@@ -81,11 +93,13 @@
 			-webkit-backdrop-filter: blur(6px);
 		}
 		.zone {
-			flex: 1;
 			display: flex;
 			align-items: center;
 			justify-content: center;
 			pointer-events: auto;
+		}
+		.zone-spacer {
+			pointer-events: none;
 		}
 		.zone-card {
 			display: flex;

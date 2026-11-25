@@ -4,15 +4,11 @@
   "events": "Buscar",
   "mota": "Mota",
   "mainNav": "Navegación principal",
-  "splitOpenLeft": "Abrir en el panel izquierdo",
-  "splitOpenRight": "Abrir en el panel derecho",
-  "splitMoveLeft": "Mover al panel izquierdo",
-  "splitMoveRight": "Mover al panel derecho",
-  "splitRemove": "Quitar de la división",
-  "splitDropLeft": "Suelta para abrir en la mitad izquierda",
-  "splitDropRight": "Suelta para abrir en la mitad derecha",
-  "splitInvert": "Invertir paneles",
-  "splitClose": "Cerrar vista dividida",
-  "splitPaneLeft": "Panel izquierdo",
-  "splitPaneRight": "Panel derecho"
+  "colMain": "Columna principal",
+  "colN": "Columna {n}",
+  "colOpenMain": "Abrir en la columna principal",
+  "colOpenN": "Abrir en la columna {n}",
+  "colRemove": "Quitar de la columna",
+  "colRotate": "Rotar columnas",
+  "colClose": "Cerrar columnas extra"
 }

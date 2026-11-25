@@ -2,11 +2,12 @@
 	import { t } from 'svelte-i18n';
 	import Portal from './Portal.svelte';
 	import {
-		pinToSide,
-		removeSplit,
-		splitTab,
-		type SplitSide
-	} from '$lib/stores/splitView';
+		columnsLayout,
+		assignTabToPane,
+		navigateMainTo,
+		removePaneWithTab,
+		type Pane
+	} from '$lib/stores/columns';
 	import type { TabDef } from '$lib/config/tabs';
 
 	let {
@@ -19,26 +20,34 @@
 		onClose: () => void;
 	} = $props();
 
-	// Null while the pinned pane hasn't been signal-flushed yet on first open.
-	const pinned = $derived($splitTab === tab.id);
+	// First column currently pinning this tab (duplicates pin → removes one).
+	const pinnedPane = $derived($columnsLayout.panes.find(p => p.content === tab.id));
 
-	const MENU_W = 208;
-	const menuH = $derived(pinned ? 132 : 96);
+	const ITEM_H = 37;
+	const TITLE_H = 34;
+	const menuH = $derived(
+		$columnsLayout.panes.length * ITEM_H + (pinnedPane ? ITEM_H : 0) + TITLE_H
+	);
 
 	const posStyle = $derived.by(() => {
 		if (typeof window === 'undefined') return 'left:0;top:0;';
-		const x = Math.max(8, Math.min(pos.x, window.innerWidth - MENU_W - 8));
+		const x = Math.max(8, Math.min(pos.x, window.innerWidth - 208 - 8));
 		const y = Math.max(8, Math.min(pos.y, window.innerHeight - menuH - 8));
 		return `left:${x}px;top:${y}px`;
 	});
 
-	function pin(side: SplitSide) {
-		pinToSide(tab.id, side);
+	function assign(pane: Pane) {
+		assignTabToPane(pane.id, tab.id);
+		onClose();
+	}
+
+	function openMain() {
+		navigateMainTo(tab.id);
 		onClose();
 	}
 
 	function remove() {
-		removeSplit(tab.id);
+		if (pinnedPane) removePaneWithTab(tab.id);
 		onClose();
 	}
 
@@ -72,22 +81,23 @@
 		aria-label={$t('navbar.mainNav')}
 	>
 		<div class="nav-ctx-title">{$t(`navbar.${tab.id}`)}</div>
-		{#if pinned}
-			<button class="nav-ctx-item" role="menuitem" onclick={() => pin('left')}>
-				{$t('navbar.splitMoveLeft')}
+		{#each $columnsLayout.panes as pane, i (pane.id)}
+			<button
+				class="nav-ctx-item"
+				class:nav-ctx-current={pane.content === tab.id}
+				role="menuitem"
+				onclick={() => (pane.content === 'main' ? openMain() : assign(pane))}
+			>
+				{#if pane.content === 'main'}
+					{$t('navbar.colOpenMain')}
+				{:else}
+					{$t('navbar.colOpenN', { values: { n: i + 1 } })}
+				{/if}
 			</button>
-			<button class="nav-ctx-item" role="menuitem" onclick={() => pin('right')}>
-				{$t('navbar.splitMoveRight')}
-			</button>
+		{/each}
+		{#if pinnedPane}
 			<button class="nav-ctx-item nav-ctx-danger" role="menuitem" onclick={remove}>
-				{$t('navbar.splitRemove')}
-			</button>
-		{:else}
-			<button class="nav-ctx-item" role="menuitem" onclick={() => pin('left')}>
-				{$t('navbar.splitOpenLeft')}
-			</button>
-			<button class="nav-ctx-item" role="menuitem" onclick={() => pin('right')}>
-				{$t('navbar.splitOpenRight')}
+				{$t('navbar.colRemove')}
 			</button>
 		{/if}
 	</div>
@@ -127,6 +137,10 @@
 	}
 	.nav-ctx-item:hover {
 		background: var(--color-base-200);
+	}
+	.nav-ctx-current {
+		color: var(--color-accent);
+		font-weight: 600;
 	}
 	.nav-ctx-danger {
 		color: var(--color-error);

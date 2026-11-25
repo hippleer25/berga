@@ -16,14 +16,12 @@
 	} from '$lib/stores/swipe';
 	import { orderedTabs, type TabDef } from '$lib/config/tabs';
 	import {
-		splitTab,
-		splitSide,
-		moveSplit,
-		closeSplit,
-		opposite,
-		swapWithMain,
+		columnsLayout,
+		rotateColumns,
+		resetColumns,
+		promotePane,
 		navTabDragging
-	} from '$lib/stores/splitView';
+	} from '$lib/stores/columns';
 	import NavContextMenu from '$lib/components/NavContextMenu.svelte';
 	import { ripple } from '$lib/actions/ripple';
 	import {
@@ -47,9 +45,9 @@
 		ctxMenu = { x: e.clientX, y: e.clientY, tab };
 	}
 
-	function invertSplit() {
-		if ($splitTab === null) return;
-		moveSplit(opposite($splitSide));
+	function rotate() {
+		if ($columnsLayout.panes.length < 2) return;
+		rotateColumns();
 	}
 
 	function navDragStart(e: DragEvent, tab: TabDef) {
@@ -63,12 +61,13 @@
 		navTabDragging.set(false);
 	}
 
-	/** Left-click on a pinned tab's icon swaps the main and pinned panes. */
+	/** Left-click on a tab pinned in a column promotes it to the main column. */
 	function navClick(e: MouseEvent, tab: TabDef) {
 		ctxMenu = null;
-		if ($splitTab !== tab.id) return;
+		const pane = $columnsLayout.panes.find(p => p.content === tab.id);
+		if (!pane) return;
 		e.preventDefault();
-		if (swapWithMain()) goto(tab.href);
+		promotePane(pane.id);
 	}
 
 	function toggleSidebar() {
@@ -215,22 +214,22 @@
 				<img src="/icons/berga_64.png" alt="" class="brand-logo" draggable="false" />
 				<span class="brand-name">Berga</span>
 			</a>
-			{#if $splitTab}
+			{#if $columnsLayout.panes.length > 1}
 				<button
 					class="sidebar-collapse"
 					use:ripple
-					onclick={invertSplit}
-					title={$t('navbar.splitInvert')}
-					aria-label={$t('navbar.splitInvert')}
+					onclick={rotate}
+					title={$t('navbar.colRotate')}
+					aria-label={$t('navbar.colRotate')}
 				>
 					<ArrowLeftRight size={18} strokeWidth={1.8} />
 				</button>
 				<button
 					class="sidebar-collapse"
 					use:ripple
-					onclick={closeSplit}
-					title={$t('navbar.splitClose')}
-					aria-label={$t('navbar.splitClose')}
+					onclick={resetColumns}
+					title={$t('navbar.colClose')}
+					aria-label={$t('navbar.colClose')}
 				>
 					<X size={18} strokeWidth={1.8} />
 				</button>
@@ -248,7 +247,7 @@
 		<nav class="sidebar-nav">
 			{#each $orderedTabs as tab, i (tab.id)}
 				{@const active = tabIdx === i}
-				{@const pinned = $splitTab === tab.id}
+				{@const pinned = $columnsLayout.panes.some(p => p.content === tab.id)}
 				<a
 					href={tab.href}
 					class="sidebar-item"
@@ -294,7 +293,7 @@
 	<nav class="dock" aria-label="{$t('navbar.mainNav')}">
 		{#each $orderedTabs as tab, i (tab.id)}
 			{@const active = tabIdx === i}
-			{@const pinned = $splitTab === tab.id}
+			{@const pinned = $columnsLayout.panes.some(p => p.content === tab.id)}
 			<a
 				href={tab.href}
 				class="dock-item"
@@ -316,28 +315,28 @@
 			</a>
 		{/each}
 
-		{#if $splitTab}
-			<!-- Split is alive: mini inverter/closer ride at the dock's tail -->
+		{#if $columnsLayout.panes.length > 1}
+			<!-- Columns are alive: rotate/close ride at the dock's tail -->
 			<div class="dock-divider"></div>
 			<button
 				class="dock-item"
 				use:ripple
-				onclick={invertSplit}
-				title={expanded ? undefined : $t('navbar.splitInvert')}
-				aria-label={$t('navbar.splitInvert')}
+				onclick={rotate}
+				title={expanded ? undefined : $t('navbar.colRotate')}
+				aria-label={$t('navbar.colRotate')}
 			>
 				<span class="dock-icon"><ArrowLeftRight size={22} strokeWidth={1.8} /></span>
-				<span class="dock-label">{$t('navbar.splitInvert')}</span>
+				<span class="dock-label">{$t('navbar.colRotate')}</span>
 			</button>
 			<button
 				class="dock-item"
 				use:ripple
-				onclick={closeSplit}
-				title={expanded ? undefined : $t('navbar.splitClose')}
-				aria-label={$t('navbar.splitClose')}
+				onclick={resetColumns}
+				title={expanded ? undefined : $t('navbar.colClose')}
+				aria-label={$t('navbar.colClose')}
 			>
 				<span class="dock-icon"><X size={22} strokeWidth={1.8} /></span>
-				<span class="dock-label">{$t('navbar.splitClose')}</span>
+				<span class="dock-label">{$t('navbar.colClose')}</span>
 			</button>
 		{/if}
 	</nav>
@@ -716,7 +715,7 @@
 		border-left-color: var(--color-accent);
 	}
 
-	/* Pinned in the split viewer: small dot on the icon's corner */
+	/* Pinned in a column: small dot on the icon's corner */
 	.sidebar-item.pinned::after {
 		content: '';
 		position: absolute;
@@ -880,7 +879,7 @@
 			transform: scale(0.94);
 		}
 
-		/* Pinned in the split viewer: dot on the icon's corner */
+		/* Pinned in a column: dot on the icon's corner */
 		.dock-item.pinned::after {
 			content: '';
 			position: absolute;
